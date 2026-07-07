@@ -42,7 +42,7 @@ setInterval(async () => {
     } catch (err) { console.error('❌ Cleanup Error:', err); }
 }, 3600000); 
 
-// 🔄 5. BANTER ENGINE TRIGGER (Drama Module)
+// 🔄 5. BANTER ENGINE TRIGGER (Drama Module - PAUSED)
 /*setInterval(async () => {
     if (isPrimeTime()) {
         // 25% chance to trigger banter every 10 minutes if it's Prime Time
@@ -61,7 +61,7 @@ setInterval(async () => {
 client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
 
-    // A: MEMORY LOGIC
+    // A: MEMORY LOGIC (Always listening and saving data)
     await supabase.from('chat_ram').insert([{
         player_id: message.author.id,
         player_name: message.author.username,
@@ -69,7 +69,7 @@ client.on(Events.MessageCreate, async (message) => {
         message_content: message.content
     }]);
 
-    // B: CONTEXTUAL SUPPORT ENGINE
+    // B: CONTEXTUAL SUPPORT ENGINE (Triggered without mentions)
     if (!supportCooldown.has(message.channel.id)) {
         const { data: history } = await supabase
             .from('chat_ram')
@@ -98,15 +98,28 @@ client.on(Events.MessageCreate, async (message) => {
         }
     }
 
-    // C: AI RESPONSE LOGIC
-    if (message.mentions.has(client.user)) {
+    // C: AI RESPONSE LOGIC (Smart Efficiency Management)
+    // 🧠 FILTER: Only true if the bot is EXPLICITLY tagged in the text content (ignores auto-reply pings)
+    const isExplicitlyTagged = message.content.includes(`<@${client.user.id}>`) || message.content.includes(`<@!${client.user.id}>`);
+
+    if (isExplicitlyTagged) {
         try {
             await message.channel.sendTyping();
-            const cleanText = message.content.replace(`<@${client.user.id}>`, '').trim();
+            
+            // Clean the tag from the text (handles both <@ID> and <@!ID> formats)
+            const cleanText = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
+            
+            // Efficiency Rule: If user just tagged without any message
+            if (cleanText.length === 0) {
+                await message.reply("Yes, my Beyonder? 🌸");
+                return;
+            }
+
             const userPrompt = `[Sender ID: ${message.author.id} | Sender Name: ${message.author.username}]: ${cleanText}`;
 
             const result = await aiModel.generateContent(userPrompt);
             await message.reply(result.response.text());
+
         } catch (error) {
             console.error('❌ AI Error:', error.message);
             try { await message.reply('My cognitive processors are cooling down. Google AI is very busy right now! 🌸'); } 
