@@ -7,8 +7,8 @@ const supabase = require('./database/supabase');
 const aiModel = require('./ai/gemini'); 
 const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter'); 
 
-// 👈 Fetching ALL external data from gameData.js (Gold & Gems)
-const { getGuideMenu, getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData'); 
+// 👈 We only import what the Smart AI and Buttons need now
+const { getGoldGuide, rawGoldData, rawGemData } = require('./data/gameData'); 
 
 // 2. SERVER SETUP
 const app = express();
@@ -33,7 +33,7 @@ const goldCooldown = new Set();
 client.once(Events.ClientReady, (readyClient) => {
     console.log('----------------------------------------');
     console.log(`🌸 System Online: ${readyClient.user.tag} is awake.`);
-    console.log(`👁️  Engines Active: Contextual Support, AI, Banter, & Tactical Guides.`);
+    console.log(`👁️  Engines Active: Contextual Support, AI, Banter, & Smart Data.`);
     console.log('----------------------------------------');
     client.user.setActivity('over the !NF!N!TY family 💅', { type: 3 });
 });
@@ -53,24 +53,7 @@ setInterval(async () => {
 client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
 
-    const msgContent = message.content.toLowerCase().trim();
-
-    // 🎯 6.1: LOCAL STATIC COMMANDS (Zero API Cost)
-    if (msgContent === '!guide') {
-        await message.reply({ embeds: [getGuideMenu()] });
-        return; 
-    } 
-    else if (msgContent === '!guide gold') {
-        await message.reply({ embeds: [getGoldGuide()] });
-        return; 
-    }
-    // 👈 NEW: Added Gem Guide Command
-    else if (msgContent === '!guide gem') {
-        await message.reply({ embeds: [getGemGuide()] });
-        return; 
-    }
-
-    // 🧠 6.2: MEMORY LOGIC 
+    // 🧠 6.1: MEMORY LOGIC (Always listening)
     await supabase.from('chat_ram').insert([{
         player_id: message.author.id,
         player_name: message.author.username,
@@ -78,7 +61,7 @@ client.on(Events.MessageCreate, async (message) => {
         message_content: message.content
     }]);
 
-    // ⚔️ 6.3: CONTEXTUAL SUPPORT ENGINE (Boss Struggles)
+    // ⚔️ 6.2: CONTEXTUAL SUPPORT ENGINE (Boss Struggles)
     if (!supportCooldown.has(message.channel.id)) {
         const { data: history } = await supabase
             .from('chat_ram')
@@ -107,7 +90,7 @@ client.on(Events.MessageCreate, async (message) => {
         }
     }
 
-    // 💰 6.4: PROACTIVE GOLD GUIDE ENGINE
+    // 💰 6.3: PROACTIVE GOLD GUIDE ENGINE
     if (!goldCooldown.has(message.channel.id)) {
         const { data: history } = await supabase
             .from('chat_ram')
@@ -136,7 +119,7 @@ client.on(Events.MessageCreate, async (message) => {
         }
     }
 
-    // 🤖 6.5: AI RESPONSE LOGIC, TRANSLATION & MATH CALCULATOR
+    // 🤖 6.4: AI RESPONSE LOGIC, TRANSLATION & MATH CALCULATOR
     const isExplicitlyTagged = message.content.includes(`<@${client.user.id}>`) || message.content.includes(`<@!${client.user.id}>`);
 
     if (isExplicitlyTagged) {
