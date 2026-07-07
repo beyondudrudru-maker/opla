@@ -7,8 +7,8 @@ const supabase = require('./database/supabase');
 const aiModel = require('./ai/gemini'); 
 const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter'); 
 
-// 👈 We only import what the Smart AI and Buttons need now
-const { getGoldGuide, rawGoldData, rawGemData } = require('./data/gameData'); 
+// 👈 Importing Both Guides for Buttons + Raw Data for AI
+const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData'); 
 
 // 2. SERVER SETUP
 const app = express();
@@ -29,6 +29,7 @@ const client = new Client({
 // Cooldown trackers
 const supportCooldown = new Set();
 const goldCooldown = new Set(); 
+const gemCooldown = new Set(); // 👈 NEW: Cooldown for Gem triggers
 
 client.once(Events.ClientReady, (readyClient) => {
     console.log('----------------------------------------');
@@ -61,67 +62,9 @@ client.on(Events.MessageCreate, async (message) => {
         message_content: message.content
     }]);
 
-    // ⚔️ 6.2: CONTEXTUAL SUPPORT ENGINE (Boss Struggles)
-    if (!supportCooldown.has(message.channel.id)) {
-        const { data: history } = await supabase
-            .from('chat_ram')
-            .select('message_content')
-            .eq('channel_id', message.channel.id)
-            .order('created_at', { ascending: false })
-            .limit(2);
-
-        const triggers = ['boss', 'tough', 'hard', 'score', 'stuck', 'impossible'];
-        const isDifficultyConvo = history.length >= 2 && 
-            history.every(m => triggers.some(t => m.message_content.toLowerCase().includes(t)));
-
-        if (isDifficultyConvo) {
-            supportCooldown.add(message.channel.id);
-            setTimeout(() => supportCooldown.delete(message.channel.id), 120000); 
-
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_yes_help').setLabel('Yes, Please!').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('btn_no_thanks').setLabel('No, I got this').setStyle(ButtonStyle.Secondary)
-            );
-
-            await message.channel.send({
-                content: `💅 I noticed you boys are struggling. Do you need me to ping the Advisors for a strategy breakdown?`,
-                components: [row]
-            });
-        }
-    }
-
-    // 💰 6.3: PROACTIVE GOLD GUIDE ENGINE
-    if (!goldCooldown.has(message.channel.id)) {
-        const { data: history } = await supabase
-            .from('chat_ram')
-            .select('message_content')
-            .eq('channel_id', message.channel.id)
-            .order('created_at', { ascending: false })
-            .limit(2);
-
-        const goldTriggers = ['gold', 'farm', 'broke', 'coins', 'not enough gold'];
-        const isGoldConvo = history.length > 0 && 
-            history.some(m => goldTriggers.some(t => m.message_content.toLowerCase().includes(t)));
-
-        if (isGoldConvo) {
-            goldCooldown.add(message.channel.id);
-            setTimeout(() => goldCooldown.delete(message.channel.id), 300000); 
-
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_yes_gold').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('btn_no_gold').setLabel('No, I am rich.').setStyle(ButtonStyle.Secondary)
-            );
-
-            await message.channel.send({
-                content: `💅 I noticed you guys are talking about farming gold. Do you want me to pull up the Ultimate Gold Blueprint?`,
-                components: [row]
-            });
-        }
-    }
-
-    // 🤖 6.4: AI RESPONSE LOGIC, TRANSLATION & MATH CALCULATOR
     const isExplicitlyTagged = message.content.includes(`<@${client.user.id}>`) || message.content.includes(`<@!${client.user.id}>`);
 
+    // 🤖 6.2: AI RESPONSE LOGIC (Runs ONLY if explicitly tagged)
     if (isExplicitlyTagged) {
         try {
             await message.channel.sendTyping();
@@ -166,6 +109,98 @@ client.on(Events.MessageCreate, async (message) => {
             try { await message.reply('My cognitive processors are cooling down. Google AI is very busy right now! 🌸'); } 
             catch (e) { await message.channel.send(`<@${message.author.id}>, my cognitive processors are cooling down! 🌸`); }
         }
+        return; // 👈 CRITICAL FIX: Agar AI ne reply de diya, toh aage ke Popups check nahi honge!
+    }
+
+    // =================================================================
+    // 🔔 PROACTIVE POPUP ENGINES (Runs ONLY if bot is NOT tagged)
+    // =================================================================
+
+    // ⚔️ 6.3: CONTEXTUAL SUPPORT ENGINE (Boss Struggles)
+    if (!supportCooldown.has(message.channel.id)) {
+        const { data: history } = await supabase
+            .from('chat_ram')
+            .select('message_content')
+            .eq('channel_id', message.channel.id)
+            .order('created_at', { ascending: false })
+            .limit(2);
+
+        const triggers = ['boss', 'tough', 'hard', 'score', 'stuck', 'impossible'];
+        const isDifficultyConvo = history.length >= 2 && 
+            history.every(m => triggers.some(t => m.message_content.toLowerCase().includes(t)));
+
+        if (isDifficultyConvo) {
+            supportCooldown.add(message.channel.id);
+            setTimeout(() => supportCooldown.delete(message.channel.id), 120000); 
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('btn_yes_help').setLabel('Yes, Please!').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('btn_no_thanks').setLabel('No, I got this').setStyle(ButtonStyle.Secondary)
+            );
+
+            await message.channel.send({
+                content: `💅 I noticed you boys are struggling. Do you need me to ping the Advisors for a strategy breakdown?`,
+                components: [row]
+            });
+        }
+    }
+
+    // 💰 6.4: PROACTIVE GOLD GUIDE ENGINE
+    if (!goldCooldown.has(message.channel.id)) {
+        const { data: history } = await supabase
+            .from('chat_ram')
+            .select('message_content')
+            .eq('channel_id', message.channel.id)
+            .order('created_at', { ascending: false })
+            .limit(2);
+
+        const goldTriggers = ['need gold', 'low on gold', 'out of gold', 'how to farm gold'];
+        const isGoldConvo = history.length > 0 && 
+            history.some(m => goldTriggers.some(t => m.message_content.toLowerCase().includes(t)));
+
+        if (isGoldConvo) {
+            goldCooldown.add(message.channel.id);
+            setTimeout(() => goldCooldown.delete(message.channel.id), 300000); 
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('btn_yes_gold').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('btn_no_gold').setLabel('No, I am rich.').setStyle(ButtonStyle.Secondary)
+            );
+
+            await message.channel.send({
+                content: `💅 I noticed you guys are talking about farming gold. Do you want me to pull up the Ultimate Gold Blueprint?`,
+                components: [row]
+            });
+        }
+    }
+
+    // 💎 6.5: PROACTIVE GEM GUIDE ENGINE (NEW)
+    if (!gemCooldown.has(message.channel.id)) {
+        const { data: history } = await supabase
+            .from('chat_ram')
+            .select('message_content')
+            .eq('channel_id', message.channel.id)
+            .order('created_at', { ascending: false })
+            .limit(2);
+
+        const gemTriggers = ['need gems', 'low on gems', 'out of gems', 'how to farm gems', 'gem farming'];
+        const isGemConvo = history.length > 0 && 
+            history.some(m => gemTriggers.some(t => m.message_content.toLowerCase().includes(t)));
+
+        if (isGemConvo) {
+            gemCooldown.add(message.channel.id);
+            setTimeout(() => gemCooldown.delete(message.channel.id), 300000); 
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('btn_yes_gem').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('btn_no_gem').setLabel('No, I have plenty.').setStyle(ButtonStyle.Secondary)
+            );
+
+            await message.channel.send({
+                content: `💎 I noticed you guys are talking about gems. Do you want me to pull up the Gem Matrix?`,
+                components: [row]
+            });
+        }
     }
 });
 
@@ -184,16 +219,31 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.message.edit({ components: [] });
         await interaction.reply({ content: `Fine, tough guys! Don't come crying to me when you lose. 💅` });
     }
+    
+    // --- GOLD BUTTONS ---
     else if (interaction.customId === 'btn_yes_gold') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({
-            content: `💰 Here is the official blueprint! Read it carefully. 💅`,
+            content: `💰 Here is the official gold blueprint! Read it carefully. 💅`,
             embeds: [getGoldGuide()] 
         });
     } 
     else if (interaction.customId === 'btn_no_gold') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({ content: `Alright, keep hoarding that wealth! 💅` });
+    }
+
+    // --- GEM BUTTONS (NEW) ---
+    else if (interaction.customId === 'btn_yes_gem') {
+        await interaction.message.edit({ components: [] });
+        await interaction.reply({
+            content: `💎 Here is the Gem Matrix! Spend wisely. 💅`,
+            embeds: [getGemGuide()] 
+        });
+    } 
+    else if (interaction.customId === 'btn_no_gem') {
+        await interaction.message.edit({ components: [] });
+        await interaction.reply({ content: `Alright, keep hoarding those shiny rocks! 💅` });
     }
 });
 
