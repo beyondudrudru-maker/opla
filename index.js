@@ -146,33 +146,37 @@ client.on(Events.MessageCreate, async (message) => {
     }
 
     // 💰 6.4: PROACTIVE GOLD GUIDE ENGINE
-    if (!goldCooldown.has(message.channel.id)) {
-        const { data: history } = await supabase
-            .from('chat_ram')
-            .select('message_content')
-            .eq('channel_id', message.channel.id)
-            .order('created_at', { ascending: false })
-            .limit(2);
+if (!goldCooldown.has(message.channel.id)) {
+    const { data: history } = await supabase
+        .from('chat_ram')
+        .select('message_content')
+        .eq('channel_id', message.channel.id)
+        .order('created_at', { ascending: false })
+        .limit(2);
 
-        const goldTriggers = ['need gold', 'low on gold', 'out of gold', 'how to farm gold'];
-        const isGoldConvo = history.length > 0 && 
-            history.some(m => goldTriggers.some(t => m.message_content.toLowerCase().includes(t)));
+    // Broader, more robust triggers for Gold
+    const goldTriggers = ['gold', 'need gold', 'farm gold', 'how to farm', 'broke', 'no gold', 'out of gold'];
+    
+    // Check if the latest message or the one before it contains a trigger
+    const isGoldConvo = history.length > 0 && 
+        history.some(m => goldTriggers.some(t => m.message_content.toLowerCase().includes(t)));
 
-        if (isGoldConvo) {
-            goldCooldown.add(message.channel.id);
-            setTimeout(() => goldCooldown.delete(message.channel.id), 300000); 
+    if (isGoldConvo) {
+        goldCooldown.add(message.channel.id);
+        // Set cooldown for 5 minutes (300000 ms)
+        setTimeout(() => goldCooldown.delete(message.channel.id), 300000); 
 
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_yes_gold').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('btn_no_gold').setLabel('No, I am rich.').setStyle(ButtonStyle.Secondary)
-            );
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('btn_yes_gold').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('btn_no_gold').setLabel('No, I am rich.').setStyle(ButtonStyle.Secondary)
+        );
 
-            await message.channel.send({
-                content: `💅 I noticed you guys are talking about farming gold. Do you want me to pull up the Ultimate Gold Blueprint?`,
-                components: [row]
-            });
-        }
+        await message.channel.send({
+            content: `💅 I noticed you guys are talking about farming gold. Do you want me to pull up the Ultimate Gold Blueprint?`,
+            components: [row]
+        });
     }
+}
 
     // 💎 6.5: PROACTIVE GEM GUIDE ENGINE (NEW)
     if (!gemCooldown.has(message.channel.id)) {
