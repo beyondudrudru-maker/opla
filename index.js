@@ -6,6 +6,7 @@ const express = require('express');
 const supabase = require('./database/supabase'); 
 const aiModel = require('./ai/gemini'); 
 const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter'); 
+const { getGuideMenu, getGoldGuide } = require('./data/gameData'); // 👈 NEW: Local Game Data Imported
 
 // 2. SERVER SETUP
 const app = express();
@@ -23,12 +24,14 @@ const client = new Client({
     ]
 });
 
+// Cooldown trackers to prevent spamming
 const supportCooldown = new Set();
+const goldCooldown = new Set(); // 👈 NEW: Cooldown for Gold triggers
 
 client.once(Events.ClientReady, (readyClient) => {
     console.log('----------------------------------------');
     console.log(`🌸 System Online: ${readyClient.user.tag} is awake.`);
-    console.log(`👁️  Engines Active: Contextual Support, AI, and Banter.`);
+    console.log(`👁️  Engines Active: Contextual Support, AI, Banter, & Guide Data.`);
     console.log('----------------------------------------');
     client.user.setActivity('over the !NF!N!TY family 💅', { type: 3 });
 });
@@ -45,7 +48,6 @@ setInterval(async () => {
 // 🔄 5. BANTER ENGINE TRIGGER (Drama Module - PAUSED)
 /*setInterval(async () => {
     if (isPrimeTime()) {
-        // 25% chance to trigger banter every 10 minutes if it's Prime Time
         if (Math.random() < 0.25) {
             const channel = client.channels.cache.get('1414885556017561621'); 
             if (channel) {
@@ -56,12 +58,24 @@ setInterval(async () => {
 }, 600000); */
 
 // ==========================================
-// 6. MESSAGE EVENT LISTENER (Memory + Support + AI)
+// 6. MESSAGE EVENT LISTENER (Core Engines)
 // ==========================================
 client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
 
-    // A: MEMORY LOGIC (Always listening and saving data)
+    const msgContent = message.content.toLowerCase().trim();
+
+    // 🎯 6.1: LOCAL STATIC COMMANDS (Zero API Cost, Instant Reply)
+    if (msgContent === '!guide') {
+        await message.reply({ embeds: [getGuideMenu()] });
+        return; // Stops further code execution to save resources
+    } 
+    else if (msgContent === '!guide gold') {
+        await message.reply({ embeds: [getGoldGuide()] });
+        return; 
+    }
+
+    // 🧠 6.2: MEMORY LOGIC (Always listening)
     await supabase.from('chat_ram').insert([{
         player_id: message.author.id,
         player_name: message.author.username,
@@ -69,7 +83,7 @@ client.on(Events.MessageCreate, async (message) => {
         message_content: message.content
     }]);
 
-    // B: CONTEXTUAL SUPPORT ENGINE (Triggered without mentions)
+    // ⚔️ 6.3: CONTEXTUAL SUPPORT ENGINE (Boss Struggles)
     if (!supportCooldown.has(message.channel.id)) {
         const { data: history } = await supabase
             .from('chat_ram')
@@ -98,24 +112,68 @@ client.on(Events.MessageCreate, async (message) => {
         }
     }
 
-    // C: AI RESPONSE LOGIC (Smart Efficiency Management)
-    // 🧠 FILTER: Only true if the bot is EXPLICITLY tagged in the text content (ignores auto-reply pings)
+    // 💰 6.4: PROACTIVE GOLD GUIDE ENGINE
+    if (!goldCooldown.has(message.channel.id)) {
+        const { data: history } = await supabase
+            .from('chat_ram')
+            .select('message_content')
+            .eq('channel_id', message.channel.id)
+            .order('created_at', { ascending: false })
+            .limit(2);
+
+        const goldTriggers = ['gold', 'farm', 'broke', 'coins', 'not enough gold'];
+        const isGoldConvo = history.length > 0 && 
+            history.some(m => goldTriggers.some(t => m.message_content.toLowerCase().includes(t)));
+
+        if (isGoldConvo) {
+            goldCooldown.add(message.channel.id);
+            setTimeout(() => goldCooldown.delete(message.channel.id), 300000); // 5 mins cooldown
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('btn_yes_gold').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('btn_no_gold').setLabel('No, I am rich.').setStyle(ButtonStyle.Secondary)
+            );
+
+            await message.channel.send({
+                content: `💅 I noticed you guys are talking about farming gold. Do you want me to pull up the Ultimate Gold Blueprint?`,
+                components: [row]
+            });
+        }
+    }
+
+    // 🤖 6.5: AI RESPONSE LOGIC & TRANSLATION
     const isExplicitlyTagged = message.content.includes(`<@${client.user.id}>`) || message.content.includes(`<@!${client.user.id}>`);
 
     if (isExplicitlyTagged) {
         try {
             await message.channel.sendTyping();
-            
-            // Clean the tag from the text (handles both <@ID> and <@!ID> formats)
             const cleanText = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
             
-            // Efficiency Rule: If user just tagged without any message
             if (cleanText.length === 0) {
                 await message.reply("Yes, my Beyonder? 🌸");
                 return;
             }
 
-            const userPrompt = `[Sender ID: ${message.author.id} | Sender Name: ${message.author.username}]: ${cleanText}`;
+            let contextData = "";
+            
+            // 🌐 AI Context Injection: Give Gemini the rules if "gold guide" is mentioned
+            if (cleanText.toLowerCase().includes("gold guide") || cleanText.toLowerCase().includes("gold")) {
+                contextData = `
+                [SYSTEM RULE]: You are the !NF!N!TY Clan Guide. The player is asking about the Gold Guide. 
+                Below is the official data. Answer their specific question or translate this data into the language they requested.
+                [OFFICIAL GOLD DATA]: 
+                - 50% Troop Recruitment (save for 120k pulls).
+                - 20% Hero Upgrades (Legendary -> Epic -> Mythical).
+                - 10% Fusions.
+                - 20% Emergency Reserve (DO NOT TOUCH).
+                - Farm 441 troop formations in Arena. Deploy Baron for 1.5% boost.
+                `;
+            }
+
+            const userPrompt = `
+            ${contextData}
+            [Sender ID: ${message.author.id} | Sender Name: ${message.author.username}]: ${cleanText}
+            `;
 
             const result = await aiModel.generateContent(userPrompt);
             await message.reply(result.response.text());
@@ -134,6 +192,7 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isButton()) return;
 
+    // --- BOSS STRATEGY BUTTONS ---
     if (interaction.customId === 'btn_yes_help') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({
@@ -142,6 +201,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } else if (interaction.customId === 'btn_no_thanks') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({ content: `Fine, tough guys! Don't come crying to me when you lose. 💅` });
+    }
+    
+    // --- GOLD GUIDE BUTTONS ---
+    else if (interaction.customId === 'btn_yes_gold') {
+        await interaction.message.edit({ components: [] });
+        await interaction.reply({
+            content: `💰 Here is the official blueprint! Read it carefully. 💅`,
+            embeds: [getGoldGuide()] // Sends the fast, local embed
+        });
+    } 
+    else if (interaction.customId === 'btn_no_gold') {
+        await interaction.message.edit({ components: [] });
+        await interaction.reply({ content: `Alright, keep hoarding that wealth! 💅` });
     }
 });
 
