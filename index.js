@@ -7,8 +7,8 @@ const supabase = require('./database/supabase');
 const aiModel = require('./ai/gemini'); 
 const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter'); 
 
-// 👈 Fetching all external data from gameData.js
-const { getGuideMenu, getGoldGuide, rawGoldData } = require('./data/gameData'); 
+// 👈 Fetching ALL external data from gameData.js (Gold & Gems)
+const { getGuideMenu, getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData'); 
 
 // 2. SERVER SETUP
 const app = express();
@@ -33,7 +33,7 @@ const goldCooldown = new Set();
 client.once(Events.ClientReady, (readyClient) => {
     console.log('----------------------------------------');
     console.log(`🌸 System Online: ${readyClient.user.tag} is awake.`);
-    console.log(`👁️  Engines Active: Contextual Support, AI, Banter, & Guide Data.`);
+    console.log(`👁️  Engines Active: Contextual Support, AI, Banter, & Tactical Guides.`);
     console.log('----------------------------------------');
     client.user.setActivity('over the !NF!N!TY family 💅', { type: 3 });
 });
@@ -62,6 +62,11 @@ client.on(Events.MessageCreate, async (message) => {
     } 
     else if (msgContent === '!guide gold') {
         await message.reply({ embeds: [getGoldGuide()] });
+        return; 
+    }
+    // 👈 NEW: Added Gem Guide Command
+    else if (msgContent === '!guide gem') {
+        await message.reply({ embeds: [getGemGuide()] });
         return; 
     }
 
@@ -131,7 +136,7 @@ client.on(Events.MessageCreate, async (message) => {
         }
     }
 
-    // 🤖 6.5: AI RESPONSE LOGIC & TRANSLATION
+    // 🤖 6.5: AI RESPONSE LOGIC, TRANSLATION & MATH CALCULATOR
     const isExplicitlyTagged = message.content.includes(`<@${client.user.id}>`) || message.content.includes(`<@!${client.user.id}>`);
 
     if (isExplicitlyTagged) {
@@ -146,13 +151,22 @@ client.on(Events.MessageCreate, async (message) => {
 
             let contextData = "";
             
-            // 🌐 AI Context Injection (Strictly fetching from rawGoldData)
+            // 🌐 Smart Context Injection with Math Instructions
             if (cleanText.toLowerCase().includes("gold guide") || cleanText.toLowerCase().includes("gold")) {
                 contextData = `
-                [SYSTEM RULE]: You are the !NF!N!TY Clan Guide. The player is asking about the Gold Guide. 
-                Below is the FULL official data. Answer their specific question or perfectly translate this entire text into the language they requested.
+                [SYSTEM RULE]: You are the !NF!N!TY Clan Tactical AI. 
+                Below is the FULL official Gold Data. 
+                CRITICAL INSTRUCTION: If the player mentions a specific amount of gold (e.g., "15 million", "10k", "50000"), you MUST use the 50-20-10-20 ratio from the Blueprint to calculate EXACTLY how much gold goes into each category. Show them the exact calculated numbers in your response.
                 [OFFICIAL FULL GOLD DATA]: 
                 ${rawGoldData}
+                `;
+            } else if (cleanText.toLowerCase().includes("gem guide") || cleanText.toLowerCase().includes("gem") || cleanText.toLowerCase().includes("gems")) {
+                contextData = `
+                [SYSTEM RULE]: You are the !NF!N!TY Clan Tactical AI. 
+                Below is the FULL official Gem Data. 
+                CRITICAL INSTRUCTION: If the player mentions a specific amount of gems (e.g., "10000", "5k", "2000"), you MUST use the 40-20-20-10-10 matrix from the Blueprint to calculate EXACTLY how many gems go into each category. Show them the exact calculated numbers in your response.
+                [OFFICIAL FULL GEM DATA]: 
+                ${rawGemData}
                 `;
             }
 
