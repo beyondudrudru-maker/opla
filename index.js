@@ -6,7 +6,9 @@ const express = require('express');
 const supabase = require('./database/supabase'); 
 const aiModel = require('./ai/gemini'); 
 const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter'); 
-const { getGuideMenu, getGoldGuide } = require('./data/gameData'); // 👈 NEW: Local Game Data Imported
+
+// 👈 Fetching all external data from gameData.js
+const { getGuideMenu, getGoldGuide, rawGoldData } = require('./data/gameData'); 
 
 // 2. SERVER SETUP
 const app = express();
@@ -24,9 +26,9 @@ const client = new Client({
     ]
 });
 
-// Cooldown trackers to prevent spamming
+// Cooldown trackers
 const supportCooldown = new Set();
-const goldCooldown = new Set(); // 👈 NEW: Cooldown for Gold triggers
+const goldCooldown = new Set(); 
 
 client.once(Events.ClientReady, (readyClient) => {
     console.log('----------------------------------------');
@@ -45,18 +47,6 @@ setInterval(async () => {
     } catch (err) { console.error('❌ Cleanup Error:', err); }
 }, 3600000); 
 
-// 🔄 5. BANTER ENGINE TRIGGER (Drama Module - PAUSED)
-/*setInterval(async () => {
-    if (isPrimeTime()) {
-        if (Math.random() < 0.25) {
-            const channel = client.channels.cache.get('1414885556017561621'); 
-            if (channel) {
-                await triggerScriptedBanter(channel);
-            }
-        }
-    }
-}, 600000); */
-
 // ==========================================
 // 6. MESSAGE EVENT LISTENER (Core Engines)
 // ==========================================
@@ -65,17 +55,17 @@ client.on(Events.MessageCreate, async (message) => {
 
     const msgContent = message.content.toLowerCase().trim();
 
-    // 🎯 6.1: LOCAL STATIC COMMANDS (Zero API Cost, Instant Reply)
+    // 🎯 6.1: LOCAL STATIC COMMANDS (Zero API Cost)
     if (msgContent === '!guide') {
         await message.reply({ embeds: [getGuideMenu()] });
-        return; // Stops further code execution to save resources
+        return; 
     } 
     else if (msgContent === '!guide gold') {
         await message.reply({ embeds: [getGoldGuide()] });
         return; 
     }
 
-    // 🧠 6.2: MEMORY LOGIC (Always listening)
+    // 🧠 6.2: MEMORY LOGIC 
     await supabase.from('chat_ram').insert([{
         player_id: message.author.id,
         player_name: message.author.username,
@@ -127,7 +117,7 @@ client.on(Events.MessageCreate, async (message) => {
 
         if (isGoldConvo) {
             goldCooldown.add(message.channel.id);
-            setTimeout(() => goldCooldown.delete(message.channel.id), 300000); // 5 mins cooldown
+            setTimeout(() => goldCooldown.delete(message.channel.id), 300000); 
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('btn_yes_gold').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
@@ -156,17 +146,13 @@ client.on(Events.MessageCreate, async (message) => {
 
             let contextData = "";
             
-            // 🌐 AI Context Injection: Give Gemini the rules if "gold guide" is mentioned
+            // 🌐 AI Context Injection (Strictly fetching from rawGoldData)
             if (cleanText.toLowerCase().includes("gold guide") || cleanText.toLowerCase().includes("gold")) {
                 contextData = `
                 [SYSTEM RULE]: You are the !NF!N!TY Clan Guide. The player is asking about the Gold Guide. 
-                Below is the official data. Answer their specific question or translate this data into the language they requested.
-                [OFFICIAL GOLD DATA]: 
-                - 50% Troop Recruitment (save for 120k pulls).
-                - 20% Hero Upgrades (Legendary -> Epic -> Mythical).
-                - 10% Fusions.
-                - 20% Emergency Reserve (DO NOT TOUCH).
-                - Farm 441 troop formations in Arena. Deploy Baron for 1.5% boost.
+                Below is the FULL official data. Answer their specific question or perfectly translate this entire text into the language they requested.
+                [OFFICIAL FULL GOLD DATA]: 
+                ${rawGoldData}
                 `;
             }
 
@@ -192,7 +178,6 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isButton()) return;
 
-    // --- BOSS STRATEGY BUTTONS ---
     if (interaction.customId === 'btn_yes_help') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({
@@ -202,13 +187,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.message.edit({ components: [] });
         await interaction.reply({ content: `Fine, tough guys! Don't come crying to me when you lose. 💅` });
     }
-    
-    // --- GOLD GUIDE BUTTONS ---
     else if (interaction.customId === 'btn_yes_gold') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({
             content: `💰 Here is the official blueprint! Read it carefully. 💅`,
-            embeds: [getGoldGuide()] // Sends the fast, local embed
+            embeds: [getGoldGuide()] 
         });
     } 
     else if (interaction.customId === 'btn_no_gold') {
