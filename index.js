@@ -24,10 +24,11 @@ const client = new Client({
     ]
 });
 
-// Cooldown trackers for popup engines
+// Cooldown trackers for popup engines & admin commands
 const supportCooldown = new Set();
 const goldCooldown = new Set(); 
 const gemCooldown = new Set(); 
+const adminCooldown = new Set(); // 👈 New cooldown for server moderation commands
 
 client.once(Events.ClientReady, (readyClient) => {
     console.log('----------------------------------------');
@@ -103,6 +104,94 @@ client.on(Events.MessageCreate, async (message) => {
 
     // 🤖 6.2: AI RESPONSE LOGIC (Runs ONLY if explicitly tagged)
     if (isExplicitlyTagged) {
+
+        // ==========================================
+        // 🛡️ 6.2.1: THE HYBRID INTERCEPTOR (0 API COST)
+        // Checks for admin keywords AND a targeted user mention
+        // ==========================================
+        const isModCommand = lowerText.includes('assign') || lowerText.includes('give') || lowerText.includes('remove') || lowerText.includes('take') || lowerText.includes('kick') || lowerText.includes('ban');
+        const targetMember = message.mentions.members.filter(m => m.id !== client.user.id).first();
+
+        // Only run interceptor if an action word is used AND a target is tagged
+        if (isModCommand && targetMember) {
+            
+            // 1. Security Authorization
+            const isSakha = message.author.id === '1369404203880939650';
+            const isAdmin = message.member.roles.cache.has('1372987132855058504'); // Admin Role
+            
+            if (!isSakha && !isAdmin) {
+                return message.reply("❌ **Access Denied:** You must be my King or a Clan Admin to command me to modify users.");
+            }
+
+            // 2. Cooldown Protection
+            if (adminCooldown.has(message.author.id)) {
+                return message.reply("⏳ Please wait a few seconds before issuing another server command.");
+            }
+            adminCooldown.add(message.author.id);
+            setTimeout(() => adminCooldown.delete(message.author.id), 5000); 
+
+            // 3. KICK LOGIC
+            if (lowerText.includes('kick')) {
+                try {
+                    await targetMember.kick("Requested by Admin/Creator via INF AI");
+                    return message.reply(`👢 Consider it done! I have kicked ${targetMember.user.username} from the server.`);
+                } catch (err) {
+                    return message.reply("❌ I don't have permission to kick this user. Check my role hierarchy!");
+                }
+            }
+
+            // 4. BAN LOGIC
+            if (lowerText.includes('ban')) {
+                try {
+                    await targetMember.ban({ reason: "Requested by Admin/Creator via INF AI" });
+                    return message.reply(`🔨 Handled. ${targetMember.user.username} has been permanently banned.`);
+                } catch (err) {
+                    return message.reply("❌ I don't have permission to ban this user.");
+                }
+            }
+
+            // 5. ROLE ASSIGNMENT LOGIC (Bundles & Direct Mentions)
+            const roleBundles = {
+                'boss': ['1413760143337721936'], // Single Boss Role
+                'clan': ['1439158157640339557', '1373179239049859082'], // Both Clan Roles
+                'main clan': ['1439158157640339557', '1373179239049859082'] // Alternate phrase for Clan Roles
+            };
+
+            let rolesToModify = [];
+            
+            // A. Grab any roles mentioned directly with an @ ping
+            if (message.mentions.roles.size > 0) {
+                message.mentions.roles.forEach(role => rolesToModify.push(role.id));
+            } 
+            
+            // B. Grab roles from keywords/bundles
+            for (const [bundleName, bundleIds] of Object.entries(roleBundles)) {
+                if (lowerText.includes(bundleName)) {
+                    rolesToModify = rolesToModify.concat(bundleIds);
+                }
+            }
+
+            // Execute Role Modification
+            if (rolesToModify.length > 0) {
+                try {
+                    if (lowerText.includes('remove') || lowerText.includes('take')) {
+                        await targetMember.roles.remove(rolesToModify);
+                        return message.reply(`✅ As you wish. I have stripped the requested role(s) from ${targetMember.user.username}.`);
+                    } else {
+                        await targetMember.roles.add(rolesToModify);
+                        return message.reply(`✅ Perfectly executed! I have granted the requested role(s) to ${targetMember.user.username}. 💅`);
+                    }
+                } catch (err) {
+                    return message.reply("❌ **Role Error:** I cannot assign this. Please ensure my 'INF AI' role is placed HIGHER in your server settings than the roles you want me to give out.");
+                }
+            } else {
+                return message.reply("⚠️ I couldn't figure out which role you want me to give. Try mentioning the role directly or using a bundle word like 'boss' or 'clan'.");
+            }
+        } // End of Hybrid Interceptor
+
+        // ==========================================
+        // 🧠 6.2.2: GEMINI API CORE
+        // ==========================================
         try {
             await message.channel.sendTyping();
             const cleanText = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
