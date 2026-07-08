@@ -38,13 +38,13 @@ Keep responses concise, engaging, and use emojis naturally to emphasize your exp
 
 // 🧠 BRAIN 1: Primary Model (Smartest)
 const primaryModel = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash", 
+    model: "gemini-3.5-flash", 
     systemInstruction: systemInstruction
 });
 
 // ⚡ BRAIN 2: Backup/Lite Model (Fastest Fallback)
 const fallbackModel = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash-8b", 
+    model: "gemini-3.1-flash-lite", 
     systemInstruction: systemInstruction
 });
 
