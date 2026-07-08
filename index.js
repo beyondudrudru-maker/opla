@@ -29,7 +29,7 @@ const client = new Client({
 // Cooldown trackers
 const supportCooldown = new Set();
 const goldCooldown = new Set(); 
-const gemCooldown = new Set(); // 👈 NEW: Cooldown for Gem triggers
+const gemCooldown = new Set(); 
 
 client.once(Events.ClientReady, (readyClient) => {
     console.log('----------------------------------------');
@@ -75,6 +75,19 @@ client.on(Events.MessageCreate, async (message) => {
                 return;
             }
 
+            // ==========================================
+            // 👤 SMART MENTION TRANSLATOR LOGIC
+            // ==========================================
+            let mentionsContext = "";
+            const mentionedUsers = message.mentions.users.filter(u => u.id !== client.user.id);
+            if (mentionedUsers.size > 0) {
+                mentionsContext = `\n[CRITICAL FORMATTING RULE]: The user tagged other people in their message. Here is their data:\n`;
+                mentionedUsers.forEach(u => {
+                    mentionsContext += `- Name: ${u.username} | Discord Ping Format: <@${u.id}>\n`;
+                });
+                mentionsContext += `If you mention them in your reply, you MUST use the exact 'Discord Ping Format' (keep the < > brackets). Do NOT just type their numerical ID.\n`;
+            }
+
             let contextData = "";
             
             // 🌐 Smart Context Injection with Math Instructions
@@ -98,6 +111,7 @@ client.on(Events.MessageCreate, async (message) => {
 
             const userPrompt = `
             ${contextData}
+            ${mentionsContext}
             [Sender ID: ${message.author.id} | Sender Name: ${message.author.username}]: ${cleanText}
             `;
 
@@ -109,7 +123,7 @@ client.on(Events.MessageCreate, async (message) => {
             try { await message.reply('My cognitive processors are cooling down. Google AI is very busy right now! 🌸'); } 
             catch (e) { await message.channel.send(`<@${message.author.id}>, my cognitive processors are cooling down! 🌸`); }
         }
-        return; // 👈 CRITICAL FIX: Agar AI ne reply de diya, toh aage ke Popups check nahi honge!
+        return; // Stops checking popup engines if AI already replied
     }
 
     // =================================================================
@@ -145,53 +159,65 @@ client.on(Events.MessageCreate, async (message) => {
         }
     }
 
-    // 💰 6.4: PROACTIVE GOLD GUIDE ENGINE
-if (!goldCooldown.has(message.channel.id)) {
-    const { data: history } = await supabase
-        .from('chat_ram')
-        .select('message_content')
-        .eq('channel_id', message.channel.id)
-        .order('created_at', { ascending: false })
-        .limit(2);
+    // 💰 6.4: PROACTIVE GOLD GUIDE ENGINE (Smart Frequency Trigger)
+    if (!goldCooldown.has(message.channel.id)) {
+        const { data: history } = await supabase
+            .from('chat_ram')
+            .select('message_content')
+            .eq('channel_id', message.channel.id)
+            .order('created_at', { ascending: false })
+            .limit(5);
 
-    // Broader, more robust triggers for Gold
-    const goldTriggers = ['gold', 'need gold', 'farm gold', 'how to farm', 'broke', 'no gold', 'out of gold'];
-    
-    // Check if the latest message or the one before it contains a trigger
-    const isGoldConvo = history.length > 0 && 
-        history.some(m => goldTriggers.some(t => m.message_content.toLowerCase().includes(t)));
+        const goldTriggers = ['gold', 'need gold', 'farm gold', 'how to farm', 'broke', 'no gold', 'out of gold'];
+        
+        let goldMentionCount = 0;
+        if (history) {
+            history.forEach(m => {
+                const content = m.message_content.toLowerCase();
+                if (goldTriggers.some(t => content.includes(t))) {
+                    goldMentionCount++;
+                }
+            });
+        }
 
-    if (isGoldConvo) {
-        goldCooldown.add(message.channel.id);
-        // Set cooldown for 5 minutes (300000 ms)
-        setTimeout(() => goldCooldown.delete(message.channel.id), 300000); 
+        if (goldMentionCount >= 2) {
+            goldCooldown.add(message.channel.id);
+            setTimeout(() => goldCooldown.delete(message.channel.id), 300000); 
 
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('btn_yes_gold').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('btn_no_gold').setLabel('No, I am rich.').setStyle(ButtonStyle.Secondary)
-        );
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('btn_yes_gold').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('btn_no_gold').setLabel('No, I am rich.').setStyle(ButtonStyle.Secondary)
+            );
 
-        await message.channel.send({
-            content: `💅 I noticed you guys are talking about farming gold. Do you want me to pull up the Ultimate Gold Blueprint?`,
-            components: [row]
-        });
+            await message.channel.send({
+                content: `💅 I noticed you guys are discussing gold farming. Do you want me to pull up the Ultimate Gold Blueprint?`,
+                components: [row]
+            });
+        }
     }
-}
 
-    // 💎 6.5: PROACTIVE GEM GUIDE ENGINE (NEW)
+    // 💎 6.5: PROACTIVE GEM GUIDE ENGINE (Smart Frequency Trigger)
     if (!gemCooldown.has(message.channel.id)) {
         const { data: history } = await supabase
             .from('chat_ram')
             .select('message_content')
             .eq('channel_id', message.channel.id)
             .order('created_at', { ascending: false })
-            .limit(2);
+            .limit(5);
 
-        const gemTriggers = ['need gems', 'low on gems', 'out of gems', 'how to farm gems', 'gem farming'];
-        const isGemConvo = history.length > 0 && 
-            history.some(m => gemTriggers.some(t => m.message_content.toLowerCase().includes(t)));
+        const gemTriggers = ['gem', 'need gems', 'low on gems', 'out of gems', 'how to farm gems', 'gem farming'];
+        
+        let gemMentionCount = 0;
+        if (history) {
+            history.forEach(m => {
+                const content = m.message_content.toLowerCase();
+                if (gemTriggers.some(t => content.includes(t))) {
+                    gemMentionCount++;
+                }
+            });
+        }
 
-        if (isGemConvo) {
+        if (gemMentionCount >= 2) {
             gemCooldown.add(message.channel.id);
             setTimeout(() => gemCooldown.delete(message.channel.id), 300000); 
 
@@ -201,7 +227,7 @@ if (!goldCooldown.has(message.channel.id)) {
             );
 
             await message.channel.send({
-                content: `💎 I noticed you guys are talking about gems. Do you want me to pull up the Gem Matrix?`,
+                content: `💎 I noticed you guys are discussing gems. Do you want me to pull up the Gem Matrix?`,
                 components: [row]
             });
         }
@@ -237,7 +263,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.reply({ content: `Alright, keep hoarding that wealth! 💅` });
     }
 
-    // --- GEM BUTTONS (NEW) ---
+    // --- GEM BUTTONS ---
     else if (interaction.customId === 'btn_yes_gem') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({
