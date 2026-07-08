@@ -6,8 +6,6 @@ const express = require('express');
 const supabase = require('./database/supabase'); 
 const aiModel = require('./ai/gemini'); 
 const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter'); 
-
-// 👈 Importing Both Guides for Buttons + Raw Data for AI
 const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData'); 
 
 // 2. SERVER SETUP
@@ -26,7 +24,7 @@ const client = new Client({
     ]
 });
 
-// Cooldown trackers
+// Cooldown trackers for popup engines
 const supportCooldown = new Set();
 const goldCooldown = new Set(); 
 const gemCooldown = new Set(); 
@@ -39,7 +37,7 @@ client.once(Events.ClientReady, (readyClient) => {
     client.user.setActivity('over the !NF!N!TY family 💅', { type: 3 });
 });
 
-// 4. MEMORY CLEANUP
+// 4. MEMORY CLEANUP (Runs every hour)
 setInterval(async () => {
     const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
     try {
@@ -62,7 +60,46 @@ client.on(Events.MessageCreate, async (message) => {
         message_content: message.content
     }]);
 
+    const lowerText = message.content.toLowerCase();
     const isExplicitlyTagged = message.content.includes(`<@${client.user.id}>`) || message.content.includes(`<@!${client.user.id}>`);
+
+    // 👑 6.1.5: DEVELOPER OVERRIDE (Runs FIRST to prevent AI collision)
+    if (lowerText.includes('fetch chats from supabase') || lowerText.includes('present all chats')) {
+        
+        // SECURITY: Only Beyonder can run this code
+        if (message.author.id !== '1369404203880939650') {
+            return message.reply("❌ **Access Denied:** You do not have clearance to view server logs.");
+        }
+
+        await message.channel.send("🔄 Accessing the secure Supabase Memory RAM for you right now, my King... please wait. 🌸");
+
+        try {
+            const { data, error } = await supabase
+                .from('chat_ram') 
+                .select('*')
+                .order('created_at', { ascending: false }) 
+                .limit(5); 
+
+            if (error) throw error;
+
+            if (!data || data.length === 0) {
+                return message.channel.send("I checked my memory banks, but the RAM is currently empty!");
+            }
+
+            let logMessage = "**📜 Here are my most recent memory records:**\n\n";
+            
+            data.forEach(row => {
+                logMessage += `> **${row.player_name || 'Unknown'}:** ${row.message_content || '[No Content]'}\n`;
+            });
+
+            // Sends the logs and STOPS the rest of the file from running
+            return message.channel.send(logMessage);
+
+        } catch (err) {
+            console.error('[SUPABASE ERROR]', err);
+            return message.channel.send("⚠️ I encountered a critical error while trying to connect to my memory banks.");
+        }
+    }
 
     // 🤖 6.2: AI RESPONSE LOGIC (Runs ONLY if explicitly tagged)
     if (isExplicitlyTagged) {
@@ -95,7 +132,7 @@ client.on(Events.MessageCreate, async (message) => {
                 contextData = `
                 [SYSTEM RULE]: You are the !NF!N!TY Clan Tactical AI. 
                 Below is the FULL official Gold Data. 
-                CRITICAL INSTRUCTION: If the player mentions a specific amount of gold (e.g., "15 million", "10k", "50000"), you MUST use the 50-20-10-20 ratio from the Blueprint to calculate EXACTLY how much gold goes into each category. Show them the exact calculated numbers in your response.
+                CRITICAL INSTRUCTION: If the player mentions a specific amount of gold, you MUST use the 50-20-10-20 ratio from the Blueprint to calculate EXACTLY how much gold goes into each category. Show them the exact calculated numbers in your response.
                 [OFFICIAL FULL GOLD DATA]: 
                 ${rawGoldData}
                 `;
@@ -103,7 +140,7 @@ client.on(Events.MessageCreate, async (message) => {
                 contextData = `
                 [SYSTEM RULE]: You are the !NF!N!TY Clan Tactical AI. 
                 Below is the FULL official Gem Data. 
-                CRITICAL INSTRUCTION: If the player mentions a specific amount of gems (e.g., "10000", "5k", "2000"), you MUST use the 40-20-20-10-10 matrix from the Blueprint to calculate EXACTLY how many gems go into each category. Show them the exact calculated numbers in your response.
+                CRITICAL INSTRUCTION: If the player mentions a specific amount of gems, you MUST use the 40-20-20-10-10 matrix from the Blueprint to calculate EXACTLY how many gems go into each category. Show them the exact calculated numbers in your response.
                 [OFFICIAL FULL GEM DATA]: 
                 ${rawGemData}
                 `;
@@ -140,7 +177,7 @@ client.on(Events.MessageCreate, async (message) => {
             .limit(2);
 
         const triggers = ['boss', 'tough', 'hard', 'score', 'stuck', 'impossible'];
-        const isDifficultyConvo = history.length >= 2 && 
+        const isDifficultyConvo = history && history.length >= 2 && 
             history.every(m => triggers.some(t => m.message_content.toLowerCase().includes(t)));
 
         if (isDifficultyConvo) {
