@@ -93,4 +93,4 @@ module.exports = {
             await message.reply('My system is running a bit slow right now, give me a moment! 💤');
         }
     }
-};
+};*/
