@@ -1,4 +1,4 @@
-/*const { Events } = require('discord.js');
+const { Events } = require('discord.js');
 
 // 📥 IMPORT YOUR MODULES
 const { getGoldGuide, getGemGuide } = require('../data/gameData.js');
@@ -93,4 +93,4 @@ module.exports = {
             await message.reply('My system is running a bit slow right now, give me a moment! 💤');
         }
     }
-};*/
+};
