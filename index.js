@@ -28,7 +28,7 @@ const client = new Client({
 const supportCooldown = new Set();
 const goldCooldown = new Set(); 
 const gemCooldown = new Set(); 
-const adminCooldown = new Set(); // 👈 New cooldown for server moderation commands
+const adminCooldown = new Set(); // 👈 Cooldown for server moderation commands
 
 client.once(Events.ClientReady, (readyClient) => {
     console.log('----------------------------------------');
@@ -190,7 +190,7 @@ client.on(Events.MessageCreate, async (message) => {
         } // End of Hybrid Interceptor
 
         // ==========================================
-        // 🧠 6.2.2: GEMINI API CORE
+        // 🧠 6.2.2: GEMINI API CORE (WITH DEEP MEMORY)
         // ==========================================
         try {
             await message.channel.sendTyping();
@@ -199,6 +199,25 @@ client.on(Events.MessageCreate, async (message) => {
             if (cleanText.length === 0) {
                 await message.reply("Yes, my Beyonder? 🌸");
                 return;
+            }
+
+            // 🧠 STEP 1: FETCH CONVERSATION HISTORY FROM SUPABASE
+            const { data: chatHistory } = await supabase
+                .from('chat_ram')
+                .select('*')
+                .eq('channel_id', message.channel.id)
+                .order('created_at', { ascending: false })
+                .limit(6); // Fetches the last 6 messages for context
+
+            let historyContext = "";
+            if (chatHistory && chatHistory.length > 0) {
+                historyContext = "\n[RECENT CONVERSATION HISTORY (Read this for context)]:\n";
+                // Reverse to read chronologically (oldest to newest)
+                const chronological = chatHistory.reverse();
+                chronological.forEach(msg => {
+                    historyContext += `- ${msg.player_name}: ${msg.message_content}\n`;
+                });
+                historyContext += "[END OF HISTORY]\n";
             }
 
             // ==========================================
@@ -235,14 +254,29 @@ client.on(Events.MessageCreate, async (message) => {
                 `;
             }
 
+            // 🏗️ CONSTRUCT THE FINAL PROMPT WITH MEMORY
             const userPrompt = `
             ${contextData}
+            ${historyContext}
             ${mentionsContext}
+            [Current Message]
             [Sender ID: ${message.author.id} | Sender Name: ${message.author.username}]: ${cleanText}
             `;
 
+            // 🚀 GENERATE AI RESPONSE
             const result = await aiModel.generateContent(userPrompt);
-            await message.reply(result.response.text());
+            const aiReply = result.response.text();
+            
+            await message.reply(aiReply);
+
+            // 🧠 STEP 2: SAVE THE AI'S REPLY TO MEMORY
+            // This ensures she remembers her own output for the next interaction!
+            await supabase.from('chat_ram').insert([{
+                player_id: client.user.id,
+                player_name: "INF AI",
+                channel_id: message.channel.id,
+                message_content: aiReply
+            }]);
 
         } catch (error) {
             console.error('❌ AI Error:', error.message);
