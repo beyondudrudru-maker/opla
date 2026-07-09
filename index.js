@@ -442,23 +442,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 // // ==========================================
 // 8. HALL OF FAME ENGINE
-// ==========================================
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
-    // 🕵️‍♂️ DEBUG LOG: Helps you confirm the bot is "seeing" the reaction
-    console.log(`✅ Reaction detected! Emoji: ${reaction.emoji.name} by ${user.tag}`);
-
+    // 🕵️‍♂️ DEBUG LOG: This will print the EXACT emoji name Discord sends to the bot
+    console.log(`✅ Reaction detected! Emoji Name: ${reaction.emoji.name} by ${user.tag}`);
+    
     try {
-        // Fetch partial data to ensure we have the full message content
         if (reaction.partial) await reaction.fetch();
         if (reaction.message.partial) await reaction.message.fetch();
 
         const message = reaction.message;
 
-        // Check conditions:
-        // 1. Emoji must be ✅
-        // 2. User must not be a bot
-        // 3. Message ID must not be in our 'processedMessages' set (Double-post prevention)
-        if (reaction.emoji.name === '✅' && !user.bot && !processedMessages.has(message.id)) {
+        // UPDATED: Checking for both unicode ✅ and the text identifier 'white_check_mark'
+        const isCorrectEmoji = reaction.emoji.name === '✅' || reaction.emoji.name === 'white_check_mark';
+
+        if (isCorrectEmoji && !user.bot && !processedMessages.has(message.id)) {
             
             const hallOfFameChannelId = '1524834362544357457'; 
             const targetChannel = await client.channels.fetch(hallOfFameChannelId);
@@ -468,13 +465,11 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
                 return; 
             }
 
-            // Mark as processed immediately
             processedMessages.add(message.id);
-            
             const attachment = message.attachments.first()?.url;
 
             const embed = {
-                color: 0xFFD700, // Gold Color
+                color: 0xFFD700,
                 author: { 
                     name: message.author.username,
                     iconURL: message.author.displayAvatarURL()
@@ -491,6 +486,5 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
         console.error("❌ Hall of Fame Error:", err);
     }
 });
-
 // Final login
 client.login(process.env.DISCORD_TOKEN);
