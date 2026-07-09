@@ -440,29 +440,41 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 });
 
-// ==========================================
+// // ==========================================
 // 8. HALL OF FAME ENGINE
 // ==========================================
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
+    // 🕵️‍♂️ DEBUG LOG: Helps you confirm the bot is "seeing" the reaction
+    console.log(`✅ Reaction detected! Emoji: ${reaction.emoji.name} by ${user.tag}`);
+
     try {
+        // Fetch partial data to ensure we have the full message content
         if (reaction.partial) await reaction.fetch();
         if (reaction.message.partial) await reaction.message.fetch();
 
         const message = reaction.message;
 
-        // Check conditions: Must be ✅, not a bot, and not already archived
+        // Check conditions:
+        // 1. Emoji must be ✅
+        // 2. User must not be a bot
+        // 3. Message ID must not be in our 'processedMessages' set (Double-post prevention)
         if (reaction.emoji.name === '✅' && !user.bot && !processedMessages.has(message.id)) {
             
             const hallOfFameChannelId = '1524834362544357457'; 
             const targetChannel = await client.channels.fetch(hallOfFameChannelId);
 
-            if (!targetChannel) return; 
+            if (!targetChannel) {
+                console.error("❌ Hall of Fame: Channel not found.");
+                return; 
+            }
 
+            // Mark as processed immediately
             processedMessages.add(message.id);
+            
             const attachment = message.attachments.first()?.url;
 
             const embed = {
-                color: 0xFFD700,
+                color: 0xFFD700, // Gold Color
                 author: { 
                     name: message.author.username,
                     iconURL: message.author.displayAvatarURL()
@@ -480,4 +492,5 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     }
 });
 
+// Final login
 client.login(process.env.DISCORD_TOKEN);
