@@ -42,12 +42,14 @@ client.once(Events.ClientReady, (readyClient) => {
 
 // 4. MEMORY CLEANUP (Runs every hour)
 setInterval(async () => {
-    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    // Yahan 3 ki jagah 5 kar diya hai 👇
+    const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
     try {
-        const { error } = await supabase.from('chat_ram').delete().lt('created_at', threeHoursAgo);
-        if (!error) console.log('🧹 Memory Wiped.');
+        // 'threeHoursAgo' variable ka naam badal kar 'fiveHoursAgo' kar diya
+        const { error } = await supabase.from('chat_ram').delete().lt('created_at', fiveHoursAgo);
+        if (!error) console.log('🧹 5-Hour Memory Wiped.');
     } catch (err) { console.error('❌ Cleanup Error:', err); }
-}, 3600000); 
+}, 3600000); // Yeh loop abhi bhi har 1 ghante mein chalega check karne ke liye 
 
 // ==========================================
 // 6. MESSAGE EVENT LISTENER (Core Engines)
