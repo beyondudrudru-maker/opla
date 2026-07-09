@@ -207,7 +207,7 @@ client.on(Events.MessageCreate, async (message) => {
                 .select('*')
                 .eq('channel_id', message.channel.id)
                 .order('created_at', { ascending: false })
-                .limit(6); // Fetches the last 6 messages for context
+                .limit(20); // Fetches the last 20 messages for context
 
             let historyContext = "";
             if (chatHistory && chatHistory.length > 0) {
