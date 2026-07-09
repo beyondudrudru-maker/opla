@@ -7,6 +7,7 @@ const supabase = require('./database/supabase');
 const aiModel = require('./ai/gemini'); 
 const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter'); 
 const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData'); 
+const processedMessages = new Set();
 
 // 2. SERVER SETUP
 const app = express();
@@ -394,6 +395,7 @@ client.on(Events.MessageCreate, async (message) => {
     }
 });
 
+// 
 // ==========================================
 // 7. INTERACTION LISTENER (Buttons)
 // ==========================================
@@ -434,6 +436,46 @@ client.on(Events.InteractionCreate, async (interaction) => {
     else if (interaction.customId === 'btn_no_gem') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({ content: `Alright, keep hoarding those shiny rocks! 💅` });
+    }
+});
+
+// ==========================================
+// 8. HALL OF FAME ENGINE
+// ==========================================
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+    try {
+        if (reaction.partial) await reaction.fetch();
+        if (reaction.message.partial) await reaction.message.fetch();
+
+        const message = reaction.message;
+
+        // Check conditions: Must be ✅, not a bot, and not already archived
+        if (reaction.emoji.name === '✅' && !user.bot && !processedMessages.has(message.id)) {
+            
+            const hallOfFameChannelId = '1524834362544357457'; 
+            const targetChannel = await client.channels.fetch(hallOfFameChannelId);
+
+            if (!targetChannel) return; 
+
+            processedMessages.add(message.id);
+            const attachment = message.attachments.first()?.url;
+
+            const embed = {
+                color: 0xFFD700,
+                author: { 
+                    name: message.author.username,
+                    iconURL: message.author.displayAvatarURL()
+                },
+                description: message.content || "✨ Highlighted Moment",
+                image: attachment ? { url: attachment } : null,
+                footer: { text: `Archived by ${user.username} | ✨ !NF!N!TY Hall of Fame` },
+                timestamp: new Date(),
+            };
+
+            await targetChannel.send({ embeds: [embed] });
+        }
+    } catch (err) {
+        console.error("❌ Hall of Fame Error:", err);
     }
 });
 
