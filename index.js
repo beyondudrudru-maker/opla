@@ -240,6 +240,7 @@ client.on(Events.MessageCreate, async (message) => {
         }
 
         // ==========================================
+          // ==========================================
         // 🧠 6.2.2: MELODY CORE (Conversational AI)
         // ==========================================
         try {
@@ -265,19 +266,36 @@ client.on(Events.MessageCreate, async (message) => {
 
             console.log(`🧠 [MELODY] intent=${debug.intent} tier=${debug.tier} model=${modelUsed}`);
 
-            // 👇 THE FIX: Message Chunking Logic Added Here!
-            if (aiReply.length > 1950) {
-                const chunks = aiReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
+            // 👑 EVERYONE MENTION LOGIC
+            let finalReply = aiReply;
+            const isCreator = message.author.id === '1369404203880939650';
+            const isAdmin = message.member?.roles.cache.has('1372987132855058504');
+            const allowedToPingEveryone = message.mentions.everyone && (isCreator || isAdmin);
+
+            // Forcefully inject @everyone if AI forgot it
+            if (allowedToPingEveryone && !finalReply.includes('@everyone')) {
+                finalReply = `@everyone\n\n${finalReply}`;
+            }
+
+            // Define mention options
+            const mentionOptions = { 
+                repliedUser: false, 
+                parse: allowedToPingEveryone ? ['everyone'] : [] 
+            };
+
+            // 👇 CHUNKING LOGIC (Rehta hai waisa hi)
+            if (finalReply.length > 1950) {
+                const chunks = finalReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
                 for (let i = 0; i < chunks.length; i++) {
                     if (i === 0) {
-                        await message.reply({ content: chunks[i], allowedMentions: { repliedUser: false } });
+                        await message.reply({ content: chunks[i], allowedMentions: mentionOptions });
                     } else {
                         await new Promise(resolve => setTimeout(resolve, 600)); // Delay
-                        await message.channel.send(chunks[i]);
+                        await message.channel.send({ content: chunks[i], allowedMentions: { parse: mentionOptions.parse } });
                     }
                 }
             } else {
-                await message.reply({ content: aiReply, allowedMentions: { repliedUser: false } });
+                await message.reply({ content: finalReply, allowedMentions: mentionOptions });
             }
             // 👆 END OF FIX
 
@@ -286,18 +304,15 @@ client.on(Events.MessageCreate, async (message) => {
                 player_id: client.user.id,
                 player_name: "INF AI",
                 channel_id: message.channel.id,
-                message_content: aiReply
+                message_content: finalReply
             }]);
 
         } catch (error) {
             console.error('❌ AI Error:', error.message);
-            try { await message.reply('My cognitive processors are cooling down. Google AI is very busy right now! 🌸'); }
+            try { await message.reply('My cognitive processors are cooling down i am very busy right now! 🌸'); }
             catch (e) { await message.channel.send(`<@${message.author.id}>, my cognitive processors are cooling down! 🌸`); }
         }
-        return; 
-    }
-
-    // =================================================================
+ =================================================================
     // 🔔 PROACTIVE POPUP ENGINES (Runs ONLY if bot is NOT tagged)
     // =================================================================
 
