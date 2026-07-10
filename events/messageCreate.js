@@ -1,44 +1,38 @@
 const { Events } = require('discord.js');
 
-// 📥 IMPORT YOUR MODULES
 const { getGoldGuide, getGemGuide } = require('../data/gameData.js');
-const aiBrain = require('../ai/gemini.js'); 
-const supabase = require('../database/supabase.js'); 
+const supabase = require('../database/supabase.js');
+const decisionPipeline = require('../decision/decisionPipeline.js');
+const modelRouter = require('../router/modelRouter.js'); // wherever gemini.js is actually called from
 
 module.exports = {
     name: Events.MessageCreate,
     once: false,
     async execute(message, client) {
-        
-        // 🛑 GUARD 1: Ignore all bot messages to prevent infinite loops
+
         if (message.author.bot) return;
 
-        // 📝 Normalize the text to lowercase so keywords match easily
         const msgText = message.content.toLowerCase();
 
-        // ─── 🟢 PASSIVE LISTENER: KEYWORD INTERVENTION (0 API Cost) ───
-        
+        // ─── PASSIVE LISTENER: KEYWORD INTERVENTION (unchanged) ───
         if (msgText.includes('need gold') || msgText.includes('less gold') || msgText.includes('struggling for gold') || msgText.includes('how to get gold')) {
             const goldEmbed = getGoldGuide();
-            return message.channel.send({ 
-                content: `✨ Hey ${message.author}, I overheard you talking about gold! Here is the Clan Blueprint:`, 
-                embeds: [goldEmbed] 
+            return message.channel.send({
+                content: `✨ Hey ${message.author}, I overheard you talking about gold! Here is the Clan Blueprint:`,
+                embeds: [goldEmbed]
             });
         }
 
         if (msgText.includes('need gems') || msgText.includes('how to get gems') || msgText.includes('less gems') || msgText.includes('struggling for gems')) {
             const gemEmbed = getGemGuide();
-            return message.channel.send({ 
-                content: `💎 Hey ${message.author}, need some premium currency? Check this out:`, 
-                embeds: [gemEmbed] 
+            return message.channel.send({
+                content: `💎 Hey ${message.author}, need some premium currency? Check this out:`,
+                embeds: [gemEmbed]
             });
         }
 
-        // ─── 🟡 DEVELOPER OVERRIDE: REAL SUPABASE FETCH ───
-        
+        // ─── DEVELOPER OVERRIDE: SUPABASE FETCH (unchanged) ───
         if (msgText.includes('fetch chats from supabase') || msgText.includes('present all chats')) {
-            
-            // SECURITY: Only Beyonder (You) can run this code
             if (message.author.id !== '1369404203880939650') {
                 return message.reply("❌ **Access Denied:** You do not have clearance to view server logs.");
             }
@@ -46,12 +40,11 @@ module.exports = {
             await message.channel.send("🔄 Accessing the secure Supabase archives for you right now, my King... please wait.");
 
             try {
-                // ⚠️ IMPORTANT: Change 'chat_logs' to your actual Supabase table name
                 const { data, error } = await supabase
-                    .from('chat_logs') 
+                    .from('chat_logs')
                     .select('*')
-                    .order('created_at', { ascending: false }) // Gets the newest messages
-                    .limit(5); // Grabs the last 5 logs
+                    .order('created_at', { ascending: false })
+                    .limit(5);
 
                 if (error) throw error;
 
@@ -60,34 +53,60 @@ module.exports = {
                 }
 
                 let logMessage = "**📜 Here are the most recent records:**\n\n";
-                
-                // ⚠️ IMPORTANT: Change 'username' and 'message' to your actual column names
                 data.forEach(row => {
                     logMessage += `> **[${row.id}] ${row.username || 'User'}:** ${row.message || '[No Content]'}\n`;
                 });
 
                 return message.channel.send(logMessage);
-
             } catch (err) {
                 console.error('[SUPABASE ERROR]', err);
                 return message.channel.send("⚠️ I encountered a critical error while trying to connect to the database.");
             }
         }
 
-        // ─── 🔴 ACTIVE LISTENER: AI BRAIN (REQUIRES @MENTION) ───
-        
-        // 🛑 GUARD 2: Check if the bot was actually tagged before waking up the AI
+        // ─── ACTIVE LISTENER: FULL DECISION PIPELINE ───
         if (!message.mentions.has(client.user)) return;
 
-        // Clean the mention out of the text so the AI only reads the user's actual question
         const userMessage = message.content.replace(`<@${client.user.id}>`, '').trim();
+
+        const mentions = {
+            everyone: message.mentions.everyone,
+            users: [...message.mentions.users.values()]
+                .map((u) => ({
+                    id: u.id,
+                    name: message.guild?.members.cache.get(u.id)?.displayName || u.username,
+                })),
+        };
 
         await message.channel.sendTyping();
 
         try {
-            // Send the cleaned message to your Gemini Dual-Core engine
-            const response = await aiBrain.generateContent(userMessage);
-            await message.reply(response.response.text());
+            const turn = await decisionPipeline.planTurn({
+                userId: message.author.id,
+                displayName: message.member?.displayName || message.author.username,
+                roles: message.member?.roles.cache.map((r) => r.name) || [],
+                channelId: message.channel.id,
+                content: userMessage,
+                isGroupContext: message.channel.type !== 'DM',
+                mentions,
+            });
+
+            // Adjust this call to match whatever modelRouter/gemini.js actually expects —
+            // it needs turn.prompt as the user-turn content alongside the identity systemInstruction.
+            const responseText = await modelRouter.generate({
+                userId: message.author.id,
+                prompt: turn.prompt,
+            });
+
+            await message.reply(responseText);
+
+            await decisionPipeline.finalizeTurn({
+                channelId: message.channel.id,
+                userId: message.author.id,
+                content: userMessage,
+                responseText,
+            });
+
         } catch (error) {
             console.error('[AI BRAIN ERROR]', error);
             await message.reply('My system is running a bit slow right now, give me a moment! 💤');
