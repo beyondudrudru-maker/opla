@@ -11,11 +11,18 @@
  *   { mentions: { everyone: boolean, users: [{ id, name }] }, botUserId }
  *
  * OUTPUTS
- *   { addressingEveryone, targets: [{ id, name }], hasThirdPartyTarget }
+ *   { addressingEveryone, targets: [{ id, name, mentionTag }], hasThirdPartyTarget }
+ *
+ * CHANGELOG
+ *   v2: targets now carry a pre-formatted `mentionTag` (<@id>) so the
+ *   prompt can instruct the model to drop in a real, working Discord
+ *   ping verbatim instead of inferring formatting from a display name.
  */
 
 function resolve({ mentions = { everyone: false, users: [] }, botUserId }) {
-  const others = (mentions.users || []).filter((u) => u.id !== botUserId);
+  const others = (mentions.users || [])
+    .filter((u) => u.id !== botUserId)
+    .map((u) => ({ id: u.id, name: u.name, mentionTag: `<@${u.id}>` }));
 
   return {
     addressingEveryone: !!mentions.everyone,
