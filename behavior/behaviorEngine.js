@@ -2,13 +2,26 @@
  * behavior/behaviorEngine.js
  *
  * Same firewall role as before — emotion/identity never write text
- * directly, they only set dials here. Added: a userId gate that locks
- * tone/mode before the emotional-state logic runs, so the creator/other
- * split is a hard behavioral guarantee, not just a persona-text suggestion.
+ * directly, they only set dials here. userId gate locks relationship
+ * register (creator/other) before emotional-state logic runs, so that
+ * split is a hard behavioral guarantee, not just a persona-text
+ * suggestion. Intent now gates tone/mode BEFORE relationship warmth is
+ * layered on — an informational intent always gets a direct/precise tone
+ * component, regardless of who's asking or how warm the relationship is.
+ *
+ * CHANGELOG
+ *   v2: tone/mode previously branched only on isModeration + isCreatorPath,
+ *   completely ignoring `intent`. That meant QUESTION and HEAVY_TASK got
+ *   the same poetic/warm tone directive as BANTER, which could out-compete
+ *   the identity core's answer-first rule in the assembled prompt. Fixed
+ *   by making intent the primary tone gate; relationship warmth now only
+ *   adds a closing-note flavor, never replaces directness.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
 const { CREATOR_ID } = require('../persona/identityCore');
+
+const INFORMATIONAL_INTENTS = new Set([INTENTS.QUESTION, INTENTS.HEAVY_TASK, INTENTS.COMMAND]);
 
 function decideLength(intent, userMessageLength) {
   if (intent === INTENTS.HEAVY_TASK || intent === INTENTS.COMMAND) return 'long';
@@ -17,7 +30,8 @@ function decideLength(intent, userMessageLength) {
   return 'long';
 }
 
-function decideEmojiBudget(emotionalState, isCreatorPath) {
+function decideEmojiBudget(emotionalState, isCreatorPath, isInformational) {
+  if (isInformational) return isCreatorPath && emotionalState.warmth > 70 ? 1 : 0;
   if (isCreatorPath) return emotionalState.warmth > 60 ? 2 : 1;
   if (emotionalState.professionalism > 85) return 0;
   if (emotionalState.warmth > 50) return 1;
@@ -26,25 +40,36 @@ function decideEmojiBudget(emotionalState, isCreatorPath) {
 
 function decideMode(intent, isModeration) {
   if (isModeration) return 'moderation';
-  if (intent === INTENTS.HEAVY_TASK || intent === INTENTS.COMMAND) return 'professional';
+  if (INFORMATIONAL_INTENTS.has(intent)) return 'professional';
   return 'conversational';
+}
+
+function decideTone(intent, isModeration, isCreatorPath) {
+  if (isModeration) return ['calm, firm, protective'];
+
+  // Informational intents get a direct/precise tone as the PRIMARY
+  // descriptor, regardless of relationship. Relationship warmth is added
+  // as a secondary flavor note only — it can color the closing line, it
+  // can't replace directness.
+  if (INFORMATIONAL_INTENTS.has(intent)) {
+    return isCreatorPath
+      ? ['direct', 'precise', 'answer first, warm closing note only']
+      : ['direct', 'precise', 'clear'];
+  }
+
+  return isCreatorPath
+    ? ['loving', 'a little shy', 'nurturing']
+    : ['kind', 'warm', 'professional'];
 }
 
 function decide({ userId, emotionalState, intent, relationship, userMessageLength, isModeration }) {
   const isCreatorPath = userId === CREATOR_ID;
-
-  // Moderation always overrides the relationship gate — safety stays rule 1
-  // for everyone, including the creator.
-  const tone = isModeration
-    ? ['calm, firm, protective']
-    : isCreatorPath
-      ? ['loving', 'a little shy', 'nurturing']
-      : ['kind', 'warm', 'professional'];
+  const isInformational = INFORMATIONAL_INTENTS.has(intent);
 
   return {
     targetLength: decideLength(intent, userMessageLength),
-    tone,
-    emojiBudget: decideEmojiBudget(emotionalState, isCreatorPath && !isModeration),
+    tone: decideTone(intent, isModeration, isCreatorPath),
+    emojiBudget: decideEmojiBudget(emotionalState, isCreatorPath && !isModeration, isInformational),
     mode: decideMode(intent, isModeration),
     preferReact: !isCreatorPath && (intent === INTENTS.BANTER || intent === INTENTS.SOCIAL),
     askFollowUp: intent === INTENTS.EMOTIONAL_DISCLOSURE || emotionalState.curiosity > 55,
