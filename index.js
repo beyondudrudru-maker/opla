@@ -312,8 +312,9 @@ client.on(Events.MessageCreate, async (message) => {
         }
  // =================================================================
 // 🔔 PROACTIVE POPUP ENGINES ...
-//
+// 
 // =================================================================
+
 
     // ⚔️ 6.3: CONTEXTUAL SUPPORT ENGINE (Boss Struggles)
     if (!supportCooldown.has(message.channel.id)) {
