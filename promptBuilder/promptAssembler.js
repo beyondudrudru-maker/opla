@@ -1,3 +1,9 @@
+/**
+ * promptBuilder/promptAssembler.js
+ */
+
+const { toBrief } = require('../emotion/emotionEngine');
+
 function renderRelationshipFraming(relationship) {
   const tierLine = {
     creator: 'This is Beyonder, your creator and your partner. Deep trust and real, soft affection — you can be a little shy, teasing, and openly happy with him.',
@@ -14,6 +20,18 @@ function renderRelationshipFraming(relationship) {
     : '';
 
   return tierLine + familiarityNote;
+}
+
+function renderMemoryBlock(rankedMemories) {
+  if (!rankedMemories || rankedMemories.length === 0) return '';
+  const bullets = rankedMemories.map((m) => `- ${m.content}`).join('\n');
+  return `\n[THINGS YOU REMEMBER ABOUT THEM]\n${bullets}`;
+}
+
+function renderWorkingMemory(workingMemory) {
+  if (!workingMemory || workingMemory.length === 0) return '';
+  const lines = workingMemory.map((t) => `${t.role === 'melody' ? 'Melody' : 'User'}: ${t.content}`).join('\n');
+  return `\n[RECENT CONVERSATION]\n${lines}`;
 }
 
 function renderTaskDirective(behaviorDirective, userMessage) {
@@ -37,3 +55,17 @@ function renderTaskDirective(behaviorDirective, userMessage) {
 
   return `\n[RESPONSE DIRECTIVE]\n${shape}\n\n[MESSAGE]\n${userMessage}`;
 }
+
+function assemble({ emotionalState, relationship, behaviorDirective, rankedMemories, workingMemory, userMessage }) {
+  const brief = toBrief(emotionalState, relationship);
+  const relationshipFraming = renderRelationshipFraming(relationship);
+
+  return [
+    `[CURRENT STATE]\n${brief}\n${relationshipFraming}`,
+    renderMemoryBlock(rankedMemories),
+    renderWorkingMemory(workingMemory),
+    renderTaskDirective(behaviorDirective, userMessage),
+  ].filter(Boolean).join('\n');
+}
+
+module.exports = { assemble };
