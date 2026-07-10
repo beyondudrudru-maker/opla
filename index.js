@@ -4,10 +4,12 @@ const express = require('express');
 
 // 1. IMPORT MODULES
 const { ramClient } = require('./database/supabaseClient');
-const melody = require('./api/gemini');                          // 👈 NEW modular pipeline
+const melody = require('./api/gemini');
 const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval'); 
 const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter');
 const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData');
+
+// 🛡️ DEDUPLICATION SET (Global)
 const processedMessages = new Set();
 
 // 2. SERVER SETUP
@@ -74,7 +76,6 @@ client.on(Events.MessageCreate, async (message) => {
 
     // 👑 6.1.5: DEVELOPER OVERRIDE (Runs FIRST)
     if (lowerText.includes('fetch chats from supabase') || lowerText.includes('present all chats')) {
-        // SECURITY: Only Beyonder can run this code
         if (message.author.id !== '1369404203880939650') {
             return message.reply("❌ **Access Denied:** You do not have clearance to view server logs.");
         }
@@ -106,7 +107,6 @@ client.on(Events.MessageCreate, async (message) => {
     // 🤖 6.2: AI RESPONSE LOGIC (Runs ONLY if explicitly tagged)
     if (isExplicitlyTagged) {
 
-        // Clean the bot mention from the text for flawless command routing
         const cleanText = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
         const lowerClean = cleanText.toLowerCase();
 
@@ -183,21 +183,19 @@ client.on(Events.MessageCreate, async (message) => {
         } 
 
         // ==========================================
-        // 🗣️ 6.2.1b: PROXY SPEECH INTERCEPTOR (Absolute Obedience)
-        // Bypass AI and echo perfectly if Beyonder says "say X"
+        // 🗣️ 6.2.1b: PROXY SPEECH INTERCEPTOR 
         // ==========================================
         if (lowerClean.startsWith('say ') && message.author.id === '1369404203880939650') {
-            const speechText = cleanText.substring(4).trim(); // Remove "say " from the start
+            const speechText = cleanText.substring(4).trim();
             if (speechText.length > 0) {
                 await message.channel.send(speechText);
-                // Save it to memory so she knows she said it
                 await ramClient.from('chat_ram').insert([{
                     player_id: client.user.id,
                     player_name: "INF AI",
                     channel_id: message.channel.id,
                     message_content: speechText
                 }]);
-                return; // Stop here! Do not trigger the LLM.
+                return;
             }
         }
 
@@ -228,19 +226,13 @@ client.on(Events.MessageCreate, async (message) => {
 
             try {
                 if (targetsEveryone) {
-                    await message.channel.send({
-                        content: `@everyone ${announceText}`,
-                        allowedMentions: { parse: ['everyone'] },
-                    });
+                    await message.channel.send({ content: `@everyone ${announceText}`, allowedMentions: { parse: ['everyone'] } });
                 } else if (targetedUser) {
-                    await message.channel.send({
-                        content: `<@${targetedUser.id}> ${announceText}`,
-                        allowedMentions: { users: [targetedUser.id] },
-                    });
+                    await message.channel.send({ content: `<@${targetedUser.id}> ${announceText}`, allowedMentions: { users: [targetedUser.id] } });
                 } else {
                     return message.reply("⚠️ Tell me who to mention — @everyone or tag a specific person.");
                 }
-                return; // Stop here, do not route to AI
+                return;
             } catch (err) {
                 console.error('[ANNOUNCEMENT ERROR]', err);
                 return message.reply("❌ I couldn't send that — check my permissions in this channel.");
@@ -272,8 +264,22 @@ client.on(Events.MessageCreate, async (message) => {
             });
 
             console.log(`🧠 [MELODY] intent=${debug.intent} tier=${debug.tier} model=${modelUsed}`);
-            await message.reply(aiReply);
 
+            // 👇 THE FIX: Message Chunking Logic Added Here!
+            if (aiReply.length > 1950) {
+                const chunks = aiReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
+                for (let i = 0; i < chunks.length; i++) {
+                    if (i === 0) {
+                        await message.reply({ content: chunks[i], allowedMentions: { repliedUser: false } });
+                    } else {
+                        await new Promise(resolve => setTimeout(resolve, 600)); // Delay
+                        await message.channel.send(chunks[i]);
+                    }
+                }
+            } else {
+                await message.reply({ content: aiReply, allowedMentions: { repliedUser: false } });
+            }
+            // 👆 END OF FIX
 
             // Log AI reply to RAM
             await ramClient.from('chat_ram').insert([{
@@ -437,7 +443,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
     }
     else if (interaction.customId === 'btn_no_gem') {
-        await interaction.message.edit({ components: [] });
+await interaction.message.edit({ components: [] });
         await interaction.reply({ content: `Alright, keep stacking those gems then! 💅` });
     }
 });
