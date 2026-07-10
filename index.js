@@ -5,7 +5,7 @@ const express = require('express');
 // 1. IMPORT MODULES
 const { ramClient } = require('./database/supabaseClient');
 const melody = require('./api/gemini');
-const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval'); 
+const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval');
 const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter');
 const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData');
 
@@ -180,10 +180,10 @@ client.on(Events.MessageCreate, async (message) => {
             } else {
                 return message.reply("⚠️ I couldn't figure out which role you want me to give. Try mentioning the role directly or using a bundle word like 'boss' or 'clan'.");
             }
-        } 
+        }
 
         // ==========================================
-        // 🗣️ 6.2.1b: PROXY SPEECH INTERCEPTOR 
+        // 🗣️ 6.2.1b: PROXY SPEECH INTERCEPTOR
         // ==========================================
         if (lowerClean.startsWith('say ') && message.author.id === '1369404203880939650') {
             const speechText = cleanText.substring(4).trim();
@@ -238,6 +238,7 @@ client.on(Events.MessageCreate, async (message) => {
                 return message.reply("❌ I couldn't send that — check my permissions in this channel.");
             }
         }
+
         // ==========================================
         // 🧠 6.2.2: MELODY CORE (Conversational AI)
         // ==========================================
@@ -276,9 +277,9 @@ client.on(Events.MessageCreate, async (message) => {
             }
 
             // Define mention options
-            const mentionOptions = { 
-                repliedUser: false, 
-                parse: allowedToPingEveryone ? ['everyone'] : [] 
+            const mentionOptions = {
+                repliedUser: false,
+                parse: allowedToPingEveryone ? ['everyone'] : []
             };
 
             // 👇 CHUNKING LOGIC (Rehta hai waisa hi)
@@ -310,11 +311,11 @@ client.on(Events.MessageCreate, async (message) => {
             try { await message.reply('My cognitive processors are cooling down i am very busy right now! 🌸'); }
             catch (e) { await message.channel.send(`<@${message.author.id}>, my cognitive processors are cooling down! 🌸`); }
         }
- // =================================================================
-// 
-🔔 PROACTIVE POPUP ENGINES ...
-// =================================================================
+    } // 👈 FIX: this closes the `if (isExplicitlyTagged)` block — it was left unclosed in the original
 
+    // ==========================================
+    // 🔔 PROACTIVE POPUP ENGINES ...
+    // ==========================================
 
     // ⚔️ 6.3: CONTEXTUAL SUPPORT ENGINE (Boss Struggles)
     if (!supportCooldown.has(message.channel.id)) {
@@ -417,13 +418,16 @@ client.on(Events.MessageCreate, async (message) => {
                 components: [row]
             });
         }
-     }
-     // ==========================================
+    }
+}); // 👈 FIX: this closes the `client.on(Events.MessageCreate, ...)` listener — it was left unclosed in the original
+
+// ==========================================
 // 7. INTERACTION LISTENER (Buttons)
 // ==========================================
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isButton()) return;
 
+    // --- SUPPORT BUTTONS ---
     if (interaction.customId === 'btn_yes_help') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({
@@ -437,28 +441,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // --- GOLD BUTTONS ---
     else if (interaction.customId === 'btn_yes_gold') {
         await interaction.message.edit({ components: [] });
-        await interaction.reply({
-            content: `💰 Here is the official gold blueprint! Read it carefully. 💅`,
-            embeds: [getGoldGuide()]
-        });
-    }
-    else if (interaction.customId === 'btn_no_gold') {
+        await interaction.reply({ content: getGoldGuide() });
+    } else if (interaction.customId === 'btn_no_gold') {
         await interaction.message.edit({ components: [] });
-        await interaction.reply({ content: `Alright, keep hoarding that wealth! 💅` });
+        await interaction.reply({ content: `No worries, King! Let me know if you ever need the Blueprint. 💰` });
     }
 
     // --- GEM BUTTONS ---
     else if (interaction.customId === 'btn_yes_gem') {
         await interaction.message.edit({ components: [] });
-        await interaction.reply({
-            content: `💎 Here is the official gem matrix! Spend it wisely. 💅`,
-            embeds: [getGemGuide()]
-        });
-    }
-    else if (interaction.customId === 'btn_no_gem') {
-await interaction.message.edit({ components: [] });
-        await interaction.reply({ content: `Alright, keep stacking those gems then! 💅` });
+        await interaction.reply({ content: getGemGuide() });
+    } else if (interaction.customId === 'btn_no_gem') {
+        await interaction.message.edit({ components: [] });
+        await interaction.reply({ content: `Alright! I'll keep the Gem Matrix ready for whenever you need it. 💎` });
     }
 });
 
+// 8. LOGIN
 client.login(process.env.DISCORD_TOKEN);
