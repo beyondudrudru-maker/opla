@@ -1,30 +1,5 @@
 /**
  * decision/decisionPipeline.js
- *
- * PURPOSE
- *   The per-turn orchestrator. Implements the reasoning sequence:
- *   Observe -> Identify Speaker -> Classify Intent -> Evaluate Relationship
- *   -> Update Emotion -> Retrieve & Rank Memory -> Decide Behavior ->
- *   Assemble Prompt -> (caller generates) -> Post-process -> Persist.
- *
- *   Every step is deterministic code. Only the "generate" step (owned by
- *   api/gemini.js via router/modelRouter) touches the LLM. This is the
- *   concrete embodiment of "code decides what Melody knows, the LLM
- *   decides how she expresses it."
- *
- * INPUTS
- *   { userId, displayName, roles, channelId, content, isGroupContext }
- *
- * OUTPUTS
- *   { prompt: string, classification, behaviorDirective, emotionalState,
- *     relationship, channelId, userId }
- *   (the caller feeds `prompt` into modelRouter.generate, then calls
- *    finalizeTurn with the resulting text)
- *
- * FUTURE SCALABILITY
- *   This function is intentionally the single choke point for orchestration
- *   logic — new subsystems (e.g. a "topic tracker") should be added as a
- *   step here, not scattered across api/gemini.js.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -34,15 +9,18 @@ const memoryEngine = require('../memory/memoryEngine');
 const contextRanker = require('../contextRanker/contextRanker');
 const behaviorEngine = require('../behavior/behaviorEngine');
 const promptAssembler = require('../promptBuilder/promptAssembler');
+const targetResolver = require('./targetResolver');
 
-async function planTurn({ userId, displayName, roles = [], channelId, content, isGroupContext = false }) {
-  // 1. Observe (content already given) + 2. Identify speaker via relationship resolve
+const BOT_USER_ID = process.env.BOT_USER_ID; // set this in Render env vars
+
+async function planTurn({
+  userId, displayName, roles = [], channelId, content,
+  isGroupContext = false, mentions = { everyone: false, users: [] },
+}) {
   const relationship = await relationshipEngine.resolve({ userId, displayName, roles });
 
-  // 3. Classify intent
   const classification = intentClassifier.classify({ content });
 
-  // 4/5. Update emotional state (relationship-informed target, time-decayed blend)
   const emotionalState = await emotionEngine.updateState({
     userId,
     intent: classification.intent,
@@ -50,18 +28,19 @@ async function planTurn({ userId, displayName, roles = [], channelId, content, i
     isModeration: classification.isModeration,
   });
 
-  // 6. Retrieve memory candidates
   const [workingMemoryRaw, longTermCandidates] = await Promise.all([
     memoryEngine.getWorkingMemory(channelId),
     memoryEngine.getLongTermCandidates(userId),
   ]);
 
-  // 7. Rank/filter context (this is the "never send 20 raw messages" fix)
   const workingMemory = contextRanker.filterWorkingMemory({ turns: workingMemoryRaw, currentUserId: userId, isGroupContext });
   const rankedMemories = contextRanker.rankMemories({ currentMessage: content, candidates: longTermCandidates });
 
-  // 8. Behavior selection (emotion -> shape, never emotion -> text directly)
+  // NEW: resolve who this message is actually about
+  const targetInfo = targetResolver.resolve({ mentions, botUserId: BOT_USER_ID });
+
   const behaviorDirective = behaviorEngine.decide({
+    userId, // <-- was missing; creator-path tone never fired without this
     emotionalState,
     intent: classification.intent,
     relationship,
@@ -69,7 +48,6 @@ async function planTurn({ userId, displayName, roles = [], channelId, content, i
     isModeration: classification.isModeration,
   });
 
-  // 9. Assemble the runtime prompt (identity core is applied separately as systemInstruction)
   const prompt = promptAssembler.assemble({
     emotionalState,
     relationship,
@@ -77,6 +55,8 @@ async function planTurn({ userId, displayName, roles = [], channelId, content, i
     rankedMemories,
     workingMemory,
     userMessage: content,
+    targetInfo, // <-- passed through to the prompt
+    speakerName: displayName,
   });
 
   return { prompt, classification, behaviorDirective, emotionalState, relationship, channelId, userId };
