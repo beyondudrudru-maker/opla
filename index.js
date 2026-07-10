@@ -311,8 +311,8 @@ client.on(Events.MessageCreate, async (message) => {
             catch (e) { await message.channel.send(`<@${message.author.id}>, my cognitive processors are cooling down! 🌸`); }
         }
  // =================================================================
-// 🔔 PROACTIVE POPUP ENGINES ...
 // 
+🔔 PROACTIVE POPUP ENGINES ...
 // =================================================================
 
 
@@ -417,8 +417,8 @@ client.on(Events.MessageCreate, async (message) => {
                 components: [row]
             });
         }
-
-// ==========================================
+     }
+     // ==========================================
 // 7. INTERACTION LISTENER (Buttons)
 // ==========================================
 client.on(Events.InteractionCreate, async (interaction) => {
