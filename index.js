@@ -5,7 +5,7 @@ const express = require('express');
 // 1. IMPORT MODULES
 const supabase = require('./database/supabaseClient');
 
-const melody = require('./ai/gemini');                          // 👈 NEW modular pipeline (was: aiModel)
+const melody = require('./api/gemini');                          // 👈 NEW modular pipeline (was: aiModel)
 const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval'); // 👈 NEW: gold/gem guide injection, extracted out
 const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter');
 const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData');
