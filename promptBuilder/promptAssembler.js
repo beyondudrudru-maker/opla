@@ -34,6 +34,21 @@ function renderWorkingMemory(workingMemory) {
   return `\n[RECENT CONVERSATION]\n${lines}`;
 }
 
+function renderTargetBlock(targetInfo, speakerName) {
+  if (!targetInfo) return '';
+
+  if (targetInfo.addressingEveryone) {
+    return `\n[WHO THIS IS FOR]\n${speakerName} is addressing the whole channel, not just you. Respond in a way that could land for the group, not only as a private reply to one person.`;
+  }
+
+  if (targetInfo.hasThirdPartyTarget) {
+    const names = targetInfo.targets.map((t) => t.name).join(', ');
+    return `\n[WHO THIS IS FOR]\n${speakerName} is asking you to say something ABOUT or TO ${names}, not about yourself. Address ${targetInfo.targets.length > 1 ? 'them' : names} directly (use their name or @mention them) rather than making the reply about you. Do not assume you are the subject just because the request is ambiguous.`;
+  }
+
+  return '';
+}
+
 function renderTaskDirective(behaviorDirective, userMessage) {
   const lengthMap = {
     short: 'Respond briefly — roughly one short sentence or less. Match their energy, do not over-elaborate.',
@@ -56,7 +71,7 @@ function renderTaskDirective(behaviorDirective, userMessage) {
   return `\n[RESPONSE DIRECTIVE]\n${shape}\n\n[MESSAGE]\n${userMessage}`;
 }
 
-function assemble({ emotionalState, relationship, behaviorDirective, rankedMemories, workingMemory, userMessage }) {
+function assemble({ emotionalState, relationship, behaviorDirective, rankedMemories, workingMemory, userMessage, targetInfo, speakerName }) {
   const brief = toBrief(emotionalState, relationship);
   const relationshipFraming = renderRelationshipFraming(relationship);
 
@@ -64,6 +79,7 @@ function assemble({ emotionalState, relationship, behaviorDirective, rankedMemor
     `[CURRENT STATE]\n${brief}\n${relationshipFraming}`,
     renderMemoryBlock(rankedMemories),
     renderWorkingMemory(workingMemory),
+    renderTargetBlock(targetInfo, speakerName || 'the speaker'),
     renderTaskDirective(behaviorDirective, userMessage),
   ].filter(Boolean).join('\n');
 }
