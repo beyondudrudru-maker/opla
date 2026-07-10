@@ -238,9 +238,7 @@ client.on(Events.MessageCreate, async (message) => {
                 return message.reply("❌ I couldn't send that — check my permissions in this channel.");
             }
         }
-
-        // ==========================================
-          // ==========================================
+ ==========================================
         // 🧠 6.2.2: MELODY CORE (Conversational AI)
         // ==========================================
         try {
