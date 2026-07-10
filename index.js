@@ -13,7 +13,7 @@ const processedMessages = new Set();
 // 2. SERVER SETUP
 const app = express();
 app.get('/', (req, res) => res.send('✨ INF AI Core is awake and monitoring.'));
-app.listen(process.env.PORT || 3000, () => {
+app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
     console.log(`🌐 Web Server running.`);
 });
 
