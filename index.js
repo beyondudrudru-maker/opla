@@ -56,7 +56,12 @@ setInterval(async () => {
 client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
 
-    // 🧠 6.1: MEMORY LOGIC (Always listening)
+    // 🛡️ DEDUPLICATION: Stop double processing immediately
+    if (processedMessages.has(message.id)) return;
+    processedMessages.add(message.id);
+    setTimeout(() => processedMessages.delete(message.id), 5000);
+
+    // 🧠 6.1: MEMORY LOGIC
     await ramClient.from('chat_ram').insert([{
         player_id: message.author.id,
         player_name: message.author.username,
@@ -64,8 +69,7 @@ client.on(Events.MessageCreate, async (message) => {
         message_content: message.content
     }]);
 
-    const lowerText = message.content.toLowerCase();
-    const isExplicitlyTagged = message.content.includes(`<@${client.user.id}>`) || message.content.includes(`<@!${client.user.id}>`);
+    // ... (Baaki ka code yahan se continue karo, jaise `const lowerText = ...`)
 
     // 👑 6.1.5: DEVELOPER OVERRIDE (Runs FIRST)
     if (lowerText.includes('fetch chats from supabase') || lowerText.includes('present all chats')) {
