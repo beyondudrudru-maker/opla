@@ -22,16 +22,31 @@
  *   - extractCandidateMemories(turns): lightweight heuristic extraction of
  *     durable facts from a batch of turns (real production version should
  *     replace the heuristic with a single cheap Lite-model call, see
- *     reflection/reflectionJob.js for where that swap happens).
+ *     reflection/reflectionJob.js for where that swap happens). Also
+ *     computes content_hash per candidate (see writeMemory).
+ *   - writeMemory(userId, memory): persist one candidate. Relies on
+ *     memory.content_hash being set (extractCandidateMemories does this)
+ *     so database/supabaseClient.js's addLongTermMemory can dedupe against
+ *     the (user_id, content_hash) unique constraint in schema.sql. This is
+ *     what makes reflectionJob.runNightly idempotent across repeated runs
+ *     over overlapping turns — a previously-written memory is silently
+ *     skipped instead of duplicated.
+ *
+ * NOTE ON DELETION
+ *   Nothing in this module deletes long-term memories. Pruning is
+ *   deliberately not implemented anywhere in this codebase (see
+ *   reflection/reflectionJob.js header) — long_term_memories is
+ *   append/no-duplicate-only by project requirement.
  *
  * FUTURE SCALABILITY
- *   Long-term memory table will grow unbounded per active user. The
- *   reflection job prunes to top-50-by-score per user; if you need
+ *   Long-term memory table will grow unbounded per active user (by
+ *   design, per project requirement — no auto-prune). If you need
  *   semantic (embedding) search over memories at scale, add a `pgvector`
  *   column to long_term_memories and swap the topic_similarity scorer in
  *   contextRanker for a cosine-similarity query — nothing else changes.
  */
 
+const crypto = require('crypto');
 const db = require('../database/supabaseClient');
 
 const SESSION_GAP_MINUTES = 45;
@@ -61,6 +76,18 @@ async function getLongTermCandidates(userId) {
 }
 
 /**
+ * Deterministic content hash used for dedup on write. Same shape as
+ * reflection/reflectionJob.js would expect: sha256 of
+ * "<userId>::<lowercased, trimmed content>". Kept here (not in
+ * supabaseClient.js) because hashing is a memory-shaping concern, not a
+ * DB-access concern — supabaseClient just persists whatever hash it's
+ * given.
+ */
+function computeContentHash(userId, content) {
+  return crypto.createHash('sha256').update(`${userId}::${content.trim().toLowerCase()}`).digest('hex');
+}
+
+/**
  * Heuristic extraction: flags turns that look durable/significant (long
  * enough, contains a personal disclosure marker, or a preference marker).
  * This is intentionally simple — swap for a Lite-model call in production
@@ -79,8 +106,10 @@ function extractCandidateMemories(turns, userId) {
     if (turn.role !== 'user' || turn.user_id !== userId) continue;
     for (const { pattern, score } of SIGNIFICANCE_MARKERS) {
       if (pattern.test(turn.content)) {
+        const content = turn.content.slice(0, 300);
         candidates.push({
-          content: turn.content.slice(0, 300),
+          content,
+          content_hash: computeContentHash(userId, content),
           topic_tags: [],
           emotional_score: score,
         });
@@ -92,7 +121,14 @@ function extractCandidateMemories(turns, userId) {
 }
 
 async function writeMemory(userId, memory) {
-  await db.addLongTermMemory(userId, memory);
+  // content_hash should already be set by extractCandidateMemories, but
+  // compute it here too as a safety net for any future caller that
+  // constructs a memory object by hand instead of via extraction.
+  const withHash = memory.content_hash
+    ? memory
+    : { ...memory, content_hash: computeContentHash(userId, memory.content) };
+
+  await db.addLongTermMemory(userId, withHash);
 }
 
 module.exports = {
@@ -101,5 +137,6 @@ module.exports = {
   getLongTermCandidates,
   extractCandidateMemories,
   writeMemory,
+  computeContentHash,
   WORKING_MEMORY_SIZE,
 };
