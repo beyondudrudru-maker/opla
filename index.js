@@ -417,8 +417,6 @@ client.on(Events.MessageCreate, async (message) => {
                 components: [row]
             });
         }
-    }
-});
 
 // ==========================================
 // 7. INTERACTION LISTENER (Buttons)
