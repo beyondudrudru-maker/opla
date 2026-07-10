@@ -269,21 +269,23 @@ client.on(Events.MessageCreate, async (message) => {
             console.log(`🧠 [MELODY] intent=${debug.intent} tier=${debug.tier} model=${modelUsed}`);
             await message.reply(aiReply);
 
-// 👇 NEW LOGIC: Split long messages to bypass Discord's 2000 character limit
-    if (aiReply.length > 1950) {
-        // Split the text into chunks of maximum 1950 characters safely
-        const chunks = aiReply.match(/[\s\S]{1,1950}/g) || [];
-        for (let i = 0; i < chunks.length; i++) {
-            if (i === 0) {
-                await message.reply(chunks[i]); // Reply to the first chunk
+// 👇 THE FIX: Message Chunking Logic
+            if (aiReply.length > 1950) {
+                // Split by paragraphs to keep it readable, max 1950 chars per chunk
+                const chunks = aiReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
+                for (let i = 0; i < chunks.length; i++) {
+                    if (i === 0) {
+                        await message.reply(chunks[i]);
+                    } else {
+                        // Small delay to prevent Discord rate-limiting on long strings
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        await message.channel.send(chunks[i]);
+                    }
+                }
             } else {
-                await message.channel.send(chunks[i]); // Send subsequent chunks normally
+                await message.reply(aiReply);
             }
-        }
-    } else {
-        await message.reply(aiReply); // Normal reply for short messages
-    }
-    // 👆 END NEW LOGIC
+            // 👆 END OF FIX
             // Log AI reply to RAM
             await ramClient.from('chat_ram').insert([{
                 player_id: client.user.id,
