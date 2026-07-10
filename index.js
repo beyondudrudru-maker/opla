@@ -310,9 +310,10 @@ client.on(Events.MessageCreate, async (message) => {
             try { await message.reply('My cognitive processors are cooling down i am very busy right now! 🌸'); }
             catch (e) { await message.channel.send(`<@${message.author.id}>, my cognitive processors are cooling down! 🌸`); }
         }
- =================================================================
-    // 🔔 PROACTIVE POPUP ENGINES (Runs ONLY if bot is NOT tagged)
-    // =================================================================
+ // =================================================================
+// 🔔 PROACTIVE POPUP ENGINES ...
+//
+// =================================================================
 
     // ⚔️ 6.3: CONTEXTUAL SUPPORT ENGINE (Boss Struggles)
     if (!supportCooldown.has(message.channel.id)) {
