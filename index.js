@@ -3,10 +3,11 @@ const { Client, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, Butt
 const express = require('express');
 
 // 1. IMPORT MODULES
-const supabase = require('./database/supabase'); 
-const aiModel = require('./ai/gemini'); 
-const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter'); 
-const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData'); 
+const supabase = require('./database/supabase');
+const melody = require('./ai/gemini');                          // 👈 NEW modular pipeline (was: aiModel)
+const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval'); // 👈 NEW: gold/gem guide injection, extracted out
+const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter');
+const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData');
 const processedMessages = new Set();
 
 // 2. SERVER SETUP
@@ -22,15 +23,15 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMessageReactions // 👈 YE MISSING THA!
+        GatewayIntentBits.GuildMessageReactions
     ]
 });
 
 // Cooldown trackers for popup engines & admin commands
 const supportCooldown = new Set();
-const goldCooldown = new Set(); 
-const gemCooldown = new Set(); 
-const adminCooldown = new Set(); // 👈 Cooldown for server moderation commands
+const goldCooldown = new Set();
+const gemCooldown = new Set();
+const adminCooldown = new Set();
 
 client.once(Events.ClientReady, (readyClient) => {
     console.log('----------------------------------------');
@@ -41,15 +42,19 @@ client.once(Events.ClientReady, (readyClient) => {
 });
 
 // 4. MEMORY CLEANUP (Runs every hour)
+// NOTE: this cleans `chat_ram`, the lightweight activity log used by the
+// popup engines (6.3-6.5) and the developer override (6.1.5). It is
+// separate from Melody's cognitive memory (`conversation_turns` /
+// `long_term_memories`), which is owned by ai/gemini.js's pipeline and
+// pruned instead by reflection/reflectionJob.js — the two systems do not
+// need to share a cleanup cadence.
 setInterval(async () => {
-    // Yahan 3 ki jagah 5 kar diya hai 👇
     const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
     try {
-        // 'threeHoursAgo' variable ka naam badal kar 'fiveHoursAgo' kar diya
         const { error } = await supabase.from('chat_ram').delete().lt('created_at', fiveHoursAgo);
         if (!error) console.log('🧹 5-Hour Memory Wiped.');
     } catch (err) { console.error('❌ Cleanup Error:', err); }
-}, 3600000); // Yeh loop abhi bhi har 1 ghante mein chalega check karne ke liye 
+}, 3600000);
 
 // ==========================================
 // 6. MESSAGE EVENT LISTENER (Core Engines)
@@ -57,7 +62,7 @@ setInterval(async () => {
 client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
 
-    // 🧠 6.1: MEMORY LOGIC (Always listening)
+    // 🧠 6.1: MEMORY LOGIC (Always listening — activity log for popups/debug)
     await supabase.from('chat_ram').insert([{
         player_id: message.author.id,
         player_name: message.author.username,
@@ -70,7 +75,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     // 👑 6.1.5: DEVELOPER OVERRIDE (Runs FIRST to prevent AI collision)
     if (lowerText.includes('fetch chats from supabase') || lowerText.includes('present all chats')) {
-        
+
         // SECURITY: Only Beyonder can run this code
         if (message.author.id !== '1369404203880939650') {
             return message.reply("❌ **Access Denied:** You do not have clearance to view server logs.");
@@ -80,10 +85,10 @@ client.on(Events.MessageCreate, async (message) => {
 
         try {
             const { data, error } = await supabase
-                .from('chat_ram') 
+                .from('chat_ram')
                 .select('*')
-                .order('created_at', { ascending: false }) 
-                .limit(5); 
+                .order('created_at', { ascending: false })
+                .limit(5);
 
             if (error) throw error;
 
@@ -92,12 +97,11 @@ client.on(Events.MessageCreate, async (message) => {
             }
 
             let logMessage = "**📜 Here are my most recent memory records:**\n\n";
-            
+
             data.forEach(row => {
                 logMessage += `> **${row.player_name || 'Unknown'}:** ${row.message_content || '[No Content]'}\n`;
             });
 
-            // Sends the logs and STOPS the rest of the file from running
             return message.channel.send(logMessage);
 
         } catch (err) {
@@ -110,31 +114,27 @@ client.on(Events.MessageCreate, async (message) => {
     if (isExplicitlyTagged) {
 
         // ==========================================
-        // 🛡️ 6.2.1: THE HYBRID INTERCEPTOR (0 API COST)
+        // 🛡️ 6.2.1: THE HYBRID INTERCEPTOR (0 API COST) — unchanged
         // Checks for admin keywords AND a targeted user mention
         // ==========================================
         const isModCommand = lowerText.includes('assign') || lowerText.includes('give') || lowerText.includes('remove') || lowerText.includes('take') || lowerText.includes('kick') || lowerText.includes('ban');
         const targetMember = message.mentions.members.filter(m => m.id !== client.user.id).first();
 
-        // Only run interceptor if an action word is used AND a target is tagged
         if (isModCommand && targetMember) {
-            
-            // 1. Security Authorization
+
             const isSakha = message.author.id === '1369404203880939650';
-            const isAdmin = message.member.roles.cache.has('1372987132855058504'); // Admin Role
-            
+            const isAdmin = message.member.roles.cache.has('1372987132855058504');
+
             if (!isSakha && !isAdmin) {
                 return message.reply("❌ **Access Denied:** You must be my King or a Clan Admin to command me to modify users.");
             }
 
-            // 2. Cooldown Protection
             if (adminCooldown.has(message.author.id)) {
                 return message.reply("⏳ Please wait a few seconds before issuing another server command.");
             }
             adminCooldown.add(message.author.id);
-            setTimeout(() => adminCooldown.delete(message.author.id), 5000); 
+            setTimeout(() => adminCooldown.delete(message.author.id), 5000);
 
-            // 3. KICK LOGIC
             if (lowerText.includes('kick')) {
                 try {
                     await targetMember.kick("Requested by Admin/Creator via INF AI");
@@ -144,7 +144,6 @@ client.on(Events.MessageCreate, async (message) => {
                 }
             }
 
-            // 4. BAN LOGIC
             if (lowerText.includes('ban')) {
                 try {
                     await targetMember.ban({ reason: "Requested by Admin/Creator via INF AI" });
@@ -154,28 +153,24 @@ client.on(Events.MessageCreate, async (message) => {
                 }
             }
 
-            // 5. ROLE ASSIGNMENT LOGIC (Bundles & Direct Mentions)
             const roleBundles = {
-                'boss': ['1413760143337721936'], // Single Boss Role
-                'clan': ['1439158157640339557', '1373179239049859082'], // Both Clan Roles
-                'main clan': ['1439158157640339557', '1373179239049859082'] // Alternate phrase for Clan Roles
+                'boss': ['1413760143337721936'],
+                'clan': ['1439158157640339557', '1373179239049859082'],
+                'main clan': ['1439158157640339557', '1373179239049859082']
             };
 
             let rolesToModify = [];
-            
-            // A. Grab any roles mentioned directly with an @ ping
+
             if (message.mentions.roles.size > 0) {
                 message.mentions.roles.forEach(role => rolesToModify.push(role.id));
-            } 
-            
-            // B. Grab roles from keywords/bundles
+            }
+
             for (const [bundleName, bundleIds] of Object.entries(roleBundles)) {
                 if (lowerText.includes(bundleName)) {
                     rolesToModify = rolesToModify.concat(bundleIds);
                 }
             }
 
-            // Execute Role Modification
             if (rolesToModify.length > 0) {
                 try {
                     if (lowerText.includes('remove') || lowerText.includes('take')) {
@@ -194,87 +189,66 @@ client.on(Events.MessageCreate, async (message) => {
         } // End of Hybrid Interceptor
 
         // ==========================================
-        // 🧠 6.2.2: GEMINI API CORE (WITH DEEP MEMORY)
+        // 🧠 6.2.2: MELODY CORE — now routed through the modular pipeline
+        // (relationship / emotion / memory ranking / behavior / prompt
+        //  assembly all happen inside melody.generateContent; this handler
+        //  is now only responsible for gathering Discord-side inputs)
         // ==========================================
         try {
             await message.channel.sendTyping();
             const cleanText = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
-            
+
             if (cleanText.length === 0) {
                 await message.reply("Yes, my Beyonder? 🌸");
                 return;
             }
 
-            // 🧠 STEP 1: FETCH CONVERSATION HISTORY FROM SUPABASE
-            const { data: chatHistory } = await supabase
-                .from('chat_ram')
-                .select('*')
-                .eq('channel_id', message.channel.id)
-                .order('created_at', { ascending: false })
-                .limit(20); // Fetches the last 20 messages for context
+            // 👤 Mention translator data — same data as before, now passed
+            // structured instead of pre-formatted into a giant string; the
+            // pipeline's promptAssembler renders the ping-format block.
+            const mentionedUsers = message.mentions.users
+                .filter(u => u.id !== client.user.id)
+                .map(u => ({ id: u.id, username: u.username }));
 
-            let historyContext = "";
-            if (chatHistory && chatHistory.length > 0) {
-                historyContext = "\n[RECENT CONVERSATION HISTORY (Read this for context)]:\n";
-                // Reverse to read chronologically (oldest to newest)
-                const chronological = chatHistory.reverse();
-                chronological.forEach(msg => {
-                    historyContext += `- ${msg.player_name}: ${msg.message_content}\n`;
-                });
-                historyContext += "[END OF HISTORY]\n";
-            }
+            // 🌐 Domain knowledge (gold/gem guides) — same trigger logic as
+            // before, now owned by knowledge/knowledgeRetrieval.js instead
+            // of inline if/else in this handler.
+            const knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
 
-            // ==========================================
-            // 👤 SMART MENTION TRANSLATOR LOGIC
-            // ==========================================
-            let mentionsContext = "";
-            const mentionedUsers = message.mentions.users.filter(u => u.id !== client.user.id);
-            if (mentionedUsers.size > 0) {
-                mentionsContext = `\n[CRITICAL FORMATTING RULE]: The user tagged other people in their message. Here is their data:\n`;
-                mentionedUsers.forEach(u => {
-                    mentionsContext += `- Name: ${u.username} | Discord Ping Format: <@${u.id}>\n`;
-                });
-                mentionsContext += `If you mention them in your reply, you MUST use the exact 'Discord Ping Format' (keep the < > brackets). Do NOT just type their numerical ID.\n`;
-            }
+            // Roles, lowercased, for relationshipEngine tier resolution
+            // (creator/admin/moderator/vip detection lives in
+            // relationship/relationshipEngine.js, not here).
+            const roles = message.member
+                ? message.member.roles.cache.map(r => r.name.toLowerCase())
+                : [];
 
-            let contextData = "";
-            
-            // 🌐 Smart Context Injection with Math Instructions
-            if (cleanText.toLowerCase().includes("gold guide") || cleanText.toLowerCase().includes("gold")) {
-                contextData = `
-                [SYSTEM RULE]: You are the !NF!N!TY Clan Tactical AI. 
-                Below is the FULL official Gold Data. 
-                CRITICAL INSTRUCTION: If the player mentions a specific amount of gold, you MUST use the 50-20-10-20 ratio from the Blueprint to calculate EXACTLY how much gold goes into each category. Show them the exact calculated numbers in your response.
-                [OFFICIAL FULL GOLD DATA]: 
-                ${rawGoldData}
-                `;
-            } else if (cleanText.toLowerCase().includes("gem guide") || cleanText.toLowerCase().includes("gem") || cleanText.toLowerCase().includes("gems")) {
-                contextData = `
-                [SYSTEM RULE]: You are the !NF!N!TY Clan Tactical AI. 
-                Below is the FULL official Gem Data. 
-                CRITICAL INSTRUCTION: If the player mentions a specific amount of gems, you MUST use the 40-20-20-10-10 matrix from the Blueprint to calculate EXACTLY how many gems go into each category. Show them the exact calculated numbers in your response.
-                [OFFICIAL FULL GEM DATA]: 
-                ${rawGemData}
-                `;
-            }
+            // 🚀 GENERATE — this single call now internally: resolves
+            // relationship tier, updates time-decayed emotional state,
+            // retrieves + ranks working & long-term memory (replacing the
+            // old raw "last 20 messages" fetch from chat_ram), decides
+            // response shape, assembles the prompt, routes to Flash or
+            // Flash-Lite, and runs the repetition/emoji post-processor.
+            const { text: aiReply, modelUsed, debug } = await melody.generateContent({
+                userId: message.author.id,
+                displayName: message.author.username,
+                roles,
+                channelId: message.channel.id,
+                content: cleanText,
+                isGroupContext: Boolean(message.guild),
+                mentionedUsers,
+                knowledgeContext,
+            });
 
-            // 🏗️ CONSTRUCT THE FINAL PROMPT WITH MEMORY
-            const userPrompt = `
-            ${contextData}
-            ${historyContext}
-            ${mentionsContext}
-            [Current Message]
-            [Sender ID: ${message.author.id} | Sender Name: ${message.author.username}]: ${cleanText}
-            `;
+            console.log(`🧠 [MELODY] intent=${debug.intent} tier=${debug.tier} model=${modelUsed}`);
 
-            // 🚀 GENERATE AI RESPONSE
-            const result = await aiModel.generateContent(userPrompt);
-            const aiReply = result.response.text();
-            
             await message.reply(aiReply);
 
-            // 🧠 STEP 2: SAVE THE AI'S REPLY TO MEMORY
-            // This ensures she remembers her own output for the next interaction!
+            // NOTE: melody.generateContent already persists both turns into
+            // Melody's own conversation_turns/long_term_memories tables via
+            // decisionPipeline.finalizeTurn — no manual memory write needed
+            // here. We still log the reply into chat_ram below purely so
+            // the popup engines (6.3-6.5) and dev override (6.1.5), which
+            // read chat_ram directly, stay in sync.
             await supabase.from('chat_ram').insert([{
                 player_id: client.user.id,
                 player_name: "INF AI",
@@ -284,14 +258,14 @@ client.on(Events.MessageCreate, async (message) => {
 
         } catch (error) {
             console.error('❌ AI Error:', error.message);
-            try { await message.reply('My cognitive processors are cooling down. Google AI is very busy right now! 🌸'); } 
+            try { await message.reply('My cognitive processors are cooling down. Google AI is very busy right now! 🌸'); }
             catch (e) { await message.channel.send(`<@${message.author.id}>, my cognitive processors are cooling down! 🌸`); }
         }
         return; // Stops checking popup engines if AI already replied
     }
 
     // =================================================================
-    // 🔔 PROACTIVE POPUP ENGINES (Runs ONLY if bot is NOT tagged)
+    // 🔔 PROACTIVE POPUP ENGINES (Runs ONLY if bot is NOT tagged) — unchanged
     // =================================================================
 
     // ⚔️ 6.3: CONTEXTUAL SUPPORT ENGINE (Boss Struggles)
@@ -304,12 +278,12 @@ client.on(Events.MessageCreate, async (message) => {
             .limit(2);
 
         const triggers = ['boss', 'tough', 'hard', 'score', 'stuck', 'impossible'];
-        const isDifficultyConvo = history && history.length >= 2 && 
+        const isDifficultyConvo = history && history.length >= 2 &&
             history.every(m => triggers.some(t => m.message_content.toLowerCase().includes(t)));
 
         if (isDifficultyConvo) {
             supportCooldown.add(message.channel.id);
-            setTimeout(() => supportCooldown.delete(message.channel.id), 120000); 
+            setTimeout(() => supportCooldown.delete(message.channel.id), 120000);
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('btn_yes_help').setLabel('Yes, Please!').setStyle(ButtonStyle.Success),
@@ -333,7 +307,7 @@ client.on(Events.MessageCreate, async (message) => {
             .limit(5);
 
         const goldTriggers = ['gold', 'need gold', 'farm gold', 'how to farm', 'broke', 'no gold', 'out of gold'];
-        
+
         let goldMentionCount = 0;
         if (history) {
             history.forEach(m => {
@@ -346,7 +320,7 @@ client.on(Events.MessageCreate, async (message) => {
 
         if (goldMentionCount >= 2) {
             goldCooldown.add(message.channel.id);
-            setTimeout(() => goldCooldown.delete(message.channel.id), 300000); 
+            setTimeout(() => goldCooldown.delete(message.channel.id), 300000);
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('btn_yes_gold').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
@@ -370,7 +344,7 @@ client.on(Events.MessageCreate, async (message) => {
             .limit(5);
 
         const gemTriggers = ['gem', 'need gems', 'low on gems', 'out of gems', 'how to farm gems', 'gem farming'];
-        
+
         let gemMentionCount = 0;
         if (history) {
             history.forEach(m => {
@@ -383,7 +357,7 @@ client.on(Events.MessageCreate, async (message) => {
 
         if (gemMentionCount >= 2) {
             gemCooldown.add(message.channel.id);
-            setTimeout(() => gemCooldown.delete(message.channel.id), 300000); 
+            setTimeout(() => gemCooldown.delete(message.channel.id), 300000);
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('btn_yes_gem').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
@@ -398,9 +372,8 @@ client.on(Events.MessageCreate, async (message) => {
     }
 });
 
-// 
 // ==========================================
-// 7. INTERACTION LISTENER (Buttons)
+// 7. INTERACTION LISTENER (Buttons) — unchanged
 // ==========================================
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isButton()) return;
@@ -414,15 +387,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.message.edit({ components: [] });
         await interaction.reply({ content: `Fine, tough guys! Don't come crying to me when you lose. 💅` });
     }
-    
+
     // --- GOLD BUTTONS ---
     else if (interaction.customId === 'btn_yes_gold') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({
             content: `💰 Here is the official gold blueprint! Read it carefully. 💅`,
-            embeds: [getGoldGuide()] 
+            embeds: [getGoldGuide()]
         });
-    } 
+    }
     else if (interaction.customId === 'btn_no_gold') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({ content: `Alright, keep hoarding that wealth! 💅` });
@@ -432,61 +405,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
     else if (interaction.customId === 'btn_yes_gem') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({
-            content: `💎 Here is the Gem Matrix! Spend wisely. 💅`,
-            embeds: [getGemGuide()] 
+            content: `💎 Here is the official gem matrix! Spend it wisely. 💅`,
+            embeds: [getGemGuide()]
         });
-    } 
+    }
     else if (interaction.customId === 'btn_no_gem') {
         await interaction.message.edit({ components: [] });
-        await interaction.reply({ content: `Alright, keep hoarding those shiny rocks! 💅` });
+        await interaction.reply({ content: `Alright, keep stacking those gems then! 💅` });
     }
 });
 
-// // ==========================================
-// 8. HALL OF FAME ENGINE
-client.on(Events.MessageReactionAdd, async (reaction, user) => {
-    // 🕵️‍♂️ DEBUG LOG: This will print the EXACT emoji name Discord sends to the bot
-    console.log(`✅ Reaction detected! Emoji Name: ${reaction.emoji.name} by ${user.tag}`);
-    
-    try {
-        if (reaction.partial) await reaction.fetch();
-        if (reaction.message.partial) await reaction.message.fetch();
-
-        const message = reaction.message;
-
-        // UPDATED: Checking for both unicode ✅ and the text identifier 'white_check_mark'
-        const isCorrectEmoji = reaction.emoji.name === '✅' || reaction.emoji.name === 'white_check_mark';
-
-        if (isCorrectEmoji && !user.bot && !processedMessages.has(message.id)) {
-            
-            const hallOfFameChannelId = '1524834362544357457'; 
-            const targetChannel = await client.channels.fetch(hallOfFameChannelId);
-
-            if (!targetChannel) {
-                console.error("❌ Hall of Fame: Channel not found.");
-                return; 
-            }
-
-            processedMessages.add(message.id);
-            const attachment = message.attachments.first()?.url;
-
-            const embed = {
-                color: 0xFFD700,
-                author: { 
-                    name: message.author.username,
-                    iconURL: message.author.displayAvatarURL()
-                },
-                description: message.content || "✨ Highlighted Moment",
-                image: attachment ? { url: attachment } : null,
-                footer: { text: `Archived by ${user.username} | ✨ !NF!N!TY Hall of Fame` },
-                timestamp: new Date(),
-            };
-
-            await targetChannel.send({ embeds: [embed] });
-        }
-    } catch (err) {
-        console.error("❌ Hall of Fame Error:", err);
-    }
-});
-// Final login
 client.login(process.env.DISCORD_TOKEN);
