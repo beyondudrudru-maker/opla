@@ -3,7 +3,7 @@ const { Client, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, Butt
 const express = require('express');
 
 // 1. IMPORT MODULES
-const supabase = require('./database/supabaseClient');
+const { ramClient } = require('./database/supabaseClient');
 
 const melody = require('./api/gemini');                          // 👈 NEW modular pipeline (was: aiModel)
 const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval'); // 👈 NEW: gold/gem guide injection, extracted out
@@ -43,16 +43,17 @@ client.once(Events.ClientReady, (readyClient) => {
 });
 
 // 4. MEMORY CLEANUP (Runs every hour)
-// NOTE: this cleans `chat_ram`, the lightweight activity log used by the
-// popup engines (6.3-6.5) and the developer override (6.1.5). It is
-// separate from Melody's cognitive memory (`conversation_turns` /
-// `long_term_memories`), which is owned by ai/gemini.js's pipeline and
-// pruned instead by reflection/reflectionJob.js — the two systems do not
-// need to share a cleanup cadence.
+// NOTE: this cleans ONLY `chat_ram` (Project 1 / ramClient), the
+// lightweight activity log used by the popup engines (6.3-6.5) and the
+// developer override (6.1.5). It must NEVER touch Project 2 / coreClient
+// (`user_profiles`, `emotional_state`, `conversation_turns`,
+// `long_term_memories` — personality traits + persistent memory). There is
+// currently no automatic pruning job for coreClient tables in this
+// codebase, so that data is retained indefinitely unless deleted manually.
 setInterval(async () => {
     const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
     try {
-        const { error } = await supabase.from('chat_ram').delete().lt('created_at', fiveHoursAgo);
+        const { error } = await ramClient.from('chat_ram').delete().lt('created_at', fiveHoursAgo);
         if (!error) console.log('🧹 5-Hour Memory Wiped.');
     } catch (err) { console.error('❌ Cleanup Error:', err); }
 }, 3600000);
@@ -64,7 +65,7 @@ client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
 
     // 🧠 6.1: MEMORY LOGIC (Always listening — activity log for popups/debug)
-    await supabase.from('chat_ram').insert([{
+    await ramClient.from('chat_ram').insert([{
         player_id: message.author.id,
         player_name: message.author.username,
         channel_id: message.channel.id,
@@ -85,7 +86,7 @@ client.on(Events.MessageCreate, async (message) => {
         await message.channel.send("🔄 Accessing the secure Supabase Memory RAM for you right now, my King... please wait. 🌸");
 
         try {
-            const { data, error } = await supabase
+            const { data, error } = await ramClient
                 .from('chat_ram')
                 .select('*')
                 .order('created_at', { ascending: false })
@@ -229,6 +230,9 @@ client.on(Events.MessageCreate, async (message) => {
             // old raw "last 20 messages" fetch from chat_ram), decides
             // response shape, assembles the prompt, routes to Flash or
             // Flash-Lite, and runs the repetition/emoji post-processor.
+            // NOTE: melody.generateContent talks to Project 2 (coreClient)
+            // internally via database/supabaseClient.js's core accessors —
+            // it never touches chat_ram / ramClient.
             const { text: aiReply, modelUsed, debug } = await melody.generateContent({
                 userId: message.author.id,
                 displayName: message.author.username,
@@ -245,12 +249,14 @@ client.on(Events.MessageCreate, async (message) => {
             await message.reply(aiReply);
 
             // NOTE: melody.generateContent already persists both turns into
-            // Melody's own conversation_turns/long_term_memories tables via
-            // decisionPipeline.finalizeTurn — no manual memory write needed
-            // here. We still log the reply into chat_ram below purely so
-            // the popup engines (6.3-6.5) and dev override (6.1.5), which
-            // read chat_ram directly, stay in sync.
-            await supabase.from('chat_ram').insert([{
+            // Melody's own conversation_turns/long_term_memories tables (on
+            // Project 2 / coreClient) via decisionPipeline.finalizeTurn —
+            // no manual memory write needed here. That data is never
+            // touched by the 5-hour cleanup above. We still log the reply
+            // into chat_ram (Project 1 / ramClient) below purely so the
+            // popup engines (6.3-6.5) and dev override (6.1.5), which read
+            // chat_ram directly, stay in sync.
+            await ramClient.from('chat_ram').insert([{
                 player_id: client.user.id,
                 player_name: "INF AI",
                 channel_id: message.channel.id,
@@ -271,7 +277,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     // ⚔️ 6.3: CONTEXTUAL SUPPORT ENGINE (Boss Struggles)
     if (!supportCooldown.has(message.channel.id)) {
-        const { data: history } = await supabase
+        const { data: history } = await ramClient
             .from('chat_ram')
             .select('message_content')
             .eq('channel_id', message.channel.id)
@@ -300,7 +306,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     // 💰 6.4: PROACTIVE GOLD GUIDE ENGINE (Smart Frequency Trigger)
     if (!goldCooldown.has(message.channel.id)) {
-        const { data: history } = await supabase
+        const { data: history } = await ramClient
             .from('chat_ram')
             .select('message_content')
             .eq('channel_id', message.channel.id)
@@ -337,7 +343,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     // 💎 6.5: PROACTIVE GEM GUIDE ENGINE (Smart Frequency Trigger)
     if (!gemCooldown.has(message.channel.id)) {
-        const { data: history } = await supabase
+        const { data: history } = await ramClient
             .from('chat_ram')
             .select('message_content')
             .eq('channel_id', message.channel.id)
