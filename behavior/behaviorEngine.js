@@ -1,39 +1,14 @@
 /**
  * behavior/behaviorEngine.js
  *
- * PURPOSE
- *   The critical firewall between emotion and text. Emotion NEVER generates
- *   text directly — it only sets numeric dials here, which behaviorEngine
- *   turns into concrete, explicit generation directives (length, tone
- *   words, emoji budget, question-asking, react-vs-answer). This is what
- *   keeps "being angry" from silently degrading reasoning quality, and what
- *   keeps affection from silently degrading professionalism: they're
- *   different output channels entirely.
- *
- * RESPONSIBILITIES
- *   - Map emotional state + intent + relationship -> a BehaviorDirective.
- *   - Never touch factual/reasoning content — only shape and tone.
- *
- * INPUTS
- *   { emotionalState, intent, relationship, userMessageLength }
- *
- * OUTPUTS
- *   BehaviorDirective: {
- *     targetLength: 'short'|'medium'|'long',
- *     tone: string[],            // e.g. ['warm', 'slightly teasing']
- *     emojiBudget: number,       // max emojis, enforced later in postProcessor
- *     mode: 'conversational'|'professional'|'moderation',
- *     preferReact: boolean,      // react/tease vs. directly answer
- *     askFollowUp: boolean,
- *   }
- *
- * TRADEOFFS
- *   Keeping this deterministic (no LLM call) means shape decisions are
- *   instant and consistent turn to turn. The LLM still has full creative
- *   freedom in *how* it fulfills the directive — this only sets guardrails.
+ * Same firewall role as before — emotion/identity never write text
+ * directly, they only set dials here. Added: a userId gate that locks
+ * tone/mode before the emotional-state logic runs, so the creator/other
+ * split is a hard behavioral guarantee, not just a persona-text suggestion.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
+const { CREATOR_ID } = require('../persona/identityCore');
 
 function decideLength(intent, userMessageLength) {
   if (intent === INTENTS.HEAVY_TASK || intent === INTENTS.COMMAND) return 'long';
@@ -42,21 +17,9 @@ function decideLength(intent, userMessageLength) {
   return 'long';
 }
 
-function decideTone(emotionalState, intent) {
-  const tone = [];
-  if (emotionalState.warmth > 65) tone.push('warm');
-  if (emotionalState.playfulness > 55) tone.push('playfully teasing');
-  if (emotionalState.professionalism > 80) tone.push('focused and precise');
-  if (emotionalState.annoyance > 40) tone.push('clipped, coldly composed');
-  if (emotionalState.jealousy > 30) tone.push('subtly possessive, never insecure');
-  if (intent === INTENTS.EMOTIONAL_DISCLOSURE) tone.push('gentle, fully present');
-  if (tone.length === 0) tone.push('calm, naturally confident');
-  return tone;
-}
-
-function decideEmojiBudget(emotionalState) {
+function decideEmojiBudget(emotionalState, isCreatorPath) {
+  if (isCreatorPath) return emotionalState.warmth > 60 ? 2 : 1;
   if (emotionalState.professionalism > 85) return 0;
-  if (emotionalState.playfulness > 60) return 2;
   if (emotionalState.warmth > 50) return 1;
   return 0;
 }
@@ -67,14 +30,25 @@ function decideMode(intent, isModeration) {
   return 'conversational';
 }
 
-function decide({ emotionalState, intent, relationship, userMessageLength, isModeration }) {
+function decide({ userId, emotionalState, intent, relationship, userMessageLength, isModeration }) {
+  const isCreatorPath = userId === CREATOR_ID;
+
+  // Moderation always overrides the relationship gate — safety stays rule 1
+  // for everyone, including the creator.
+  const tone = isModeration
+    ? ['calm, firm, protective']
+    : isCreatorPath
+      ? ['loving', 'a little shy', 'nurturing']
+      : ['kind', 'warm', 'professional'];
+
   return {
     targetLength: decideLength(intent, userMessageLength),
-    tone: decideTone(emotionalState, intent),
-    emojiBudget: decideEmojiBudget(emotionalState),
+    tone,
+    emojiBudget: decideEmojiBudget(emotionalState, isCreatorPath && !isModeration),
     mode: decideMode(intent, isModeration),
-    preferReact: intent === INTENTS.BANTER || intent === INTENTS.SOCIAL,
+    preferReact: !isCreatorPath && (intent === INTENTS.BANTER || intent === INTENTS.SOCIAL),
     askFollowUp: intent === INTENTS.EMOTIONAL_DISCLOSURE || emotionalState.curiosity > 55,
+    forbidTraits: ['sass', 'ego', 'robotic/architectural language', 'mentions of programming or logic'],
   };
 }
 
