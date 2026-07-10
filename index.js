@@ -190,7 +190,60 @@ client.on(Events.MessageCreate, async (message) => {
             }
         } // End of Hybrid Interceptor
 
-        // ==========================================
+        //
+// ==========================================
+// 📢 6.2.1c: ANNOUNCEMENT INTERCEPTOR (Real @everyone / @user pings)
+// Only fires when creator/admin explicitly asks to mention/announce.
+// This is a deterministic Discord action, not an AI-generated reply —
+// the AI never fakes a mention in text; only this block can send a real one.
+// ==========================================
+const announceTriggers = ['mention everyone', 'tag everyone', 'announce', 'leave message', 'send message to everyone', 'ping everyone'];
+const wantsAnnouncement = announceTriggers.some(t => lowerText.includes(t));
+
+if (isExplicitlyTagged && wantsAnnouncement) {
+
+    const isCreator = message.author.id === '1369404203880939650';
+    const isAdmin = message.member?.roles.cache.has('1372987132855058504');
+
+    if (!isCreator && !isAdmin) {
+        return message.reply("❌ Only my Creator or a Clan Admin can ask me to send announcements.");
+    }
+
+    // Extract the actual message to broadcast: strip the bot mention and
+    // the trigger phrase itself, keep whatever's left as the content.
+    let announceText = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
+    for (const trigger of announceTriggers) {
+        announceText = announceText.replace(new RegExp(trigger, 'i'), '').trim();
+    }
+    if (announceText.length === 0) {
+        announceText = 'Please check the announcement above! 🌸';
+    }
+
+    // Decide target: real @everyone, or a specific mentioned user, based
+    // on what's actually present in the message (Discord's own mention data).
+    const targetsEveryone = message.mentions.everyone || lowerText.includes('everyone');
+    const targetedUser = message.mentions.users.filter(u => u.id !== client.user.id).first();
+
+    try {
+        if (targetsEveryone) {
+            await message.channel.send({
+                content: `@everyone ${announceText}`,
+                allowedMentions: { parse: ['everyone'] },
+            });
+        } else if (targetedUser) {
+            await message.channel.send({
+                content: `<@${targetedUser.id}> ${announceText}`,
+                allowedMentions: { users: [targetedUser.id] },
+            });
+        } else {
+            return message.reply("⚠️ Tell me who to mention — @everyone or tag a specific person.");
+        }
+        return; // stop here, don't also run Melody Core for this message
+    } catch (err) {
+        console.error('[ANNOUNCEMENT ERROR]', err);
+        return message.reply("❌ I couldn't send that — check my permissions in this channel.");
+    }
+} ==========================================
         // 🧠 6.2.2: MELODY CORE — now routed through the modular pipeline
         // (relationship / emotion / memory ranking / behavior / prompt
         //  assembly all happen inside melody.generateContent; this handler
