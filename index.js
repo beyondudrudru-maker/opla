@@ -69,7 +69,8 @@ client.on(Events.MessageCreate, async (message) => {
         message_content: message.content
     }]);
 
-    // ... (Baaki ka code yahan se continue karo, jaise `const lowerText = ...`)
+    const lowerText = message.content.toLowerCase();
+    const isExplicitlyTagged = message.content.includes(`<@${client.user.id}>`) || message.content.includes(`<@!${client.user.id}>`);
 
     // 👑 6.1.5: DEVELOPER OVERRIDE (Runs FIRST)
     if (lowerText.includes('fetch chats from supabase') || lowerText.includes('present all chats')) {
