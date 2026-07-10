@@ -1,18 +1,30 @@
 const { Events } = require('discord.js');
-
 const { getGoldGuide, getGemGuide } = require('../data/gameData.js');
 const supabase = require('../database/supabase.js');
 const aiBrain = require('../api/gemini.js');
+
+// 🛡️ GLOBAL DEDUPLICATION SET (Prevents double processing)
+const processedMessages = new Set();
 
 module.exports = {
     name: Events.MessageCreate,
     once: false,
     async execute(message, client) {
 
+        // Ignore bot messages
         if (message.author.bot) return;
+
+        // 🛡️ DEDUPLICATION CHECK
+        if (processedMessages.has(message.id)) return;
+        processedMessages.add(message.id);
+        // Clear message ID after 5 seconds to free up memory
+        setTimeout(() => processedMessages.delete(message.id), 5000);
 
         const msgText = message.content.toLowerCase();
 
+        // ==========================================
+        // 1. KEYWORD TRIGGERS (Gold & Gems)
+        // ==========================================
         if (msgText.includes('need gold') || msgText.includes('less gold') || msgText.includes('struggling for gold') || msgText.includes('how to get gold')) {
             const goldEmbed = getGoldGuide();
             return message.channel.send({
@@ -29,6 +41,9 @@ module.exports = {
             });
         }
 
+        // ==========================================
+        // 2. DEVELOPER OVERRIDE COMMANDS
+        // ==========================================
         if (msgText.includes('fetch chats from supabase') || msgText.includes('present all chats')) {
             if (message.author.id !== '1369404203880939650') {
                 return message.reply("❌ **Access Denied:** You do not have clearance to view server logs.");
@@ -55,11 +70,15 @@ module.exports = {
             }
         }
 
+        // ==========================================
+        // 3. AI BRAIN LOGIC
+        // ==========================================
+        // If the bot wasn't mentioned, stop here.
         if (!message.mentions.has(client.user)) return;
 
         const userMessage = message.content.replace(`<@${client.user.id}>`, '').trim();
 
-        // NEW: capture who else got @mentioned besides Melody
+        // Capture who else got @mentioned besides Melody
         const mentions = {
             everyone: message.mentions.everyone,
             users: [...message.mentions.users.values()]
@@ -73,7 +92,7 @@ module.exports = {
         await message.channel.sendTyping();
 
         try {
-            const { text } = await aiBrain.generateContent({
+            const { text: aiReply } = await aiBrain.generateContent({
                 userId: message.author.id,
                 displayName: message.member?.displayName || message.author.username,
                 roles: message.member?.roles.cache.map((r) => r.name) || [],
@@ -83,7 +102,26 @@ module.exports = {
                 mentions,
             });
 
-            await message.reply(text);
+            // ✂️ CHUNKING LOGIC (Prevents 2000+ Character Crashes)
+            if (aiReply.length > 1950) {
+                const chunks = aiReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
+                
+                for (let i = 0; i < chunks.length; i++) {
+                    // Small delay to prevent Discord rate-limiting on long outputs
+                    await new Promise(resolve => setTimeout(resolve, 600));
+                    
+                    if (i === 0) {
+                        // First chunk sent as a reply without pinging you
+                        await message.reply({ content: chunks[i], allowedMentions: { repliedUser: false } });
+                    } else {
+                        // Following chunks sent as regular messages
+                        await message.channel.send(chunks[i]);
+                    }
+                }
+            } else {
+                // Short messages sent normally without pinging you
+                await message.reply({ content: aiReply, allowedMentions: { repliedUser: false } });
+            }
 
         } catch (error) {
             console.error('[AI BRAIN ERROR]', error);
