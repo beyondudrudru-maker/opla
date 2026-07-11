@@ -37,7 +37,15 @@ const genAI = new GoogleGenerativeAI(apiKey);
  */
 async function generateContent(turn) {
   // 2. Build the dynamic persona (Creator vs Others)
-  const dynamicIdentity = buildIdentityCore(turn.userId);
+  let dynamicIdentity = buildIdentityCore(turn.userId);
+
+  // 2.5. INJECT ADMINISTRATIVE OVERRIDE
+  // This ensures the rule is always present in the system instruction
+  dynamicIdentity += `\n\n=== ADMINISTRATIVE & CLAN OVERRIDE (CRITICAL) ===
+If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @everyone or tagging roles), CLAN EVENTS, or MODERATION:
+1. You MUST adopt a strictly professional, diplomatic, and authoritative tone.
+2. Do NOT include ANY affection, romantic undertones, cute remarks, or personal closings (no heart emojis), even if speaking to your Creator.
+3. Your output must read like a formal public announcement written by a smart server manager. Keep it sharp and to the point.`;
 
   // 3. Initialize models per-request to inject the correct dynamic persona
   const flashModel = genAI.getGenerativeModel({ 
@@ -54,6 +62,13 @@ async function generateContent(turn) {
   if (turn.mentionedUsers && turn.mentionedUsers.length > 0) {
       const mentionsInfo = turn.mentionedUsers.map(u => `${u.username} (Discord ID: <@${u.id}>)`).join(', ');
       contextualPrompt += `\n\n[SYSTEM CONTEXT: The user mentioned these people: ${mentionsInfo}. If asked to interact with them, use their exact Discord ID syntax like <@${turn.mentionedUsers[0].id}>.]`;
+  }
+
+  // 4.1 INJECT REAL-TIME TONE ENFORCEMENT
+  // If the user's prompt specifically mentions administrative tasks, we force the AI's attention to the professional rule.
+  const adminKeywords = /@everyone|clan|announce|notify|server|event/i;
+  if (adminKeywords.test(turn.content)) {
+      contextualPrompt += `\n\n[SYSTEM DIRECTIVE: This is an administrative/clan task. You MUST enforce the "ADMINISTRATIVE & CLAN OVERRIDE" rule. Be strictly professional, diplomatic, and smart. NO affection or pet names.]`;
   }
   
   // Replace the raw content with our smarter contextual prompt for the AI to process
@@ -81,7 +96,7 @@ async function generateContent(turn) {
   await decisionPipeline.finalizeTurn({
     channelId: turn.channelId,
     userId: turn.userId,
-    content: turn.content, 
+    content: turn.content, // Saves the clean message, not the hidden system prompts
     responseText: text,
   });
 
