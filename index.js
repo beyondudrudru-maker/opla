@@ -1,5 +1,14 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { 
+    Client, 
+    GatewayIntentBits, 
+    Events, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle,
+    Partials, 
+    EmbedBuilder 
+} = require('discord.js');
 const express = require('express');
 
 // 1. IMPORT MODULES
@@ -19,13 +28,18 @@ app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
     console.log(`🌐 Web Server running.`);
 });
 
-// 3. DISCORD CLIENT SETUP
+// 3. DISCORD CLIENT SETUP (Updated with Partials for Hall of Fame)
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions
+    ],
+    partials: [
+        Partials.Message, 
+        Partials.Channel, 
+        Partials.Reaction
     ]
 });
 
@@ -38,7 +52,7 @@ const adminCooldown = new Set();
 client.once(Events.ClientReady, (readyClient) => {
     console.log('----------------------------------------');
     console.log(`🌸 System Online: ${readyClient.user.tag} is awake.`);
-    console.log(`👁️  Engines Active: Contextual Support, AI, Banter, & Smart Data.`);
+    console.log(`👁️  Engines Active: Contextual Support, AI, Banter, Smart Data & Hall of Fame.`);
     console.log('----------------------------------------');
     client.user.setActivity('over the !NF!N!TY family 💅', { type: 3 });
 });
@@ -263,7 +277,7 @@ client.on(Events.MessageCreate, async (message) => {
                 knowledgeContext,
             });
 
-            console.log(`🧠 [MELODY] intent=${debug.intent} tier=${debug.tier} model=${modelUsed}`);
+            console.log(`🧠 [MELODY] intent=${debug?.intent} tier=${debug?.tier} model=${modelUsed}`);
 
             // 👑 EVERYONE MENTION LOGIC
             let finalReply = aiReply;
@@ -282,14 +296,14 @@ client.on(Events.MessageCreate, async (message) => {
                 parse: allowedToPingEveryone ? ['everyone'] : []
             };
 
-            // 👇 CHUNKING LOGIC (Rehta hai waisa hi)
+            // 👇 CHUNKING LOGIC
             if (finalReply.length > 1950) {
                 const chunks = finalReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
                 for (let i = 0; i < chunks.length; i++) {
                     if (i === 0) {
                         await message.reply({ content: chunks[i], allowedMentions: mentionOptions });
                     } else {
-                        await new Promise(resolve => setTimeout(resolve, 600)); // Delay
+                        await new Promise(resolve => setTimeout(resolve, 600)); 
                         await message.channel.send({ content: chunks[i], allowedMentions: { parse: mentionOptions.parse } });
                     }
                 }
@@ -311,7 +325,7 @@ client.on(Events.MessageCreate, async (message) => {
             try { await message.reply('My cognitive processors are cooling down i am very busy right now! 🌸'); }
             catch (e) { await message.channel.send(`<@${message.author.id}>, my cognitive processors are cooling down! 🌸`); }
         }
-    } // 👈 FIX: this closes the `if (isExplicitlyTagged)` block — it was left unclosed in the original
+    } 
 
     // ==========================================
     // 🔔 PROACTIVE POPUP ENGINES ...
@@ -419,7 +433,7 @@ client.on(Events.MessageCreate, async (message) => {
             });
         }
     }
-}); // 👈 FIX: this closes the `client.on(Events.MessageCreate, ...)` listener — it was left unclosed in the original
+}); 
 
 // ==========================================
 // 7. INTERACTION LISTENER (Buttons)
@@ -436,7 +450,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } else if (interaction.customId === 'btn_no_thanks') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({ content: `Fine, tough guys! Don't come crying to me when you lose. 💅` });
-    }
+}
 
     // --- GOLD BUTTONS ---
     else if (interaction.customId === 'btn_yes_gold') {
@@ -457,5 +471,63 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 });
 
-// 8. LOGIN
+// ==========================================
+// 8. HALL OF FAME LISTENER (Starboard)
+// ==========================================
+const TARGET_EMOJI = '✅'; 
+const HALL_OF_FAME_CHANNEL_ID = 'YOUR_HALL_OF_FAME_CHANNEL_ID_HERE'; // Add your channel ID
+const REQUIRED_REACTIONS = 1; 
+
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+    
+    if (reaction.partial) {
+        try {
+            await reaction.fetch();
+        } catch (error) {
+            console.error('Something went wrong when fetching the message:', error);
+            return;
+        }
+    }
+
+    if (user.bot) return;
+
+    if (reaction.emoji.name === TARGET_EMOJI && reaction.count === REQUIRED_REACTIONS) {
+        const message = reaction.message;
+
+        try {
+            const hallOfFameChannel = await client.channels.fetch(HALL_OF_FAME_CHANNEL_ID);
+            
+            if (!hallOfFameChannel) {
+                console.error('Hall of Fame channel not found!');
+                return;
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00') 
+                .setAuthor({ 
+                    name: message.author.username, 
+                    iconURL: message.author.displayAvatarURL({ dynamic: true }) 
+                })
+                .setDescription(message.content || '✅ *Highlighted Moment*')
+                .setFooter({ text: `Archived by ${user.username} | ✅ !NF!N!TY Hall of Fame` })
+                .setTimestamp(message.createdAt);
+
+            if (message.attachments.size > 0) {
+                const attachment = message.attachments.first();
+                if (attachment.contentType && attachment.contentType.startsWith('image/')) {
+                    embed.setImage(attachment.url);
+                }
+            }
+
+            await hallOfFameChannel.send({ embeds: [embed] });
+            console.log(`[SUCCESS] Message archived to Hall of Fame by ${user.username} using ✅`);
+
+        } catch (error) {
+            console.error('Error creating Hall of Fame entry:', error);
+        }
+    }
+});
+
+// 9. LOGIN
 client.login(process.env.DISCORD_TOKEN);
+ 
