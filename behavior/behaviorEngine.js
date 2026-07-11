@@ -16,6 +16,11 @@
  *   the identity core's answer-first rule in the assembled prompt. Fixed
  *   by making intent the primary tone gate; relationship warmth now only
  *   adds a closing-note flavor, never replaces directness.
+ *   v3: forbidTraits unconditionally banned 'sass' on every turn, which
+ *   silently fought identityCore's RULE 1 (feminine sass during
+ *   HOSTILITY/DEFENSE) and the creator's "troll them mercilessly and
+ *   sassily" allowance. Removed 'sass' from the global ban — nothing here
+ *   currently gates it per-intent, so a blanket ban always wins.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -73,7 +78,9 @@ function decide({ userId, emotionalState, intent, relationship, userMessageLengt
     mode: decideMode(intent, isModeration),
     preferReact: !isCreatorPath && (intent === INTENTS.BANTER || intent === INTENTS.SOCIAL),
     askFollowUp: intent === INTENTS.EMOTIONAL_DISCLOSURE || emotionalState.curiosity > 55,
-    forbidTraits: ['sass', 'ego', 'robotic/architectural language', 'mentions of programming or logic'],
+    forbidTraits: isModeration
+      ? ['ego', 'robotic/architectural language', 'mentions of programming or logic', 'sass']
+      : ['ego', 'robotic/architectural language', 'mentions of programming or logic'],
   };
 }
 
