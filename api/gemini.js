@@ -1,7 +1,8 @@
 require('dotenv').config();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const { IDENTITY_CORE } = require('../persona/identityCore');
+// 1. Import the dynamic builder instead of a static string
+const { buildIdentityCore } = require('../persona/identityCore'); 
 const decisionPipeline = require('../decision/decisionPipeline');
 const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
@@ -11,28 +12,7 @@ const styleLinter = require('../postProcessor/styleLinter');
  *
  * PURPOSE
  *   Thin entrypoint. Wires the modular pipeline together and exposes the
- *   same `smartBrain.generateContent`-shaped API your Discord event handler
- *   already calls — so integrating this is a drop-in replacement, not a
- *   rewrite of your bot.js.
- *
- * EXAMPLE FLOW
- *   Discord message -> handleMessage({ userId, displayName, roles,
- *     channelId, content, isGroupContext })
- *   -> decisionPipeline.planTurn(...)   [pure code: relationship, emotion,
- *        memory, ranking, behavior, prompt assembly]
- *   -> modelRouter.generate(...)        [only step touching Gemini]
- *   -> styleLinter.process(...)         [repetition/emoji enforcement]
- *   -> decisionPipeline.finalizeTurn(...) [persist the turn]
- *   -> return final text to Discord
- *
- * POTENTIAL PROBLEMS / PRODUCTION NOTES
- *   - Supabase not configured: falls back to in-memory store (see
- *     database/supabaseClient.js) — fine for dev, NOT for production
- *     (state resets on every restart).
- *   - Gemini rate limits: modelRouter already falls back Flash -> Lite on
- *     error; consider a second fallback (queued retry) if Lite also fails.
- *   - Reflection job (reflection/reflectionJob.js) must be scheduled
- *     externally (cron/Edge Function) — it does not run automatically here.
+ *   same API your Discord event handler calls.
  */
 
 const apiKey = process.env.GEMINI_API_KEY;
@@ -41,8 +21,6 @@ if (!apiKey) {
 }
 
 const genAI = new GoogleGenerativeAI(apiKey);
-const flashModel = genAI.getGenerativeModel({ model: 'gemini-3.5-flash', systemInstruction: IDENTITY_CORE });
-const liteModel = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite', systemInstruction: IDENTITY_CORE });
 
 /**
  * Main entrypoint, replacing the old smartBrain.generateContent(prompt).
@@ -50,14 +28,39 @@ const liteModel = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite', sys
  * @param {object} turn
  * @param {string} turn.userId - Discord user ID of the speaker
  * @param {string} turn.displayName - Discord display name
- * @param {string[]} [turn.roles] - Discord role names, e.g. ['admin']
+ * @param {string[]} [turn.roles] - Discord role names
  * @param {string} turn.channelId - Discord channel ID
  * @param {string} turn.content - the raw message text
  * @param {boolean} [turn.isGroupContext] - true for multi-party channels
+ * @param {Array} [turn.mentionedUsers] - Array of mentioned user objects
  * @returns {Promise<{ text: string, modelUsed: string, debug: object }>}
  */
 async function generateContent(turn) {
-  const plan = await decisionPipeline.planTurn(turn);
+  // 2. Build the dynamic persona (Creator vs Others)
+  const dynamicIdentity = buildIdentityCore(turn.userId);
+
+  // 3. Initialize models per-request to inject the correct dynamic persona
+  const flashModel = genAI.getGenerativeModel({ 
+      model: 'gemini-3.5-flash', 
+      systemInstruction: dynamicIdentity 
+  });
+  const liteModel = genAI.getGenerativeModel({ 
+      model: 'gemini-3.1-flash-lite', 
+      systemInstruction: dynamicIdentity 
+  });
+
+  // 4. Inject the Discord Mention Context (Smart Working Style)
+  let contextualPrompt = turn.content;
+  if (turn.mentionedUsers && turn.mentionedUsers.length > 0) {
+      const mentionsInfo = turn.mentionedUsers.map(u => `${u.username} (Discord ID: <@${u.id}>)`).join(', ');
+      contextualPrompt += `\n\n[SYSTEM CONTEXT: The user mentioned these people: ${mentionsInfo}. If asked to interact with them, use their exact Discord ID syntax like <@${turn.mentionedUsers[0].id}>.]`;
+  }
+  
+  // Replace the raw content with our smarter contextual prompt for the AI to process
+  const smartTurn = { ...turn, content: contextualPrompt };
+
+  // 5. Route through your existing architecture
+  const plan = await decisionPipeline.planTurn(smartTurn);
 
   const { result, modelUsed } = await modelRouter.generate({
     classification: plan.classification,
@@ -67,16 +70,18 @@ async function generateContent(turn) {
   });
 
   const rawText = result.response.text();
+  
   const { text } = styleLinter.process({
     channelId: turn.channelId,
     responseText: rawText,
     emojiBudget: plan.behaviorDirective.emojiBudget,
   });
 
+  // 6. Save the original content (without system brackets) to the database
   await decisionPipeline.finalizeTurn({
     channelId: turn.channelId,
     userId: turn.userId,
-    content: turn.content,
+    content: turn.content, 
     responseText: text,
   });
 
