@@ -66,6 +66,23 @@ setInterval(async () => {
     } catch (err) { console.error('❌ Cleanup Error:', err); }
 }, 3600000);
 
+// guildMemberRemove event listener
+client.on('guildMemberRemove', async (member) => {
+    try {
+        const { error } = await ramClient
+            .from('conversation_turns')
+            .delete()
+            .eq('user_id', member.id);
+            
+        if (error) {
+            console.error("Error wiping user data on leave:", error);
+        } else {
+            console.log(`Successfully wiped data for user: ${member.user.username}`);
+        }
+    } catch (err) {
+        console.error("Fatal error during member cleanup:", err);
+    }
+});
 // ==========================================
 // 6. MESSAGE EVENT LISTENER (Core Engines)
 // ==========================================
