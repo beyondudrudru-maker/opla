@@ -493,32 +493,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // 8. HALL OF FAME LISTENER (Starboard)
 // ==========================================
 const TARGET_EMOJI = '✅'; 
-const HALL_OF_FAME_CHANNEL_ID = '1524834362544357457'; 
+const HALL_OF_FAME_CHANNEL_ID = '1524834362544357457';
 const REQUIRED_REACTIONS = 1; 
 
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
-    
     if (reaction.partial) {
-        try {
-            await reaction.fetch();
-        } catch (error) {
-            console.error('Something went wrong when fetching the message:', error);
-            return;
-        }
+        try { await reaction.fetch(); } catch (error) { return; }
     }
 
     if (user.bot) return;
 
-    if (reaction.emoji.name === TARGET_EMOJI && reaction.count >= REQUIRED_REACTIONS) {
+    // Yahan hum name aur id dono check kar rahe hain taaki koi miss na ho
+    const isTargetEmoji = reaction.emoji.name === '✅' || reaction.emoji.name === 'white_check_mark';
+
+    if (isTargetEmoji && reaction.count >= REQUIRED_REACTIONS) {
         const message = reaction.message;
 
         try {
             const hallOfFameChannel = await client.channels.fetch(HALL_OF_FAME_CHANNEL_ID);
-            
-            if (!hallOfFameChannel) {
-                console.error('Hall of Fame channel not found!');
-                return;
-            }
+            if (!hallOfFameChannel) return;
 
             const embed = new EmbedBuilder()
                 .setColor('#00FF00') 
@@ -532,19 +525,19 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
 
             if (message.attachments.size > 0) {
                 const attachment = message.attachments.first();
-                if (attachment.contentType && attachment.contentType.startsWith('image/')) {
+                if (attachment?.contentType?.startsWith('image/')) {
                     embed.setImage(attachment.url);
                 }
             }
 
             await hallOfFameChannel.send({ embeds: [embed] });
-            console.log(`[SUCCESS] Message archived to Hall of Fame by ${user.username} using ✅`);
-
+            console.log(`[SUCCESS] Message archived by ${user.username}`);
         } catch (error) {
             console.error('Error creating Hall of Fame entry:', error);
         }
     }
 });
+
 
 
 // ==========================================
