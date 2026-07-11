@@ -83,6 +83,7 @@ client.on('guildMemberRemove', async (member) => {
         console.error("Fatal error during member cleanup:", err);
     }
 });
+
 // ==========================================
 // 6. MESSAGE EVENT LISTENER (Core Engines)
 // ==========================================
@@ -313,7 +314,7 @@ client.on(Events.MessageCreate, async (message) => {
                 parse: allowedToPingEveryone ? ['everyone'] : []
             };
 
-            // 👇 CHUNKING LOGIC
+            // 👇 CHUNKING LOGIC (Kept exactly as you had it!)
             if (finalReply.length > 1950) {
                 const chunks = finalReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
                 for (let i = 0; i < chunks.length; i++) {
@@ -458,7 +459,7 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isButton()) return;
 
-    // --- SUPPORT BUTTONS ---
+    // --- SUPPORT BUTTON---
     if (interaction.customId === 'btn_yes_help') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({
@@ -467,7 +468,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } else if (interaction.customId === 'btn_no_thanks') {
         await interaction.message.edit({ components: [] });
         await interaction.reply({ content: `Fine, tough guys! Don't come crying to me when you lose. 💅` });
-}
+    }
 
     // --- GOLD BUTTONS ---
     else if (interaction.customId === 'btn_yes_gold') {
@@ -492,7 +493,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // 8. HALL OF FAME LISTENER (Starboard)
 // ==========================================
 const TARGET_EMOJI = '✅'; 
-const HALL_OF_FAME_CHANNEL_ID = 'YOUR_HALL_OF_FAME_CHANNEL_ID_HERE'; // Add your channel ID
+const HALL_OF_FAME_CHANNEL_ID = '1524834362544357457'; 
 const REQUIRED_REACTIONS = 1; 
 
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
@@ -508,7 +509,7 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
 
     if (user.bot) return;
 
-    if (reaction.emoji.name === TARGET_EMOJI && reaction.count === REQUIRED_REACTIONS) {
+    if (reaction.emoji.name === TARGET_EMOJI && reaction.count >= REQUIRED_REACTIONS) {
         const message = reaction.message;
 
         try {
@@ -545,6 +546,17 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     }
 });
 
+
+// ==========================================
+// GLOBAL ERROR HANDLERS (Prevents Render Crashes)
+// ==========================================
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception thrown:', err);
+});
+
 // 9. LOGIN
 client.login(process.env.DISCORD_TOKEN);
- 
