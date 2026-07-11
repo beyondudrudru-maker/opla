@@ -6,7 +6,7 @@ const express = require('express');
 const { ramClient } = require('./database/supabaseClient');
 const melody = require('./api/gemini');
 const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval');
-const { triggerScriptedBanter, isPrimeTime } = require('./ai/banter');
+const reflectionJob = require('./reflection/reflectionJob');
 const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData');
 
 // 🛡️ DEDUPLICATION SET (Global)
