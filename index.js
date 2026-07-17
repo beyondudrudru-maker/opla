@@ -489,21 +489,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 });
 
+
 // ==========================================
 // 8. HALL OF FAME LISTENER (Starboard)
 // ==========================================
 const TARGET_EMOJI = '✅'; 
-const HALL_OF_FAME_CHANNEL_ID = '1524834362544357457';
+// Updated to the new Hall of Fame Channel ID
+const HALL_OF_FAME_CHANNEL_ID = '1527749743483158558'; 
 const REQUIRED_REACTIONS = 1; 
 
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
     if (reaction.partial) {
-        try { await reaction.fetch(); } catch (error) { return; }
+        try { 
+            await reaction.fetch(); 
+        } catch (error) { 
+            console.error('Failed to fetch partial reaction:', error);
+            return; 
+        }
     }
 
     if (user.bot) return;
 
-    // Yahan hum name aur id dono check kar rahe hain taaki koi miss na ho
+    // Checks for both the actual emoji and the text string identifier
     const isTargetEmoji = reaction.emoji.name === '✅' || reaction.emoji.name === 'white_check_mark';
 
     if (isTargetEmoji && reaction.count >= REQUIRED_REACTIONS) {
