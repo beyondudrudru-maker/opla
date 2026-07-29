@@ -12,7 +12,8 @@ const styleLinter = require('../postProcessor/styleLinter');
  * PURPOSE
  *   Modular entrypoint connecting Gemini models to the decision pipeline.
  *   Enhanced with natural human conversational dynamics, emotional depth,
- *   multilingual musical vibe participation, and strict lyrical accuracy.
+ *   multilingual musical vibe participation, strict lyrical accuracy, 
+ *   and LIVE GOOGLE SEARCH GROUNDING for real-time data.
  */
 
 const apiKey = process.env.GEMINI_API_KEY;
@@ -56,14 +57,16 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
 2. Omit pet names, heart emojis, or overly casual romantic undertones during formal server business.
 3. Keep public announcements concise, direct, and authoritative.`;
 
-    // Initialize per-request generative models with dynamic instructions
+    // Initialize per-request generative models with dynamic instructions and LIVE SEARCH
     const flashModel = genAI.getGenerativeModel({ 
         model: 'gemini-3.5-flash', 
-        systemInstruction: dynamicIdentity 
+        systemInstruction: dynamicIdentity,
+        tools: [{ googleSearch: {} }] // 🌐 Enables live internet search for current events
     });
     const liteModel = genAI.getGenerativeModel({ 
         model: 'gemini-3.1-flash-lite', 
-        systemInstruction: dynamicIdentity 
+        systemInstruction: dynamicIdentity,
+        tools: [{ googleSearch: {} }] // 🌐 Enables live internet search for current events
     });
 
     let contextualPrompt = turn.content;
