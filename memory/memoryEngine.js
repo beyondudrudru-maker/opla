@@ -4,50 +4,22 @@
  * PURPOSE
  *   Owns storage and coarse retrieval across memory tiers. Ranking/scoring
  *   of *which* memories make it into a prompt is a separate concern, owned
- *   by contextRanker — this module's job is fetching candidates and writing
- *   new memories, not deciding final relevance.
+ *   by contextRanker.
  *
  * TIERS
- *   - Working memory: last 8-12 raw turns in the *current session* (a
- *     session = a burst of activity within a 30-60 min gap). Purpose:
- *     pronoun/reference coherence, not knowledge.
- *   - Long-term memory: curated, distilled facts/events per user, written
- *     by extractCandidateMemories (normally run by reflection/reflectionJob,
- *     exposed here too for on-demand extraction).
- *
- * RESPONSIBILITIES
- *   - getWorkingMemory(channelId): last N turns, session-aware.
- *   - getLongTermCandidates(userId): all curated memories for ranking.
- *   - recordTurn(turn): persist a raw turn.
- *   - extractCandidateMemories(turns): lightweight heuristic extraction of
- *     durable facts from a batch of turns (real production version should
- *     replace the heuristic with a single cheap Lite-model call, see
- *     reflection/reflectionJob.js for where that swap happens). Also
- *     computes content_hash per candidate (see writeMemory).
- *   - writeMemory(userId, memory): persist one candidate. Relies on
- *     memory.content_hash being set (extractCandidateMemories does this)
- *     so database/supabaseClient.js's addLongTermMemory can dedupe against
- *     the (user_id, content_hash) unique constraint in schema.sql. This is
- *     what makes reflectionJob.runNightly idempotent across repeated runs
- *     over overlapping turns — a previously-written memory is silently
- *     skipped instead of duplicated.
- *
- * NOTE ON DELETION
- *   Nothing in this module deletes long-term memories. Pruning is
- *   deliberately not implemented anywhere in this codebase (see
- *   reflection/reflectionJob.js header) — long_term_memories is
- *   append/no-duplicate-only by project requirement.
- *
- * FUTURE SCALABILITY
- *   Long-term memory table will grow unbounded per active user (by
- *   design, per project requirement — no auto-prune). If you need
- *   semantic (embedding) search over memories at scale, add a `pgvector`
- *   column to long_term_memories and swap the topic_similarity scorer in
- *   contextRanker for a cosine-similarity query — nothing else changes.
+ *   - Working memory: last 8-12 raw turns in the *current session*.
+ *   - Long-term memory: curated, distilled facts/events per user, extracted
+ *     using an AI-powered lightweight model (Gemini Flash-Lite).
  */
 
 const crypto = require('crypto');
 const db = require('../database/supabaseClient');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+// Initialize a dedicated, fast model purely for background memory extraction
+const apiKey = process.env.GEMINI_API_KEY;
+const genAI = new GoogleGenerativeAI(apiKey);
+const extractionModel = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
 
 const SESSION_GAP_MINUTES = 45;
 const WORKING_MEMORY_SIZE = 10;
@@ -76,54 +48,60 @@ async function getLongTermCandidates(userId) {
 }
 
 /**
- * Deterministic content hash used for dedup on write. Same shape as
- * reflection/reflectionJob.js would expect: sha256 of
- * "<userId>::<lowercased, trimmed content>". Kept here (not in
- * supabaseClient.js) because hashing is a memory-shaping concern, not a
- * DB-access concern — supabaseClient just persists whatever hash it's
- * given.
+ * Deterministic content hash used for dedup on write.
  */
 function computeContentHash(userId, content) {
   return crypto.createHash('sha256').update(`${userId}::${content.trim().toLowerCase()}`).digest('hex');
 }
 
 /**
- * Heuristic extraction: flags turns that look durable/significant (long
- * enough, contains a personal disclosure marker, or a preference marker).
- * This is intentionally simple — swap for a Lite-model call in production
- * (see reflection/reflectionJob.js) once volume justifies the extra cost.
+ * AI-Powered Extraction: Uses Flash-Lite to intelligently extract durable
+ * facts, goals, and preferences from user turns.
+ * 
+ * NOTE: This is now an ASYNC function. Callers must use await.
  */
-const SIGNIFICANCE_MARKERS = [
-  { pattern: /i (feel|felt|am|was) (sad|anxious|happy|proud|scared|excited|worried)/i, score: 0.7 },
-  { pattern: /i (love|hate|prefer|really like|can't stand)/i, score: 0.5 },
-  { pattern: /my (project|job|exam|birthday|family|dog|cat)/i, score: 0.4 },
-  { pattern: /remember (this|when|that)/i, score: 0.6 },
-];
-
-function extractCandidateMemories(turns, userId) {
+async function extractCandidateMemories(turns, userId) {
   const candidates = [];
+  
   for (const turn of turns) {
+    // We only want to extract facts about the user from their own messages
     if (turn.role !== 'user' || turn.user_id !== userId) continue;
-    for (const { pattern, score } of SIGNIFICANCE_MARKERS) {
-      if (pattern.test(turn.content)) {
-        const content = turn.content.slice(0, 300);
+
+    const extractionPrompt = `
+      Analyze the following chat message from a user. 
+      Does it contain a durable, long-term fact, preference, goal, or emotional state that would be useful to remember for future conversations?
+      If YES, return a single concise sentence summarizing the fact (e.g., "User is studying computer engineering", "User loves playing Kingdom Clash").
+      If NO (it is just a greeting, a question, or irrelevant chatter), return exactly the word "NONE".
+      
+      User Message: "${turn.content}"
+    `;
+
+    try {
+      // Use the lightest, fastest model for this background task
+      const result = await extractionModel.generateContent(extractionPrompt);
+      const extraction = result.response.text().trim();
+
+      // If the AI found a fact, format it and push it to the candidates array
+      if (extraction !== "NONE" && extraction.length > 5) {
         candidates.push({
-          content,
-          content_hash: computeContentHash(userId, content),
-          topic_tags: [],
-          emotional_score: score,
+          content: extraction,
+          content_hash: computeContentHash(userId, extraction),
+          topic_tags: [], 
+          emotional_score: 0.8, // Assign a high default score for AI-validated facts
         });
-        break;
       }
+    } catch (error) {
+      // If the API hits a rate limit during extraction, log it but don't crash
+      console.error(`⚠️ Memory Extraction failed for turn:`, error.message);
     }
   }
+  
   return candidates;
 }
 
 async function writeMemory(userId, memory) {
   // content_hash should already be set by extractCandidateMemories, but
-  // compute it here too as a safety net for any future caller that
-  // constructs a memory object by hand instead of via extraction.
+  // compute it here too as a safety net.
   const withHash = memory.content_hash
     ? memory
     : { ...memory, content_hash: computeContentHash(userId, memory.content) };
