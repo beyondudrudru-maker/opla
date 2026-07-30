@@ -8,19 +8,6 @@
  * suggestion. Intent now gates tone/mode BEFORE relationship warmth is
  * layered on — an informational intent always gets a direct/precise tone
  * component, regardless of who's asking or how warm the relationship is.
- *
- * CHANGELOG
- *   v2: tone/mode previously branched only on isModeration + isCreatorPath,
- *   completely ignoring `intent`. That meant QUESTION and HEAVY_TASK got
- *   the same poetic/warm tone directive as BANTER, which could out-compete
- *   the identity core's answer-first rule in the assembled prompt. Fixed
- *   by making intent the primary tone gate; relationship warmth now only
- *   adds a closing-note flavor, never replaces directness.
- *   v3: forbidTraits unconditionally banned 'sass' on every turn, which
- *   silently fought identityCore's RULE 1 (feminine sass during
- *   HOSTILITY/DEFENSE) and the creator's "troll them mercilessly and
- *   sassily" allowance. Removed 'sass' from the global ban — nothing here
- *   currently gates it per-intent, so a blanket ban always wins.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -71,6 +58,19 @@ function decide({ userId, emotionalState, intent, relationship, userMessageLengt
   const isCreatorPath = userId === CREATOR_ID;
   const isInformational = INFORMATIONAL_INTENTS.has(intent);
 
+  // Base traits forbidden for all responses
+  let forbidTraits = ['ego', 'robotic/architectural language', 'mentions of programming or logic'];
+  
+  // Strict tone enforcement for moderation
+  if (isModeration) {
+      forbidTraits.push('sass');
+  }
+  
+  // Anti-Hallucination lock for coding, lyrics, and factual queries
+  if (isInformational) {
+      forbidTraits.push('hallucinating facts', 'guessing lyrics', 'combining distinct cultural works or songs');
+  }
+
   return {
     targetLength: decideLength(intent, userMessageLength),
     tone: decideTone(intent, isModeration, isCreatorPath),
@@ -78,9 +78,7 @@ function decide({ userId, emotionalState, intent, relationship, userMessageLengt
     mode: decideMode(intent, isModeration),
     preferReact: !isCreatorPath && (intent === INTENTS.BANTER || intent === INTENTS.SOCIAL),
     askFollowUp: intent === INTENTS.EMOTIONAL_DISCLOSURE || emotionalState.curiosity > 55,
-    forbidTraits: isModeration
-      ? ['ego', 'robotic/architectural language', 'mentions of programming or logic', 'sass']
-      : ['ego', 'robotic/architectural language', 'mentions of programming or logic'],
+    forbidTraits: forbidTraits,
   };
 }
 
