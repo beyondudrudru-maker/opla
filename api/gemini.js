@@ -11,9 +11,8 @@ const styleLinter = require('../postProcessor/styleLinter');
  *
  * PURPOSE
  *   Modular entrypoint connecting Gemini models to the decision pipeline.
- *   Enhanced with natural human conversational dynamics, emotional depth,
- *   multilingual musical vibe participation, strict lyrical accuracy, 
- *   and LIVE GOOGLE SEARCH GROUNDING for real-time data.
+ *   Optimized purely for Free Tier (Flash & Flash-Lite models) with 
+ *   LIVE GOOGLE SEARCH and a Smart Retry Mechanism to handle rate limits.
  */
 
 const apiKey = process.env.GEMINI_API_KEY;
@@ -24,17 +23,36 @@ if (!apiKey) {
 const genAI = new GoogleGenerativeAI(apiKey);
 
 /**
+ * 🔄 SMART RETRY MECHANISM (Exponential Backoff)
+ * Intercepts 429 (Rate Limit) and 503 (Server Overload) errors.
+ * Automatically pauses and retries the request before giving up.
+ */
+async function executeWithSmartRetry(apiCall, maxRetries = 3, initialDelayMs = 2000) {
+    let currentDelay = initialDelayMs;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            return await apiCall(); // Execute the model request
+        } catch (error) {
+            const isRateLimit = error.status === 429;
+            const isOverloaded = error.status === 503;
+            
+            // If we hit a speed limit and haven't run out of retries, pause and try again
+            if ((isRateLimit || isOverloaded) && attempt < maxRetries) {
+                console.log(`⏳ [SMART RETRY] API busy (Error ${error.status}). Pausing for ${currentDelay/1000}s... (Attempt ${attempt}/${maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, currentDelay));
+                
+                // Double the wait time for the next attempt (2s -> 4s -> 8s)
+                currentDelay *= 2; 
+            } else {
+                throw error; // If out of retries or a different error, throw to the main fallback
+            }
+        }
+    }
+}
+
+/**
  * Generates dynamic, human-like responses using Gemini AI.
- *
- * @param {object} turn
- * @param {string} turn.userId - Discord user ID of the speaker
- * @param {string} turn.displayName - Discord display name
- * @param {string[]} [turn.roles] - Discord role names
- * @param {string} turn.channelId - Discord channel ID
- * @param {string} turn.content - Raw message text
- * @param {boolean} [turn.isGroupContext] - True for multi-party channels
- * @param {Array} [turn.mentionedUsers] - Array of mentioned user objects
- * @returns {Promise<{ text: string, modelUsed: string, debug: object }>}
  */
 async function generateContent(turn) {
   try {
@@ -57,16 +75,17 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
 2. Omit pet names, heart emojis, or overly casual romantic undertones during formal server business.
 3. Keep public announcements concise, direct, and authoritative.`;
 
-    // Initialize per-request generative models with dynamic instructions and LIVE SEARCH
+    // 🧠 IMPLANTING FREE-TIER MODELS
+    // Initializing strictly the high-volume Flash models to protect quotas.
     const flashModel = genAI.getGenerativeModel({ 
-        model: 'gemini-3.5-flash', 
+        model: 'gemini-3.6-flash', 
         systemInstruction: dynamicIdentity,
-        tools: [{ googleSearch: {} }] // 🌐 Enables live internet search for current events
+        tools: [{ googleSearch: {} }] 
     });
     const liteModel = genAI.getGenerativeModel({ 
-        model: 'gemini-3.1-flash-lite', 
+        model: 'gemini-3.5-flash-lite', 
         systemInstruction: dynamicIdentity,
-        tools: [{ googleSearch: {} }] // 🌐 Enables live internet search for current events
+        tools: [{ googleSearch: {} }] 
     });
 
     let contextualPrompt = turn.content;
@@ -94,12 +113,15 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
     // Plan turn routing
     const plan = await decisionPipeline.planTurn(smartTurn);
 
-    // Generate output via model router
-    const { result, modelUsed } = await modelRouter.generate({
-      classification: plan.classification,
-      prompt: plan.prompt,
-      flashModel,
-      liteModel,
+    // 🚀 EXECUTE WITH SMART SWITCHING & RETRY
+    // This wrapper automatically pauses and retries if we hit rate limits!
+    const { result, modelUsed } = await executeWithSmartRetry(async () => {
+        return await modelRouter.generate({
+            classification: plan.classification,
+            prompt: plan.prompt,
+            flashModel,  // Standard fast model
+            liteModel,   // Fallback lightning-fast model
+        });
     });
 
     const rawText = result.response.text();
