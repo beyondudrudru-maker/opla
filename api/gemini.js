@@ -3,7 +3,6 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const { buildIdentityCore } = require('../persona/identityCore'); 
 const decisionPipeline = require('../decision/decisionPipeline');
-const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
 
 /**
@@ -11,8 +10,9 @@ const styleLinter = require('../postProcessor/styleLinter');
  *
  * PURPOSE
  *   Modular entrypoint connecting Gemini models to the decision pipeline.
- *   Optimized purely for Free Tier (Flash & Flash-Lite models) with 
- *   LIVE GOOGLE SEARCH and a Smart Retry Mechanism to handle rate limits.
+ *   Features a SMART CASCADE ROUTER: Initializes a massive arsenal of free 
+ *   models (Gen 2 through 3.6). Routes simple tasks to lighter models to 
+ *   save quotas, and seamlessly falls back to backups if rate limits are hit.
  */
 
 const apiKey = process.env.GEMINI_API_KEY;
@@ -23,32 +23,35 @@ if (!apiKey) {
 const genAI = new GoogleGenerativeAI(apiKey);
 
 /**
- * 🔄 SMART RETRY MECHANISM (Exponential Backoff)
- * Intercepts 429 (Rate Limit) and 503 (Server Overload) errors.
- * Automatically pauses and retries the request before giving up.
+ * 🔄 SMART CASCADE MECHANISM
+ * Loops through an array of models. If a model hits a 429 (Rate Limit) 
+ * or 503 (Overloaded) limit, it instantly switches to the next model.
  */
-async function executeWithSmartRetry(apiCall, maxRetries = 3, initialDelayMs = 2000) {
-    let currentDelay = initialDelayMs;
+async function executeWithCascade(prompt, modelsInOrder) {
+    let lastError;
     
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    for (const model of modelsInOrder) {
         try {
-            return await apiCall(); // Execute the model request
+            // Attempt to generate content with the current model in the lineup
+            const result = await model.generateContent(prompt);
+            return { result, modelUsed: model.model };
         } catch (error) {
             const isRateLimit = error.status === 429;
             const isOverloaded = error.status === 503;
             
-            // If we hit a speed limit and haven't run out of retries, pause and try again
-            if ((isRateLimit || isOverloaded) && attempt < maxRetries) {
-                console.log(`⏳ [SMART RETRY] API busy (Error ${error.status}). Pausing for ${currentDelay/1000}s... (Attempt ${attempt}/${maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, currentDelay));
-                
-                // Double the wait time for the next attempt (2s -> 4s -> 8s)
-                currentDelay *= 2; 
+            // If the API is busy, log it and let the loop move to the next backup model
+            if (isRateLimit || isOverloaded) {
+                console.log(`⚠️ [CASCADE] ${model.model} is busy (Error ${error.status}). Instantly switching to next model...`);
+                lastError = error;
             } else {
-                throw error; // If out of retries or a different error, throw to the main fallback
+                // If it's a different kind of error (like a network crash), stop and throw it
+                throw error; 
             }
         }
     }
+    
+    // If we run out of backup models, throw the final rate limit error to the fallback
+    throw lastError;
 }
 
 /**
@@ -75,24 +78,28 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
 2. Omit pet names, heart emojis, or overly casual romantic undertones during formal server business.
 3. Keep public announcements concise, direct, and authoritative.`;
 
-    // 🧠 IMPLANTING FREE-TIER MODELS
-    // Initializing strictly the high-volume Flash models to protect quotas.
-    const flashModel = genAI.getGenerativeModel({ 
-        model: 'gemini-3.6-flash', 
-        systemInstruction: dynamicIdentity,
-        tools: [{ googleSearch: {} }] 
-    });
-    const liteModel = genAI.getGenerativeModel({ 
-        model: 'gemini-3.5-flash-lite', 
-        systemInstruction: dynamicIdentity,
-        tools: [{ googleSearch: {} }] 
-    });
+    // 🧠 IMPLANTING THE ENTIRE FREE-TIER ARSENAL
+    const toolsConfig = { tools: [{ googleSearch: {} }] };
+    
+    // High-End Models
+    const flash36 = genAI.getGenerativeModel({ model: 'gemini-3.6-flash', systemInstruction: dynamicIdentity, ...toolsConfig });
+    const flash35 = genAI.getGenerativeModel({ model: 'gemini-3.5-flash', systemInstruction: dynamicIdentity, ...toolsConfig });
+    
+    // Fast / Lite Models
+    const lite35 = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite', systemInstruction: dynamicIdentity, ...toolsConfig });
+    const lite31 = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite', systemInstruction: dynamicIdentity, ...toolsConfig });
+    
+    // Baseline Models
+    const flash25 = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: dynamicIdentity, ...toolsConfig });
+    const flash2 = genAI.getGenerativeModel({ model: 'gemini-2-flash', systemInstruction: dynamicIdentity, ...toolsConfig });
 
     let contextualPrompt = turn.content;
     
     // Tag long-form or complex prompts to ensure accuracy and detail
     const complexTaskKeywords = /explain|detail|history|analyze|code|script|story|essay|poem|stotram|mantra|lyrics|translate|summary|how to|bhajan|song/i;
-    if (complexTaskKeywords.test(turn.content) || turn.content.length > 100) {
+    const isComplex = complexTaskKeywords.test(turn.content) || turn.content.length > 100;
+    
+    if (isComplex) {
         contextualPrompt = `[SYSTEM DIRECTIVE: EXECUTE WITH MAXIMUM PRECISION AND NATURAL HUMAN FLUENCY. STRICTLY ADHERE TO FACTUAL LYRICS IF A SPECIFIC SONG/BHAJAN IS REQUESTED. NO REPETITION LOOPS.]\n\n` + contextualPrompt;
     }
 
@@ -113,16 +120,21 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
     // Plan turn routing
     const plan = await decisionPipeline.planTurn(smartTurn);
 
-    // 🚀 EXECUTE WITH SMART SWITCHING & RETRY
-    // This wrapper automatically pauses and retries if we hit rate limits!
-    const { result, modelUsed } = await executeWithSmartRetry(async () => {
-        return await modelRouter.generate({
-            classification: plan.classification,
-            prompt: plan.prompt,
-            flashModel,  // Standard fast model
-            liteModel,   // Fallback lightning-fast model
-        });
-    });
+    // 🚀 DYNAMIC ROUTING & CASCADE LINEUP
+    let modelLineup = [];
+    const intent = plan.classification?.intent || 'social';
+
+    if (isComplex || intent === 'coding' || intent === 'question') {
+        // For tough tasks, start with the smartest models, fallback downwards
+        modelLineup = [flash36, flash35, lite35, lite31];
+    } else {
+        // For basic normal talks (social, banter), start with baseline models, fallback upwards
+        modelLineup = [flash2, flash25, lite31, lite35, flash35];
+    }
+
+    // Execute through the cascade!
+    const finalPrompt = plan.prompt || contextualPrompt;
+    const { result, modelUsed } = await executeWithCascade(finalPrompt, modelLineup);
 
     const rawText = result.response.text();
     
@@ -130,7 +142,7 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
     const { text } = styleLinter.process({
       channelId: turn.channelId,
       responseText: rawText,
-      emojiBudget: plan.behaviorDirective.emojiBudget,
+      emojiBudget: plan.behaviorDirective?.emojiBudget || 'medium',
     });
 
     // Save state to database
@@ -145,7 +157,7 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
       text,
       modelUsed,
       debug: {
-        intent: plan.classification.intent,
+        intent: intent,
         tier: plan.relationship?.tier || 'standard',
         behaviorDirective: plan.behaviorDirective,
       },
@@ -154,7 +166,7 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
   } catch (error) {
     console.error('❌ Error in generateContent pipeline:', error);
     
-    // Fallback response maintaining natural persona during API failures
+    // Fallback response maintaining natural persona during total API failures
     return {
       text: "Give me a quick second, my thoughts got a bit tangled up! Try asking me again in a moment. 🌸",
       modelUsed: 'fallback',
