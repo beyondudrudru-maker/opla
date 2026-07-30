@@ -8,9 +8,8 @@
  *
  * RESPONSIBILITIES
  *   - Pull recent conversation_turns per active user.
- *   - Extract candidate long-term memories (heuristic now; swap for a
- *     single cheap Lite-model call per user per day once volume justifies
- *     the cost — see memoryEngine.extractCandidateMemories docstring).
+ *   - Extract candidate long-term memories using the AI-powered lightweight 
+ *     model (Gemini Flash-Lite) inside memoryEngine.
  *   - Write new memories, prune each user's table to top-50 by score.
  *
  * SUGGESTED SCHEDULING
@@ -46,7 +45,11 @@ async function runForUser(userId, channelIds) {
   let allCandidates = [];
   for (const channelId of channelIds) {
     const turns = await db.getRecentTurns(channelId, 200);
-    allCandidates = allCandidates.concat(memoryEngine.extractCandidateMemories(turns, userId));
+    
+    // IMPORTANT FIX: We must 'await' the extraction because it now makes
+    // an asynchronous call to the Gemini API behind the scenes.
+    const extracted = await memoryEngine.extractCandidateMemories(turns, userId);
+    allCandidates = allCandidates.concat(extracted);
   }
 
   for (const candidate of allCandidates) {
