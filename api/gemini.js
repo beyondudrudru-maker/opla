@@ -3,6 +3,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const { buildIdentityCore } = require('../persona/identityCore'); 
 const decisionPipeline = require('../decision/decisionPipeline');
+const modelRouter = require('../router/modelRouter'); // 👈 Reconnected the router!
 const styleLinter = require('../postProcessor/styleLinter');
 
 /**
@@ -10,9 +11,8 @@ const styleLinter = require('../postProcessor/styleLinter');
  *
  * PURPOSE
  *   Modular entrypoint connecting Gemini models to the decision pipeline.
- *   Features a SMART CASCADE ROUTER: Initializes a massive arsenal of free 
- *   models (Gen 2 through 3.6). Routes simple tasks to lighter models to 
- *   save quotas, and seamlessly falls back to backups if rate limits are hit.
+ *   Initializes the massive arsenal of free models (Gen 2 through 3.6) and 
+ *   passes them to the modelRouter, which handles the Smart Cascade fallback.
  */
 
 const apiKey = process.env.GEMINI_API_KEY;
@@ -21,38 +21,6 @@ if (!apiKey) {
 }
 
 const genAI = new GoogleGenerativeAI(apiKey);
-
-/**
- * 🔄 SMART CASCADE MECHANISM
- * Loops through an array of models. If a model hits a 429 (Rate Limit) 
- * or 503 (Overloaded) limit, it instantly switches to the next model.
- */
-async function executeWithCascade(prompt, modelsInOrder) {
-    let lastError;
-    
-    for (const model of modelsInOrder) {
-        try {
-            // Attempt to generate content with the current model in the lineup
-            const result = await model.generateContent(prompt);
-            return { result, modelUsed: model.model };
-        } catch (error) {
-            const isRateLimit = error.status === 429;
-            const isOverloaded = error.status === 503;
-            
-            // If the API is busy, log it and let the loop move to the next backup model
-            if (isRateLimit || isOverloaded) {
-                console.log(`⚠️ [CASCADE] ${model.model} is busy (Error ${error.status}). Instantly switching to next model...`);
-                lastError = error;
-            } else {
-                // If it's a different kind of error (like a network crash), stop and throw it
-                throw error; 
-            }
-        }
-    }
-    
-    // If we run out of backup models, throw the final rate limit error to the fallback
-    throw lastError;
-}
 
 /**
  * Generates dynamic, human-like responses using Gemini AI.
@@ -93,6 +61,9 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
     const flash25 = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: dynamicIdentity, ...toolsConfig });
     const flash2 = genAI.getGenerativeModel({ model: 'gemini-2-flash', systemInstruction: dynamicIdentity, ...toolsConfig });
 
+    // Bundle models to send to the router
+    const models = { flash36, flash35, lite35, lite31, flash25, flash2 };
+
     let contextualPrompt = turn.content;
     
     // Tag long-form or complex prompts to ensure accuracy and detail
@@ -120,21 +91,13 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
     // Plan turn routing
     const plan = await decisionPipeline.planTurn(smartTurn);
 
-    // 🚀 DYNAMIC ROUTING & CASCADE LINEUP
-    let modelLineup = [];
-    const intent = plan.classification?.intent || 'social';
-
-    if (isComplex || intent === 'coding' || intent === 'question') {
-        // For tough tasks, start with the smartest models, fallback downwards
-        modelLineup = [flash36, flash35, lite35, lite31];
-    } else {
-        // For basic normal talks (social, banter), start with baseline models, fallback upwards
-        modelLineup = [flash2, flash25, lite31, lite35, flash35];
-    }
-
-    // Execute through the cascade!
-    const finalPrompt = plan.prompt || contextualPrompt;
-    const { result, modelUsed } = await executeWithCascade(finalPrompt, modelLineup);
+    // 🚀 EXECUTE THROUGH THE MODEL ROUTER
+    // We pass the models bundle to the router, which handles the cascade fallback automatically!
+    const { result, modelUsed } = await modelRouter.generate({
+        classification: plan.classification,
+        prompt: plan.prompt || contextualPrompt,
+        models: models
+    });
 
     const rawText = result.response.text();
     
@@ -157,7 +120,7 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
       text,
       modelUsed,
       debug: {
-        intent: intent,
+        intent: plan.classification?.intent || 'social',
         tier: plan.relationship?.tier || 'standard',
         behaviorDirective: plan.behaviorDirective,
       },
