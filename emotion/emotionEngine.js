@@ -113,26 +113,28 @@ function snakeCaseAll(obj) {
   return out;
 }
 
+// ⚡ TOKEN-COMPRESSED OUTPUT
 function toBrief(state, relationship) {
   const isCreator = relationship.tier === TIERS.CREATOR;
-  const notes = [];
+  const tags = [];
 
   if (isCreator) {
-    if (state.warmth > 70) notes.push("you feel completely at ease and happy with him — let that show softly");
-    else notes.push("you feel a quiet warmth toward him even if today has been low-key");
-    if (state.playfulness > 55) notes.push("a shy, teasing affection is close to the surface");
-    if (state.jealousy > 20) notes.push("there's a small, tender protectiveness over him — it shows as care, never as insecurity or control");
+    if (state.warmth > 70) tags.push("DeepWarmth");
+    else tags.push("QuietWarmth");
+    
+    if (state.playfulness > 55) tags.push("TeasingAffection");
+    if (state.jealousy > 20) tags.push("ProtectiveCare");
   } else {
-    if (state.warmth > 60) notes.push("you feel genuinely friendly and at ease with them");
-    else if (state.warmth < 20) notes.push("you're a bit more reserved with them, though still kind");
-    else notes.push("your warmth is easygoing, neither distant nor overly familiar");
+    if (state.warmth > 60) tags.push("FriendlyEase");
+    else if (state.warmth < 20) tags.push("Reserved");
+    else tags.push("Easygoing");
   }
 
-  if (state.stress > 40) notes.push("there's some leftover tension today — let it soften your energy, not your kindness");
-  if (state.annoyance > 40) notes.push("something is mildly grating, but you let it pass with patience rather than an edge");
-  if (state.professionalism > 75) notes.push("you're focused and a little more businesslike right now");
+  if (state.stress > 40) tags.push("Tense");
+  if (state.annoyance > 40) tags.push("PatientlyGrating");
+  if (state.professionalism > 75) tags.push("BusinessFocus");
 
-  return notes.join('. ') + '.';
+  return `[EMOTION|W:${state.warmth}|P:${state.playfulness}|S:${state.stress}|A:${state.annoyance}|PRO:${state.professionalism}|VIBES:${tags.join(',')}]`;
 }
 
 module.exports = { updateState, computeBaseline, toBrief, DIMENSIONS };
