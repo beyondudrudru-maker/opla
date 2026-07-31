@@ -33,16 +33,24 @@ const styleLinter = require('../postProcessor/styleLinter');
  *     — persona is still applied per-turn, it's just passed differently.
  *   - Persona/admin system-instruction prose compressed into dense tags:
  *     ~647 -> ~218 tokens per call (~66% cut), same behavioral contract.
- *   - Model tier lineup verified against the live Gemini API docs
- *     (checked 2026-07-31):
- *       gemini-3.6-flash, gemini-3.5-flash, gemini-3.5-flash-lite,
- *       gemini-3.1-flash-lite, gemini-2.5-flash, gemini-2.5-flash-lite
- *     are all currently live model IDs. gemini-2.0-flash(-lite) was shut
- *     down 2026-06-01 (confirmed), so `flash2` maps to gemini-2.5-flash-lite
- *     rather than that dead endpoint.
- *     HEADS UP: gemini-2.5-flash and gemini-2.5-flash-lite are BOTH
- *     scheduled to shut down 2026-10-16 (Gemini Developer API). That's
- *     `flash25` and `flash2` below — plan a swap before that date.
+ *   - REMOVED gemini-2.5-flash / gemini-2.5-flash-lite from the tier list.
+ *     Both keys in production were returning a hard 404: "This model
+ *     models/gemini-2.5-flash-lite is no longer available to new users."
+ *     This is NOT the official Oct 16 2026 shutdown — it's a separate,
+ *     earlier cutoff Google applies to keys/projects with no prior usage
+ *     of a given 2.5-series model (confirmed via multiple live reports on
+ *     Google's own AI developer forum and GitHub as of this week). Billing
+ *     does not restore access to a model in this state, so there was no
+ *     fallback path left in these two tiers — cut instead of chased.
+ *   - Down to a 4-tier lineup: gemini-3.6-flash, gemini-3.5-flash,
+ *     gemini-3.5-flash-lite, gemini-3.1-flash-lite. All four verified live
+ *     against the Gemini API changelog as of 2026-07-31.
+ *   - The 429s seen alongside those 404s in production logs point to
+ *     free-tier RPM limits (per the AI Studio rate-limit screen, this
+ *     project's peak RPM is 20) rather than a code issue — cascading
+ *     through multiple models per message burns through that fast.
+ *     Worth checking quota usage / enabling billing separately from
+ *     this fix.
  *   - Model-set construction is config-driven (MODEL_TIERS) instead of
  *     6 hand-repeated getGenerativeModel() calls per key.
  *   - Every original fault-tolerance layer (empty input, missing keys,
@@ -70,8 +78,9 @@ const MODEL_TIERS = [
   { key: 'flash35', id: 'gemini-3.5-flash' },
   { key: 'lite35', id: 'gemini-3.5-flash-lite' },
   { key: 'lite31', id: 'gemini-3.1-flash-lite' },
-  { key: 'flash25', id: 'gemini-2.5-flash' },     // shuts down 2026-10-16 — plan migration
-  { key: 'flash2', id: 'gemini-2.5-flash-lite' }, // shuts down 2026-10-16 — plan migration (was gemini-2.0-flash, retired 2026-06-01)
+  // flash25 (gemini-2.5-flash) and flash2 (gemini-2.5-flash-lite) removed:
+  // both hard-404 "no longer available to new users" on this project's
+  // keys. See CHANGELOG above before re-adding either.
 ];
 
 // Tool shape is unchanged between SDKs; it now lives in per-call `config`
