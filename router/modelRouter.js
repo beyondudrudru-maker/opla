@@ -19,6 +19,11 @@
  *   - modelUsed tag now reads `model.id` — the new SDK's model entries don't
  *     carry a `.model` property the way the old SDK's model objects did.
  *   - Failover / cascade / logging behavior is otherwise unchanged.
+ *   - DROPPED flash25 (gemini-2.5-flash) / flash2 (gemini-2.5-flash-lite)
+ *     from both lineups: both are hard-404ing ("no longer available to
+ *     new users") on this project's keys, ahead of and independent of the
+ *     official Oct 16 2026 shutdown date. Down to a 4-model cascade. See
+ *     api/gemini.js CHANGELOG for the full explanation before re-adding.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -51,21 +56,17 @@ function isComplexTask(intent, prompt) {
  */
 function buildModelLineup(isComplex, models) {
   if (isComplex) {
-    // 🧠 COMPLEX LINEUP: Gen 3 heavy models first, falling back to Gen 2 workhorses
+    // 🧠 COMPLEX LINEUP: Gen 3 heavy models first, falling back to lighter ones
     return [
       models.flash36,  // Gen 3.6 Flash
       models.flash35,  // Gen 3.5 Flash
       models.lite35,   // Gen 3.5 Flash Lite
-      models.lite31,   // Gen 3.1 Flash Lite
-      models.flash25,  // Gen 2.5 Flash
-      models.flash2    // Gen 2.5 Flash Lite (Fallback)
+      models.lite31    // Gen 3.1 Flash Lite (Fallback)
     ];
   }
 
-  // ⚡ LIGHT / CASUAL LINEUP: Gen 2 fast models first to conserve Gen 3 quota
+  // ⚡ LIGHT / CASUAL LINEUP: cheapest/fastest tiers first to conserve quota
   return [
-    models.flash25,   // Gen 2.5 Flash
-    models.flash2,    // Gen 2.5 Flash Lite
     models.lite31,    // Gen 3.1 Flash Lite
     models.lite35,    // Gen 3.5 Flash Lite
     models.flash35,   // Gen 3.5 Flash
