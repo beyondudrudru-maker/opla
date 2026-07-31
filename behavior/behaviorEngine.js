@@ -1,13 +1,5 @@
 /**
  * behavior/behaviorEngine.js
- *
- * Same firewall role as before — emotion/identity never write text
- * directly, they only set dials here. userId gate locks relationship
- * register (creator/other) before emotional-state logic runs, so that
- * split is a hard behavioral guarantee, not just a persona-text
- * suggestion. Intent now gates tone/mode BEFORE relationship warmth is
- * layered on — an informational intent always gets a direct/precise tone
- * component, regardless of who's asking or how warm the relationship is.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -37,38 +29,31 @@ function decideMode(intent, isModeration) {
 }
 
 function decideTone(intent, isModeration, isCreatorPath) {
-  if (isModeration) return ['calm, firm, protective'];
+  if (isModeration) return ['Calm', 'Firm', 'Protective'];
 
-  // Informational intents get a direct/precise tone as the PRIMARY
-  // descriptor, regardless of relationship. Relationship warmth is added
-  // as a secondary flavor note only — it can color the closing line, it
-  // can't replace directness.
   if (INFORMATIONAL_INTENTS.has(intent)) {
     return isCreatorPath
-      ? ['direct', 'precise', 'answer first, warm closing note only']
-      : ['direct', 'precise', 'clear'];
+      ? ['Direct', 'Precise', 'WarmClose']
+      : ['Direct', 'Precise', 'Clear'];
   }
 
   return isCreatorPath
-    ? ['loving', 'a little shy', 'nurturing']
-    : ['kind', 'warm', 'professional'];
+    ? ['Loving', 'Shy', 'Nurturing']
+    : ['Kind', 'Warm', 'Pro'];
 }
 
 function decide({ userId, emotionalState, intent, relationship, userMessageLength, isModeration }) {
   const isCreatorPath = userId === CREATOR_ID;
   const isInformational = INFORMATIONAL_INTENTS.has(intent);
 
-  // Base traits forbidden for all responses
-  let forbidTraits = ['ego', 'robotic/architectural language', 'mentions of programming or logic'];
+  let forbidTraits = ['Ego', 'Robotic', 'MetaLogic'];
   
-  // Strict tone enforcement for moderation
   if (isModeration) {
-      forbidTraits.push('sass');
+      forbidTraits.push('Sass');
   }
   
-  // Anti-Hallucination lock for coding, lyrics, and factual queries
   if (isInformational) {
-      forbidTraits.push('hallucinating facts', 'guessing lyrics', 'combining distinct cultural works or songs');
+      forbidTraits.push('Hallucination', 'GuessingLyrics', 'FusingWorks');
   }
 
   return {
@@ -82,4 +67,9 @@ function decide({ userId, emotionalState, intent, relationship, userMessageLengt
   };
 }
 
-module.exports = { decide };
+// ⚡ TOKEN-COMPRESSED OUTPUT
+function toBrief(decision) {
+  return `[BEHAVIOR|LEN:${decision.targetLength}|MODE:${decision.mode}|TONE:${decision.tone.join(',')}|EMOJI:${decision.emojiBudget}|REACT:${decision.preferReact ? 'Y':'N'}|ASK:${decision.askFollowUp ? 'Y':'N'}|NO:${decision.forbidTraits.join(',')}]`;
+}
+
+module.exports = { decide, toBrief };
