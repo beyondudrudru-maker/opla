@@ -4,8 +4,8 @@
  * PURPOSE
  *   Routes prompts to the appropriate lineup of Gemini models based on the 
  *   IntentClassifier output. Owns the Smart Cascade fallback mechanism AND
- *   the Multi-Key Failover system to protect against API rate limits (429) 
- *   and server overloads (503).
+ *   the Multi-Key Failover system to protect against API rate limits (429), 
+ *   server overloads (503), and missing models (404).
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -35,7 +35,7 @@ function buildModelLineup(intent, models) {
 
 /**
  * Executes the generation process, cascading through models and failing over 
- * to backup API keys if rate limits are encountered.
+ * to backup API keys if rate limits or other API errors are encountered.
  * 
  * @param {Object} args.classification - The output from intentClassifier
  * @param {String} args.prompt - The final assembled prompt
@@ -61,25 +61,22 @@ async function generate({ classification, prompt, modelSets }) {
         return { result, modelUsed: `${model.model} (Key ${keyIndex + 1})` };
         
       } catch (error) {
-        const isRateLimit = error.status === 429;
-        const isOverloaded = error.status === 503;
+        // 🛡️ THE FIX: We now catch ALL errors (429, 503, 404, etc.) 
+        // Instead of crashing, we log it and let the loop continue to the next model!
+        const status = error.status || 'Unknown';
+        console.warn(`⚠️ [ROUTER] ${model.model} on Key ${keyIndex + 1} failed (Error ${status}). Cascading to next model...`);
+        lastError = error; 
         
-        if (isRateLimit || isOverloaded) {
-          console.warn(`⚠️ [ROUTER] ${model.model} on Key ${keyIndex + 1} is busy (Error ${error.status}). Cascading...`);
-          lastError = error; // Save the error, but let the loop continue
-        } else {
-          // Unhandled error (like a network crash or malformed prompt), throw immediately
-          throw error;
-        }
+        // The loop automatically continues to the next model here.
       }
     }
     
     // If we reach this point, every single model on THIS API key failed.
-    console.warn(`⚠️ [ROUTER] API Key ${keyIndex + 1} is fully exhausted. Failing over to backup key...`);
+    console.warn(`⚠️ [ROUTER] API Key ${keyIndex + 1} is fully exhausted or malfunctioning. Failing over to backup key...`);
   }
 
-  // If the outer loop finishes, ALL keys are rate limited!
-  console.error('❌ [ROUTER] Critical: ALL keys and ALL models are currently rate-limited!');
+  // If the outer loop finishes, ALL keys are rate limited or broken!
+  console.error('❌ [ROUTER] Critical: ALL keys and ALL models failed!');
   throw lastError; // Throwing this triggers the "thoughts tangled up" message in api/gemini.js
 }
 
