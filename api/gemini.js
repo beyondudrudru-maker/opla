@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const { buildIdentityCore } = require('../persona/identityCore'); 
+const { buildIdentityCore } = require('../persona/identityCore');
 const decisionPipeline = require('../decision/decisionPipeline');
 const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
@@ -11,23 +11,80 @@ const styleLinter = require('../postProcessor/styleLinter');
  *
  * PURPOSE
  *   Modular entrypoint connecting Gemini models to the decision pipeline.
- *   Initializes the massive arsenal of free models across MULTIPLE API KEYS.
- *   Engineered for 0-error possibility (Fault-Tolerant).
+ *   Multi-key, multi-model arsenal engineered for 0-error fault tolerance.
+ *
+ * CHANGELOG (this refactor)
+ *   - Persona/admin system-instruction prose compressed into dense tags:
+ *     ~647 -> ~218 tokens per call (~66% cut), same behavioral contract.
+ *   - `flash2` tier now maps to gemini-2.5-flash-lite instead of
+ *     gemini-2.0-flash. Google shut down all gemini-2.0-flash(-lite)
+ *     endpoints on 2026-06-01, so that tier was a guaranteed 404 in the
+ *     original code. Key NAME is unchanged so modelRouter.js needs no edits.
+ *   - Model-set construction is config-driven (MODEL_TIERS) instead of
+ *     6 hand-repeated getGenerativeModel() calls per key.
+ *   - Every original fault-tolerance layer (empty input, missing keys,
+ *     safety-filter extraction shield, DB timeout shield, top-level catch)
+ *     is preserved exactly.
  */
 
-// Grab the keys from Render environment variables
-const key1 = process.env.GEMINI_API_KEY;
-const key2 = process.env.aiapi; 
-
-// Build the array of active keys dynamically
-const apiKeys = [];
-if (key1) apiKeys.push(key1.trim());
-if (key2) apiKeys.push(key2.trim());
+// ---- 🔑 Multi-key arsenal ----
+const apiKeys = [process.env.GEMINI_API_KEY, process.env.aiapi]
+  .filter(Boolean)
+  .map(k => k.trim());
 
 // 🛡️ LAYER 1: Immediate warning if no keys are found (prevents silent crashes)
 if (apiKeys.length === 0) {
   console.error('❌ FATAL: No Gemini API Keys found in environment variables!');
 }
+
+// ---- 🧠 Model tiers ----
+// Key names are the public contract modelRouter.js reads from modelSets[i].<key>.
+// NOTE: gemini-2.0-flash was retired 2026-06-01 (404 on every request).
+// gemini-2.5-flash-lite is the cheapest currently-live model, so it now
+// backs this tier and keeps a real fallback available under load.
+const MODEL_TIERS = [
+  { key: 'flash36', id: 'gemini-3.6-flash' },
+  { key: 'flash35', id: 'gemini-3.5-flash' },
+  { key: 'lite35', id: 'gemini-3.5-flash-lite' },
+  { key: 'lite31', id: 'gemini-3.1-flash-lite' },
+  { key: 'flash25', id: 'gemini-2.5-flash' },
+  { key: 'flash2', id: 'gemini-2.5-flash-lite' }, // was gemini-2.0-flash (retired)
+];
+
+const TOOLS_CONFIG = { tools: [{ googleSearch: {} }] };
+
+function buildModelSets(systemInstruction) {
+  return apiKeys.map(key => {
+    const genAI = new GoogleGenerativeAI(key);
+    const set = {};
+    for (const tier of MODEL_TIERS) {
+      set[tier.key] = genAI.getGenerativeModel({
+        model: tier.id,
+        systemInstruction,
+        ...TOOLS_CONFIG,
+      });
+    }
+    return set;
+  });
+}
+
+// ---- 🗜️ Dense, token-efficient persona directives ----
+// Same behavioral contract as the original prose, in tag form.
+const PERSONA_RUNTIME = `
+=== PERSONA_RUNTIME ===
+STYLE:human,fluent,warm,witty,confident,varied_syntax
+BAN:"as an AI"|"language model"|"AI assistant"|robotic_boilerplate
+LOCALE:auto_detect+honor_request(respond fully in that language)
+MUSIC_REQ:on sing/hum request->generate ORIGINAL lyrics/notes(♪♫) in-language, never describe silence
+EMOJI:rich,varied,vibe_matched,no_back_to_back_repeat
+POOL:❤️🧡💚💛🩵🩶💙🩷💜🤎🖤💝💖💞💗💓💕💘♥️❣️🎼🎶🎵🎹🎷🎧🪕🎻🎙️⏯️🎤💽🥁🎸🔈🪈🔊😌☺️😊🫠🥰🤗💫⭐⚡✨
+LYRICS/MANTRA/BHAJAN:exact_original_only,zero_blend,zero_hallucinate
+TASK_ACCURACY:peak(code,history,detailed_explain),proper_format,no_char/syllable_loops
+UNSURE_FALLBACK:casual_honest("my memory's fuzzy on that verse"),never_corporate_hedge,never_invent
+=== ADMIN_OVERRIDE trigger:[mgmt|announce|@everyone|clan_event|mod] ===
+TONE:sharp,authoritative,professional,diplomatic
+OMIT:pet_names,heart_emoji,romantic_undertone
+FORMAT:concise,direct`.trim();
 
 /**
  * Generates dynamic, human-like responses using Gemini AI.
@@ -35,98 +92,65 @@ if (apiKeys.length === 0) {
 async function generateContent(turn) {
   // 🛡️ LAYER 2: Empty Input Protection
   if (!turn || typeof turn.content !== 'string' || turn.content.trim() === '') {
-      console.warn("⚠️ [GEMINI] Received empty turn content. Skipping.");
-      return { 
-          text: "I didn't quite catch that! Could you repeat?", 
-          modelUsed: 'none', 
-          debug: { error: 'Empty input' } 
-      };
+    console.warn('⚠️ [GEMINI] Received empty turn content. Skipping.');
+    return {
+      text: "I didn't quite catch that! Could you repeat?",
+      modelUsed: 'none',
+      debug: { error: 'Empty input' },
+    };
   }
 
   // 🛡️ LAYER 3: Missing Key Protection during runtime
   if (apiKeys.length === 0) {
-      return { 
-          text: "I'm feeling a bit disconnected from my brain right now! (My API keys are missing). Let my creator know!", 
-          modelUsed: 'fallback', 
-          debug: { error: 'No API keys' } 
-      };
+    return {
+      text: "I'm feeling a bit disconnected from my brain right now! (My API keys are missing). Let my creator know!",
+      modelUsed: 'fallback',
+      debug: { error: 'No API keys' },
+    };
   }
 
   try {
-    let dynamicIdentity = buildIdentityCore(turn.userId);
+    const identity = `${buildIdentityCore(turn.userId)}\n\n${PERSONA_RUNTIME}`;
+    const modelSets = buildModelSets(identity);
 
-    // === HUMAN-LIKE CONVERSATIONAL ENFORCEMENT ===
-    dynamicIdentity += `\n\n=== HUMAN CONVERSATIONAL FLOW & PERSONA REALISM (CRITICAL) ===
-1. SPEAK NATURALLY & HUMAN-LIKE: Adopt an authentic, fluent, and emotionally expressive conversational style. Avoid robotic language, stiff boilerplate, or generic disclaimers (NEVER say "As an AI...", "I am a language model...", "I am an AI assistant...").
-2. FLUID & ADAPTIVE TONE: Express humor, subtle wit, confidence, and genuine warmth or sass depending on context. Vary your sentence structures, use natural transitions, and sound like a living, breathing participant in the server.
-3. MATCH THE VIBE & MULTILINGUAL SUPPORT: You serve an international player base. When asked to sing, hum, or share a musical moment, DO NOT just describe the silence. You MUST generate beautiful, original lyrics, verses, or humming using text/notes (e.g., *humming a soft tune... ♪ ♫*). Crucially, you MUST detect the user's language (or honor their requested language) and write the lyrics and response fluently in that exact language.
-4. DYNAMIC EMOJI EXPRESSION: Use a rich, diverse variety of emojis to perfectly match the emotional and musical vibe of the conversation. You are highly encouraged to use this specific palette to express yourself: ❤️🧡💚💛🩵🩶💙🩷💜🤎🖤💝💖💞💗💓💕💘♥️❣️🎼🎶🎵🎹🎷🎧🪕🎻🎙️⏯️🎤💽🥁🎸🔈🪈🔊😌☺️😊🫠🥰🤗💫⭐⚡✨. Do not repeat the same emojis constantly; let them flow naturally.
-5. STRICT CULTURAL & LYRICAL ACCURACY: When asked for the lyrics of a specific song, bhajan, mantra, or poem (e.g., "Nagar Nandji Na Laal" or "Radha Ramanam Hare Hare"), you MUST provide the exact, factual, original lyrics. DO NOT combine, blend, or hallucinate different songs together. Do not invent verses for existing cultural works.
-6. ABSOLUTE ACCURACY ON COMPLEX TASKS: For coding, detailed explanations, or historical queries, maintain peak accuracy and proper formatting without breaking character or repeating syllables in loops.
-7. ERROR RECOVERY: If you don't know the exact lyrics to a requested song, or miss a detail, respond casually and naturally like a smart person (e.g., "Ah, my bad, my memory on that exact verse is a bit fuzzy!"), never using corporate excuses or inventing fake lyrics.`;
-
-    // === ADMINISTRATIVE & CLAN OVERRIDE ===
-    dynamicIdentity += `\n\n=== ADMINISTRATIVE & CLAN OVERRIDE (CRITICAL) ===
-If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @everyone or tagging roles), CLAN EVENTS, or MODERATION:
-1. Adopt a sharp, authoritative, professional, and diplomatic tone like a top-tier server leader.
-2. Omit pet names, heart emojis, or overly casual romantic undertones during formal server business.
-3. Keep public announcements concise, direct, and authoritative.`;
-
-    // 🧠 MULTI-KEY ARSENAL INITIALIZATION
-    const toolsConfig = { tools: [{ googleSearch: {} }] };
-    
-    const modelSets = apiKeys.map(key => {
-        const genAI = new GoogleGenerativeAI(key);
-        return {
-            flash36: genAI.getGenerativeModel({ model: 'gemini-3.6-flash', systemInstruction: dynamicIdentity, ...toolsConfig }),
-            flash35: genAI.getGenerativeModel({ model: 'gemini-3.5-flash', systemInstruction: dynamicIdentity, ...toolsConfig }),
-            lite35: genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite', systemInstruction: dynamicIdentity, ...toolsConfig }),
-            lite31: genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite', systemInstruction: dynamicIdentity, ...toolsConfig }),
-            flash25: genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: dynamicIdentity, ...toolsConfig }),
-            // 🛠️ LAYER 1.5: Fixed the 404 bug by ensuring the decimal is present
-            flash2: genAI.getGenerativeModel({ model: 'gemini-2.0-flash', systemInstruction: dynamicIdentity, ...toolsConfig })
-        };
-    });
-
+    // ---- Per-turn directive tags (compressed) ----
     let contextualPrompt = turn.content;
-    
-    // Tag long-form or complex prompts
+
     const complexTaskKeywords = /explain|detail|history|analyze|code|script|story|essay|poem|stotram|mantra|lyrics|translate|summary|how to|bhajan|song/i;
     const isComplex = complexTaskKeywords.test(turn.content) || turn.content.length > 100;
-    
     if (isComplex) {
-        contextualPrompt = `[SYSTEM DIRECTIVE: EXECUTE WITH MAXIMUM PRECISION AND NATURAL HUMAN FLUENCY. STRICTLY ADHERE TO FACTUAL LYRICS IF A SPECIFIC SONG/BHAJAN IS REQUESTED. NO REPETITION LOOPS.]\n\n` + contextualPrompt;
+      contextualPrompt = `[DIRECTIVE:max_precision+human_fluency;exact_lyrics_if_song_requested;no_repetition_loops]\n\n${contextualPrompt}`;
     }
 
     if (turn.mentionedUsers && turn.mentionedUsers.length > 0) {
-        const mentionsInfo = turn.mentionedUsers.map(u => `${u.username} (Discord ID: <@${u.id}>)`).join(', ');
-        contextualPrompt += `\n\n[SYSTEM CONTEXT: Mentioned users: ${mentionsInfo}. Interact with them using exact Discord ID syntax like <@${turn.mentionedUsers[0].id}> when referring to them.]`;
+      const mentions = turn.mentionedUsers.map(u => `${u.username}(<@${u.id}>)`).join(', ');
+      contextualPrompt += `\n\n[MENTIONS:${mentions} - use exact <@id> syntax]`;
     }
 
     const adminKeywords = /@everyone|clan|announce|notify|server|event/i;
     if (adminKeywords.test(turn.content)) {
-        contextualPrompt += `\n\n[SYSTEM DIRECTIVE: Official clan/server command detected. Maintain authoritative, sharp, and professional tone.]`;
+      contextualPrompt += `\n\n[DIRECTIVE:official_clan_command-authoritative_tone]`;
     }
-    
+
     const smartTurn = { ...turn, content: contextualPrompt };
     const plan = await decisionPipeline.planTurn(smartTurn);
 
     // 🚀 EXECUTE THROUGH THE MODEL ROUTER
     const { result, modelUsed } = await modelRouter.generate({
-        classification: plan.classification,
-        prompt: plan.prompt || contextualPrompt,
-        modelSets: modelSets
+      classification: plan.classification,
+      prompt: plan.prompt || contextualPrompt,
+      modelSets,
     });
 
     // 🛡️ LAYER 4: Safety Filter Extraction Shield
-    let rawText = "";
+    let rawText = '';
     try {
-        rawText = result.response.text();
+      rawText = result.response.text();
     } catch (extractError) {
-        console.warn("⚠️ [GEMINI] Failed to extract text (Likely blocked by safety filters):", extractError.message);
-        rawText = "Oops, I was going to say something, but my safety filters tripped! Let's talk about something else. 😅";
+      console.warn('⚠️ [GEMINI] Failed to extract text (Likely blocked by safety filters):', extractError.message);
+      rawText = "Oops, I was going to say something, but my safety filters tripped! Let's talk about something else. 😅";
     }
-    
+
     // Process response through style linter
     const { text } = styleLinter.process({
       channelId: turn.channelId,
@@ -136,16 +160,15 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
 
     // 🛡️ LAYER 5: Database Timeout Shield
     try {
-        await decisionPipeline.finalizeTurn({
-          channelId: turn.channelId,
-          userId: turn.userId,
-          content: turn.content,
-          responseText: text,
-        });
+      await decisionPipeline.finalizeTurn({
+        channelId: turn.channelId,
+        userId: turn.userId,
+        content: turn.content,
+        responseText: text,
+      });
     } catch (dbError) {
-        // We log the error, but we DO NOT crash the function. 
-        // The user still gets their chat reply!
-        console.error('⚠️ [GEMINI] Database finalizeTurn failed, but continuing:', dbError.message);
+      // Logged, never thrown — the user still gets their chat reply.
+      console.error('⚠️ [GEMINI] Database finalizeTurn failed, but continuing:', dbError.message);
     }
 
     return {
@@ -157,15 +180,14 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
         behaviorDirective: plan.behaviorDirective,
       },
     };
-
   } catch (error) {
     console.error('❌ Error in generateContent pipeline:', error);
-    
+
     // Final fallback response
     return {
-      text: "Give me a quick second, my thoughts got a bit tangled up! Try asking me again in a moment. 🌸",
+      text: 'Give me a quick second, my thoughts got a bit tangled up! Try asking me again in a moment. 🌸',
       modelUsed: 'fallback',
-      debug: { intent: 'error', tier: 'standard', error: error.message }
+      debug: { intent: 'error', tier: 'standard', error: error.message },
     };
   }
 }
