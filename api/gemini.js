@@ -12,26 +12,46 @@ const styleLinter = require('../postProcessor/styleLinter');
  * PURPOSE
  *   Modular entrypoint connecting Gemini models to the decision pipeline.
  *   Initializes the massive arsenal of free models across MULTIPLE API KEYS.
- *   Passes these model sets to the router for rate-limit failover.
+ *   Engineered for 0-error possibility (Fault-Tolerant).
  */
 
 // Grab the keys from Render environment variables
 const key1 = process.env.GEMINI_API_KEY;
-const key2 = process.env.aiapi; // Your newly added second key
+const key2 = process.env.aiapi; 
 
 // Build the array of active keys dynamically
 const apiKeys = [];
 if (key1) apiKeys.push(key1.trim());
 if (key2) apiKeys.push(key2.trim());
 
+// 🛡️ LAYER 1: Immediate warning if no keys are found (prevents silent crashes)
 if (apiKeys.length === 0) {
-  console.error('❌ Gemini API Keys missing in .env file!');
+  console.error('❌ FATAL: No Gemini API Keys found in environment variables!');
 }
 
 /**
  * Generates dynamic, human-like responses using Gemini AI.
  */
 async function generateContent(turn) {
+  // 🛡️ LAYER 2: Empty Input Protection
+  if (!turn || typeof turn.content !== 'string' || turn.content.trim() === '') {
+      console.warn("⚠️ [GEMINI] Received empty turn content. Skipping.");
+      return { 
+          text: "I didn't quite catch that! Could you repeat?", 
+          modelUsed: 'none', 
+          debug: { error: 'Empty input' } 
+      };
+  }
+
+  // 🛡️ LAYER 3: Missing Key Protection during runtime
+  if (apiKeys.length === 0) {
+      return { 
+          text: "I'm feeling a bit disconnected from my brain right now! (My API keys are missing). Let my creator know!", 
+          modelUsed: 'fallback', 
+          debug: { error: 'No API keys' } 
+      };
+  }
+
   try {
     let dynamicIdentity = buildIdentityCore(turn.userId);
 
@@ -55,7 +75,6 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
     // 🧠 MULTI-KEY ARSENAL INITIALIZATION
     const toolsConfig = { tools: [{ googleSearch: {} }] };
     
-    // We map through every active API key to create a separate bundle of models
     const modelSets = apiKeys.map(key => {
         const genAI = new GoogleGenerativeAI(key);
         return {
@@ -64,13 +83,14 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
             lite35: genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite', systemInstruction: dynamicIdentity, ...toolsConfig }),
             lite31: genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite', systemInstruction: dynamicIdentity, ...toolsConfig }),
             flash25: genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: dynamicIdentity, ...toolsConfig }),
-            flash2: genAI.getGenerativeModel({ model: 'gemini-2-flash', systemInstruction: dynamicIdentity, ...toolsConfig })
+            // 🛠️ LAYER 1.5: Fixed the 404 bug by ensuring the decimal is present
+            flash2: genAI.getGenerativeModel({ model: 'gemini-2.0-flash', systemInstruction: dynamicIdentity, ...toolsConfig })
         };
     });
 
     let contextualPrompt = turn.content;
     
-    // Tag long-form or complex prompts to ensure accuracy and detail
+    // Tag long-form or complex prompts
     const complexTaskKeywords = /explain|detail|history|analyze|code|script|story|essay|poem|stotram|mantra|lyrics|translate|summary|how to|bhajan|song/i;
     const isComplex = complexTaskKeywords.test(turn.content) || turn.content.length > 100;
     
@@ -78,32 +98,34 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
         contextualPrompt = `[SYSTEM DIRECTIVE: EXECUTE WITH MAXIMUM PRECISION AND NATURAL HUMAN FLUENCY. STRICTLY ADHERE TO FACTUAL LYRICS IF A SPECIFIC SONG/BHAJAN IS REQUESTED. NO REPETITION LOOPS.]\n\n` + contextualPrompt;
     }
 
-    // Embed mentioned Discord users context
     if (turn.mentionedUsers && turn.mentionedUsers.length > 0) {
         const mentionsInfo = turn.mentionedUsers.map(u => `${u.username} (Discord ID: <@${u.id}>)`).join(', ');
         contextualPrompt += `\n\n[SYSTEM CONTEXT: Mentioned users: ${mentionsInfo}. Interact with them using exact Discord ID syntax like <@${turn.mentionedUsers[0].id}> when referring to them.]`;
     }
 
-    // Tag administrative commands for tone enforcement
     const adminKeywords = /@everyone|clan|announce|notify|server|event/i;
     if (adminKeywords.test(turn.content)) {
         contextualPrompt += `\n\n[SYSTEM DIRECTIVE: Official clan/server command detected. Maintain authoritative, sharp, and professional tone.]`;
     }
     
     const smartTurn = { ...turn, content: contextualPrompt };
-
-    // Plan turn routing
     const plan = await decisionPipeline.planTurn(smartTurn);
 
     // 🚀 EXECUTE THROUGH THE MODEL ROUTER
-    // We pass the entire ARRAY of model sets to the router for failover
     const { result, modelUsed } = await modelRouter.generate({
         classification: plan.classification,
         prompt: plan.prompt || contextualPrompt,
         modelSets: modelSets
     });
 
-    const rawText = result.response.text();
+    // 🛡️ LAYER 4: Safety Filter Extraction Shield
+    let rawText = "";
+    try {
+        rawText = result.response.text();
+    } catch (extractError) {
+        console.warn("⚠️ [GEMINI] Failed to extract text (Likely blocked by safety filters):", extractError.message);
+        rawText = "Oops, I was going to say something, but my safety filters tripped! Let's talk about something else. 😅";
+    }
     
     // Process response through style linter
     const { text } = styleLinter.process({
@@ -112,13 +134,19 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
       emojiBudget: plan.behaviorDirective?.emojiBudget || 'medium',
     });
 
-    // Save state to database
-    await decisionPipeline.finalizeTurn({
-      channelId: turn.channelId,
-      userId: turn.userId,
-      content: turn.content,
-      responseText: text,
-    });
+    // 🛡️ LAYER 5: Database Timeout Shield
+    try {
+        await decisionPipeline.finalizeTurn({
+          channelId: turn.channelId,
+          userId: turn.userId,
+          content: turn.content,
+          responseText: text,
+        });
+    } catch (dbError) {
+        // We log the error, but we DO NOT crash the function. 
+        // The user still gets their chat reply!
+        console.error('⚠️ [GEMINI] Database finalizeTurn failed, but continuing:', dbError.message);
+    }
 
     return {
       text,
@@ -133,7 +161,7 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
   } catch (error) {
     console.error('❌ Error in generateContent pipeline:', error);
     
-    // Fallback response maintaining natural persona during total API failures
+    // Final fallback response
     return {
       text: "Give me a quick second, my thoughts got a bit tangled up! Try asking me again in a moment. 🌸",
       modelUsed: 'fallback',
