@@ -3,7 +3,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const { buildIdentityCore } = require('../persona/identityCore'); 
 const decisionPipeline = require('../decision/decisionPipeline');
-const modelRouter = require('../router/modelRouter'); // 👈 Reconnected the router!
+const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
 
 /**
@@ -11,16 +11,22 @@ const styleLinter = require('../postProcessor/styleLinter');
  *
  * PURPOSE
  *   Modular entrypoint connecting Gemini models to the decision pipeline.
- *   Initializes the massive arsenal of free models (Gen 2 through 3.6) and 
- *   passes them to the modelRouter, which handles the Smart Cascade fallback.
+ *   Initializes the massive arsenal of free models across MULTIPLE API KEYS.
+ *   Passes these model sets to the router for rate-limit failover.
  */
 
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
-  console.error('❌ Gemini API Key missing in .env file!');
-}
+// Grab the keys from Render environment variables
+const key1 = process.env.GEMINI_API_KEY;
+const key2 = process.env.aiapi; // Your newly added second key
 
-const genAI = new GoogleGenerativeAI(apiKey);
+// Build the array of active keys dynamically
+const apiKeys = [];
+if (key1) apiKeys.push(key1.trim());
+if (key2) apiKeys.push(key2.trim());
+
+if (apiKeys.length === 0) {
+  console.error('❌ Gemini API Keys missing in .env file!');
+}
 
 /**
  * Generates dynamic, human-like responses using Gemini AI.
@@ -46,23 +52,21 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
 2. Omit pet names, heart emojis, or overly casual romantic undertones during formal server business.
 3. Keep public announcements concise, direct, and authoritative.`;
 
-    // 🧠 IMPLANTING THE ENTIRE FREE-TIER ARSENAL
+    // 🧠 MULTI-KEY ARSENAL INITIALIZATION
     const toolsConfig = { tools: [{ googleSearch: {} }] };
     
-    // High-End Models
-    const flash36 = genAI.getGenerativeModel({ model: 'gemini-3.6-flash', systemInstruction: dynamicIdentity, ...toolsConfig });
-    const flash35 = genAI.getGenerativeModel({ model: 'gemini-3.5-flash', systemInstruction: dynamicIdentity, ...toolsConfig });
-    
-    // Fast / Lite Models
-    const lite35 = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite', systemInstruction: dynamicIdentity, ...toolsConfig });
-    const lite31 = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite', systemInstruction: dynamicIdentity, ...toolsConfig });
-    
-    // Baseline Models
-    const flash25 = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: dynamicIdentity, ...toolsConfig });
-    const flash2 = genAI.getGenerativeModel({ model: 'gemini-2-flash', systemInstruction: dynamicIdentity, ...toolsConfig });
-
-    // Bundle models to send to the router
-    const models = { flash36, flash35, lite35, lite31, flash25, flash2 };
+    // We map through every active API key to create a separate bundle of models
+    const modelSets = apiKeys.map(key => {
+        const genAI = new GoogleGenerativeAI(key);
+        return {
+            flash36: genAI.getGenerativeModel({ model: 'gemini-3.6-flash', systemInstruction: dynamicIdentity, ...toolsConfig }),
+            flash35: genAI.getGenerativeModel({ model: 'gemini-3.5-flash', systemInstruction: dynamicIdentity, ...toolsConfig }),
+            lite35: genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite', systemInstruction: dynamicIdentity, ...toolsConfig }),
+            lite31: genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite', systemInstruction: dynamicIdentity, ...toolsConfig }),
+            flash25: genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: dynamicIdentity, ...toolsConfig }),
+            flash2: genAI.getGenerativeModel({ model: 'gemini-2-flash', systemInstruction: dynamicIdentity, ...toolsConfig })
+        };
+    });
 
     let contextualPrompt = turn.content;
     
@@ -92,11 +96,11 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS (using @e
     const plan = await decisionPipeline.planTurn(smartTurn);
 
     // 🚀 EXECUTE THROUGH THE MODEL ROUTER
-    // We pass the models bundle to the router, which handles the cascade fallback automatically!
+    // We pass the entire ARRAY of model sets to the router for failover
     const { result, modelUsed } = await modelRouter.generate({
         classification: plan.classification,
         prompt: plan.prompt || contextualPrompt,
-        models: models
+        modelSets: modelSets
     });
 
     const rawText = result.response.text();
