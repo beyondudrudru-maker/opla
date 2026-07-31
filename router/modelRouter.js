@@ -3,14 +3,9 @@
  *
  * PURPOSE
  *   Routes prompts to the appropriate lineup of Gemini models based on the 
- *   IntentClassifier output. Owns the Smart Cascade fallback mechanism to 
- *   protect against API rate limits (429) and server overloads (503).
- *
- * RESPONSIBILITIES
- *   - Map {intent, complexity, isModeration} -> model cascade lineup.
- *   - Execute the API call and gracefully degrade to lighter/older models 
- *     if the primary choices are rate-limited.
- *   - Own the fallback-on-error loop.
+ *   IntentClassifier output. Owns the Smart Cascade fallback mechanism AND
+ *   the Multi-Key Failover system to protect against API rate limits (429) 
+ *   and server overloads (503).
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -39,43 +34,52 @@ function buildModelLineup(intent, models) {
 }
 
 /**
- * Executes the generation process, automatically falling back through the lineup
- * if rate limits are encountered.
+ * Executes the generation process, cascading through models and failing over 
+ * to backup API keys if rate limits are encountered.
  * 
  * @param {Object} args.classification - The output from intentClassifier
  * @param {String} args.prompt - The final assembled prompt
- * @param {Object} args.models - An object containing all initialized generative models
+ * @param {Array} args.modelSets - An array containing initialized models for EACH Api Key
  */
-async function generate({ classification, prompt, models }) {
-  const lineup = buildModelLineup(classification.intent, models);
+async function generate({ classification, prompt, modelSets }) {
   let lastError;
 
-  for (const model of lineup) {
-    if (!model) continue; // Safety check if a model wasn't passed correctly
+  // 🔄 OUTER LOOP: Iterate through the different API keys (Failover System)
+  for (let keyIndex = 0; keyIndex < modelSets.length; keyIndex++) {
+    const models = modelSets[keyIndex];
+    const lineup = buildModelLineup(classification.intent, models);
 
-    try {
-      // Attempt to generate the response
-      const result = await model.generateContent(prompt);
-      
-      // Return the specific model's name (e.g., 'gemini-3.5-flash-lite') for your debug logs
-      return { result, modelUsed: model.model };
-      
-    } catch (error) {
-      const isRateLimit = error.status === 429;
-      const isOverloaded = error.status === 503;
-      
-      if (isRateLimit || isOverloaded) {
-        console.warn(`⚠️ [ROUTER] ${model.model} is busy (Error ${error.status}). Cascading to next model...`);
-        lastError = error; // Save the error, but let the loop continue to the next model
-      } else {
-        // Unhandled error (like a network crash or malformed prompt), throw immediately
-        throw error;
+    // 🔄 INNER LOOP: Iterate through the models on the current API key (Cascade System)
+    for (const model of lineup) {
+      if (!model) continue; // Safety check if a model wasn't passed correctly
+
+      try {
+        // Attempt to generate the response
+        const result = await model.generateContent(prompt);
+        
+        // Return which model AND which key was used for your debug logs
+        return { result, modelUsed: `${model.model} (Key ${keyIndex + 1})` };
+        
+      } catch (error) {
+        const isRateLimit = error.status === 429;
+        const isOverloaded = error.status === 503;
+        
+        if (isRateLimit || isOverloaded) {
+          console.warn(`⚠️ [ROUTER] ${model.model} on Key ${keyIndex + 1} is busy (Error ${error.status}). Cascading...`);
+          lastError = error; // Save the error, but let the loop continue
+        } else {
+          // Unhandled error (like a network crash or malformed prompt), throw immediately
+          throw error;
+        }
       }
     }
+    
+    // If we reach this point, every single model on THIS API key failed.
+    console.warn(`⚠️ [ROUTER] API Key ${keyIndex + 1} is fully exhausted. Failing over to backup key...`);
   }
 
-  // If the loop finishes and we are here, it means EVERY model in the lineup failed.
-  console.error('❌ [ROUTER] Critical: All models in the cascade are currently rate-limited!');
+  // If the outer loop finishes, ALL keys are rate limited!
+  console.error('❌ [ROUTER] Critical: ALL keys and ALL models are currently rate-limited!');
   throw lastError; // Throwing this triggers the "thoughts tangled up" message in api/gemini.js
 }
 
