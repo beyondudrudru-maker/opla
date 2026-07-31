@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 
 const { buildIdentityCore } = require('../persona/identityCore');
 const decisionPipeline = require('../decision/decisionPipeline');
@@ -14,17 +14,42 @@ const styleLinter = require('../postProcessor/styleLinter');
  *   Multi-key, multi-model arsenal engineered for 0-error fault tolerance.
  *
  * CHANGELOG (this refactor)
+ *   - MIGRATED SDK: `@google/generative-ai` is deprecated. Google archived
+ *     that repo (google-gemini/deprecated-generative-ai-js) in favor of a
+ *     single unified SDK. It still runs, but gets no new features or model
+ *     support, which is a bigger long-term 404 risk than any one model ID.
+ *     Swapped to the actively maintained `@google/genai` package.
+ *     Run: npm i @google/genai && npm uninstall @google/generative-ai
+ *   - API SHAPE CHANGE (old SDK -> new SDK):
+ *       genAI.getGenerativeModel({model, systemInstruction, tools})
+ *         -> no more per-model object; just an `ai` client + a model id string
+ *       model.generateContent(prompt)
+ *         -> ai.models.generateContent({ model, contents, config })
+ *       result.response.text()
+ *         -> result.text  (a plain property now, not a method call)
+ *     systemInstruction/tools now travel in `config` at CALL time instead of
+ *     being baked into a model object at BUILD time. Practical upshot: model
+ *     sets no longer need to be rebuilt on every turn (see MODEL_SETS below)
+ *     — persona is still applied per-turn, it's just passed differently.
  *   - Persona/admin system-instruction prose compressed into dense tags:
  *     ~647 -> ~218 tokens per call (~66% cut), same behavioral contract.
- *   - `flash2` tier now maps to gemini-2.5-flash-lite instead of
- *     gemini-2.0-flash. Google shut down all gemini-2.0-flash(-lite)
- *     endpoints on 2026-06-01, so that tier was a guaranteed 404 in the
- *     original code. Key NAME is unchanged so modelRouter.js needs no edits.
+ *   - Model tier lineup verified against the live Gemini API docs
+ *     (checked 2026-07-31):
+ *       gemini-3.6-flash, gemini-3.5-flash, gemini-3.5-flash-lite,
+ *       gemini-3.1-flash-lite, gemini-2.5-flash, gemini-2.5-flash-lite
+ *     are all currently live model IDs. gemini-2.0-flash(-lite) was shut
+ *     down 2026-06-01 (confirmed), so `flash2` maps to gemini-2.5-flash-lite
+ *     rather than that dead endpoint.
+ *     HEADS UP: gemini-2.5-flash and gemini-2.5-flash-lite are BOTH
+ *     scheduled to shut down 2026-10-16 (Gemini Developer API). That's
+ *     `flash25` and `flash2` below — plan a swap before that date.
  *   - Model-set construction is config-driven (MODEL_TIERS) instead of
  *     6 hand-repeated getGenerativeModel() calls per key.
  *   - Every original fault-tolerance layer (empty input, missing keys,
  *     safety-filter extraction shield, DB timeout shield, top-level catch)
- *     is preserved exactly.
+ *     is preserved exactly, with the extraction shield widened slightly to
+ *     also catch the new SDK's "empty text, no throw" failure mode (see
+ *     LAYER 4 below) in addition to the old thrown-error mode.
  */
 
 // ---- 🔑 Multi-key arsenal ----
@@ -39,34 +64,44 @@ if (apiKeys.length === 0) {
 
 // ---- 🧠 Model tiers ----
 // Key names are the public contract modelRouter.js reads from modelSets[i].<key>.
-// NOTE: gemini-2.0-flash was retired 2026-06-01 (404 on every request).
-// gemini-2.5-flash-lite is the cheapest currently-live model, so it now
-// backs this tier and keeps a real fallback available under load.
+// Verified live against ai.google.dev/gemini-api/docs/changelog on 2026-07-31.
 const MODEL_TIERS = [
   { key: 'flash36', id: 'gemini-3.6-flash' },
   { key: 'flash35', id: 'gemini-3.5-flash' },
   { key: 'lite35', id: 'gemini-3.5-flash-lite' },
   { key: 'lite31', id: 'gemini-3.1-flash-lite' },
-  { key: 'flash25', id: 'gemini-2.5-flash' },
-  { key: 'flash2', id: 'gemini-2.5-flash-lite' }, // was gemini-2.0-flash (retired)
+  { key: 'flash25', id: 'gemini-2.5-flash' },     // shuts down 2026-10-16 — plan migration
+  { key: 'flash2', id: 'gemini-2.5-flash-lite' }, // shuts down 2026-10-16 — plan migration (was gemini-2.0-flash, retired 2026-06-01)
 ];
 
+// Tool shape is unchanged between SDKs; it now lives in per-call `config`
+// instead of being baked into a model object at build time.
 const TOOLS_CONFIG = { tools: [{ googleSearch: {} }] };
 
-function buildModelSets(systemInstruction) {
+/**
+ * Builds one { ai, tiers... } bundle per API key.
+ *
+ * Unlike the old SDK, @google/genai has no concept of a pre-configured
+ * "model" object — systemInstruction/tools are supplied to
+ * generateContent() on every call instead. That means, unlike the original
+ * code, this does NOT need to be rebuilt per turn just to inject a fresh
+ * persona string: it's built once per process. Persona still varies
+ * per-user/per-turn — it's just passed as `generationConfig` at call time
+ * (see generateContent() below) rather than baked in here.
+ */
+function buildModelSets() {
   return apiKeys.map(key => {
-    const genAI = new GoogleGenerativeAI(key);
+    const ai = new GoogleGenAI({ apiKey: key });
     const set = {};
     for (const tier of MODEL_TIERS) {
-      set[tier.key] = genAI.getGenerativeModel({
-        model: tier.id,
-        systemInstruction,
-        ...TOOLS_CONFIG,
-      });
+      set[tier.key] = { id: tier.id, ai };
     }
     return set;
   });
 }
+
+// Built once at module load — see buildModelSets() doc comment above.
+const MODEL_SETS = buildModelSets();
 
 // ---- 🗜️ Dense, token-efficient persona directives ----
 // Same behavioral contract as the original prose, in tag form.
@@ -111,7 +146,6 @@ async function generateContent(turn) {
 
   try {
     const identity = `${buildIdentityCore(turn.userId)}\n\n${PERSONA_RUNTIME}`;
-    const modelSets = buildModelSets(identity);
 
     // ---- Per-turn directive tags (compressed) ----
     let contextualPrompt = turn.content;
@@ -136,16 +170,30 @@ async function generateContent(turn) {
     const plan = await decisionPipeline.planTurn(smartTurn);
 
     // 🚀 EXECUTE THROUGH THE MODEL ROUTER
+    // `generationConfig` carries what used to be baked into getGenerativeModel()
+    // — the new SDK wants systemInstruction/tools per-call, not per-model.
     const { result, modelUsed } = await modelRouter.generate({
       classification: plan.classification,
       prompt: plan.prompt || contextualPrompt,
-      modelSets,
+      modelSets: MODEL_SETS,
+      generationConfig: {
+        systemInstruction: identity,
+        tools: TOOLS_CONFIG.tools,
+      },
     });
 
     // 🛡️ LAYER 4: Safety Filter Extraction Shield
+    // Widened vs. the original: the new SDK's `.text` getter can either
+    // throw OR silently return empty on a safety-blocked/no-candidate
+    // response depending on version, so we guard against both.
     let rawText = '';
     try {
-      rawText = result.response.text();
+      rawText = result.text || '';
+      if (!rawText) {
+        const reason = result.candidates?.[0]?.finishReason || result.promptFeedback?.blockReason || 'unknown';
+        console.warn(`⚠️ [GEMINI] Empty response text (reason: ${reason}). Likely blocked by safety filters.`);
+        rawText = "Oops, I was going to say something, but my safety filters tripped! Let's talk about something else. 😅";
+      }
     } catch (extractError) {
       console.warn('⚠️ [GEMINI] Failed to extract text (Likely blocked by safety filters):', extractError.message);
       rawText = "Oops, I was going to say something, but my safety filters tripped! Let's talk about something else. 😅";
