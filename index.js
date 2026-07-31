@@ -96,12 +96,16 @@ client.on(Events.MessageCreate, async (message) => {
     setTimeout(() => processedMessages.delete(message.id), 5000);
 
     // 🧠 6.1: MEMORY LOGIC
-    await ramClient.from('chat_ram').insert([{
-        player_id: message.author.id,
-        player_name: message.author.username,
-        channel_id: message.channel.id,
-        message_content: message.content
-    }]);
+    try {
+        await ramClient.from('chat_ram').insert([{
+            player_id: message.author.id,
+            player_name: message.author.username,
+            channel_id: message.channel.id,
+            message_content: message.content
+        }]);
+    } catch (err) {
+        console.error('⚠️ Failed to save to chat_ram:', err.message);
+    }
 
     const lowerText = message.content.toLowerCase();
     const isExplicitlyTagged = message.content.includes(`<@${client.user.id}>`) || message.content.includes(`<@!${client.user.id}>`);
@@ -109,12 +113,11 @@ client.on(Events.MessageCreate, async (message) => {
     // 👑 6.1.5: DEVELOPER OVERRIDE (Runs FIRST)
     if (lowerText.includes('fetch chats from supabase') || lowerText.includes('present all chats')) {
         if (message.author.id !== '1369404203880939650') {
-            return message.reply("❌ **Access Denied:** You do not have clearance to view server logs.");
+            return message.reply("❌ **Access Denied:** You do not have clearance to view server logs.").catch(() => {});
         }
 
-        await message.channel.send("🔄 Accessing the secure Supabase Memory RAM for you right now, my King... please wait. 🌸");
-
         try {
+            await message.channel.send("🔄 Accessing the secure Supabase Memory RAM for you right now, my King... please wait. 🌸");
             const { data, error } = await ramClient
                 .from('chat_ram')
                 .select('*')
@@ -132,18 +135,17 @@ client.on(Events.MessageCreate, async (message) => {
 
         } catch (err) {
             console.error('[SUPABASE ERROR]', err);
-            return message.channel.send("⚠️ I encountered a critical error while trying to connect to my memory banks.");
+            return message.channel.send("⚠️ I encountered a critical error while trying to connect to my memory banks.").catch(() => {});
         }
     }
 
     // 🤖 6.2: AI RESPONSE LOGIC (Runs ONLY if explicitly tagged)
     if (isExplicitlyTagged) {
-
         const cleanText = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
         const lowerClean = cleanText.toLowerCase();
 
         if (cleanText.length === 0) {
-            return message.reply("Yes, my Beyonder? 🌸");
+            return message.reply("Yes, my Beyonder? 🌸").catch(() => {});
         }
 
         // ==========================================
@@ -157,11 +159,11 @@ client.on(Events.MessageCreate, async (message) => {
             const isAdmin = message.member.roles.cache.has('1372987132855058504');
 
             if (!isSakha && !isAdmin) {
-                return message.reply("❌ **Access Denied:** You must be my King or a Clan Admin to command me to modify users.");
+                return message.reply("❌ **Access Denied:** You must be my King or a Clan Admin to command me to modify users.").catch(() => {});
             }
 
             if (adminCooldown.has(message.author.id)) {
-                return message.reply("⏳ Please wait a few seconds before issuing another server command.");
+                return message.reply("⏳ Please wait a few seconds before issuing another server command.").catch(() => {});
             }
             adminCooldown.add(message.author.id);
             setTimeout(() => adminCooldown.delete(message.author.id), 5000);
@@ -170,14 +172,14 @@ client.on(Events.MessageCreate, async (message) => {
                 try {
                     await targetMember.kick("Requested by Admin/Creator via INF AI");
                     return message.reply(`👢 Consider it done! I have kicked ${targetMember.user.username} from the server.`);
-                } catch (err) { return message.reply("❌ I don't have permission to kick this user. Check my role hierarchy!"); }
+                } catch (err) { return message.reply("❌ I don't have permission to kick this user. Check my role hierarchy!").catch(() => {}); }
             }
 
             if (lowerClean.includes('ban')) {
                 try {
                     await targetMember.ban({ reason: "Requested by Admin/Creator via INF AI" });
                     return message.reply(`🔨 Handled. ${targetMember.user.username} has been permanently banned.`);
-                } catch (err) { return message.reply("❌ I don't have permission to ban this user."); }
+                } catch (err) { return message.reply("❌ I don't have permission to ban this user.").catch(() => {}); }
             }
 
             const roleBundles = {
@@ -207,10 +209,10 @@ client.on(Events.MessageCreate, async (message) => {
                         return message.reply(`✅ Perfectly executed! I have granted the requested role(s) to ${targetMember.user.username}. 🌸`);
                     }
                 } catch (err) {
-                    return message.reply("❌ **Role Error:** I cannot assign this. Please ensure my 'INF AI' role is placed HIGHER in your server settings than the roles you want me to give out.");
+                    return message.reply("❌ **Role Error:** I cannot assign this. Please ensure my 'INF AI' role is placed HIGHER in your server settings than the roles you want me to give out.").catch(() => {});
                 }
             } else {
-                return message.reply("⚠️ I couldn't figure out which role you want me to give. Try mentioning the role directly or using a bundle word like 'boss' or 'clan'.");
+                return message.reply("⚠️ I couldn't figure out which role you want me to give. Try mentioning the role directly or using a bundle word like 'boss' or 'clan'.").catch(() => {});
             }
         }
 
@@ -220,13 +222,15 @@ client.on(Events.MessageCreate, async (message) => {
         if (lowerClean.startsWith('say ') && message.author.id === '1369404203880939650') {
             const speechText = cleanText.substring(4).trim();
             if (speechText.length > 0) {
-                await message.channel.send(speechText);
-                await ramClient.from('chat_ram').insert([{
-                    player_id: client.user.id,
-                    player_name: "INF AI",
-                    channel_id: message.channel.id,
-                    message_content: speechText
-                }]);
+                try {
+                    await message.channel.send(speechText);
+                    await ramClient.from('chat_ram').insert([{
+                        player_id: client.user.id,
+                        player_name: "INF AI",
+                        channel_id: message.channel.id,
+                        message_content: speechText
+                    }]);
+                } catch (err) { console.error('⚠️ Proxy speech failed:', err.message); }
                 return;
             }
         }
@@ -242,7 +246,7 @@ client.on(Events.MessageCreate, async (message) => {
             const isAdmin = message.member?.roles.cache.has('1372987132855058504');
 
             if (!isCreator && !isAdmin) {
-                return message.reply("❌ Only my Creator or a Clan Admin can ask me to send announcements.");
+                return message.reply("❌ Only my Creator or a Clan Admin can ask me to send announcements.").catch(() => {});
             }
 
             let announceText = cleanText;
@@ -267,7 +271,7 @@ client.on(Events.MessageCreate, async (message) => {
                 return;
             } catch (err) {
                 console.error('[ANNOUNCEMENT ERROR]', err);
-                return message.reply("❌ I couldn't send that — check my permissions in this channel.");
+                return message.reply("❌ I couldn't send that — check my permissions in this channel.").catch(() => {});
             }
         }
 
@@ -303,18 +307,16 @@ client.on(Events.MessageCreate, async (message) => {
             const isAdmin = message.member?.roles.cache.has('1372987132855058504');
             const allowedToPingEveryone = message.mentions.everyone && (isCreator || isAdmin);
 
-            // Forcefully inject @everyone if AI forgot it
             if (allowedToPingEveryone && !finalReply.includes('@everyone')) {
                 finalReply = `@everyone\n\n${finalReply}`;
             }
 
-            // Define mention options
             const mentionOptions = {
                 repliedUser: false,
                 parse: allowedToPingEveryone ? ['everyone'] : []
             };
 
-            // 👇 CHUNKING LOGIC (Kept exactly as you had it!)
+            // 👇 CHUNKING LOGIC
             if (finalReply.length > 1950) {
                 const chunks = finalReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
                 for (let i = 0; i < chunks.length; i++) {
@@ -328,20 +330,27 @@ client.on(Events.MessageCreate, async (message) => {
             } else {
                 await message.reply({ content: finalReply, allowedMentions: mentionOptions });
             }
-            // 👆 END OF FIX
 
-            // Log AI reply to RAM
-            await ramClient.from('chat_ram').insert([{
-                player_id: client.user.id,
-                player_name: "INF AI",
-                channel_id: message.channel.id,
-                message_content: finalReply
-            }]);
+            // Log AI reply to RAM safely
+            try {
+                await ramClient.from('chat_ram').insert([{
+                    player_id: client.user.id,
+                    player_name: "INF AI",
+                    channel_id: message.channel.id,
+                    message_content: finalReply
+                }]);
+            } catch (dbErr) {
+                console.warn('⚠️ Failed to log AI reply to Supabase:', dbErr.message);
+            }
 
         } catch (error) {
             console.error('❌ AI Error:', error.message);
-            try { await message.reply('My cognitive processors are cooling down i am very busy right now! 🌸'); }
-            catch (e) { await message.channel.send(`<@${message.author.id}>, my cognitive processors are cooling down! 🌸`); }
+            // 🛡️ LAYER 1 FORTIFIED: Safe error fallback that will not crash if permissions are missing
+            try { 
+                await message.reply('My cognitive processors are cooling down, I am very busy right now! 🌸'); 
+            } catch (e) {
+                console.warn('⚠️ Could not send error fallback message (likely missing permissions).');
+            }
         }
     } 
 
@@ -351,105 +360,114 @@ client.on(Events.MessageCreate, async (message) => {
 
     // ⚔️ 6.3: CONTEXTUAL SUPPORT ENGINE (Boss Struggles)
     if (!supportCooldown.has(message.channel.id)) {
-        const { data: history } = await ramClient
-            .from('chat_ram')
-            .select('message_content')
-            .eq('channel_id', message.channel.id)
-            .order('created_at', { ascending: false })
-            .limit(2);
+        try {
+            const { data: history } = await ramClient
+                .from('chat_ram')
+                .select('message_content')
+                .eq('channel_id', message.channel.id)
+                .order('created_at', { ascending: false })
+                .limit(2);
 
-        const triggers = ['boss', 'tough', 'hard', 'score', 'stuck', 'impossible'];
-        const isDifficultyConvo = history && history.length >= 2 &&
-            history.every(m => triggers.some(t => m.message_content.toLowerCase().includes(t)));
+            const triggers = ['boss', 'tough', 'hard', 'score', 'stuck', 'impossible'];
+            const isDifficultyConvo = history && history.length >= 2 &&
+                history.every(m => triggers.some(t => m.message_content.toLowerCase().includes(t)));
 
-        if (isDifficultyConvo) {
-            supportCooldown.add(message.channel.id);
-            setTimeout(() => supportCooldown.delete(message.channel.id), 120000);
+            if (isDifficultyConvo) {
+                supportCooldown.add(message.channel.id);
+                setTimeout(() => supportCooldown.delete(message.channel.id), 120000);
 
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_yes_help').setLabel('Yes, Please!').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('btn_no_thanks').setLabel('No, I got this').setStyle(ButtonStyle.Secondary)
-            );
-
-            await message.channel.send({
-                content: `💅 I noticed you boys are struggling. Do you need me to ping the Advisors for a strategy breakdown?`,
-                components: [row]
-            });
-        }
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('btn_yes_help').setLabel('Yes, Please!').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId('btn_no_thanks').setLabel('No, I got this').setStyle(ButtonStyle.Secondary)
+                );
+                
+                // 🛡️ LAYER 3 FORTIFIED: Safe popup delivery
+                await message.channel.send({
+                    content: `💅 I noticed you boys are struggling. Do you need me to ping the Advisors for a strategy breakdown?`,
+                    components: [row]
+                });
+            }
+        } catch (err) { console.warn("⚠️ Support popup failed:", err.message); }
     }
 
     // 💰 6.4: PROACTIVE GOLD GUIDE ENGINE
     if (!goldCooldown.has(message.channel.id)) {
-        const { data: history } = await ramClient
-            .from('chat_ram')
-            .select('message_content')
-            .eq('channel_id', message.channel.id)
-            .order('created_at', { ascending: false })
-            .limit(5);
+        try {
+            const { data: history } = await ramClient
+                .from('chat_ram')
+                .select('message_content')
+                .eq('channel_id', message.channel.id)
+                .order('created_at', { ascending: false })
+                .limit(5);
 
-        const goldTriggers = ['gold', 'need gold', 'farm gold', 'how to farm', 'broke', 'no gold', 'out of gold'];
+            const goldTriggers = ['gold', 'need gold', 'farm gold', 'how to farm', 'broke', 'no gold', 'out of gold'];
 
-        let goldMentionCount = 0;
-        if (history) {
-            history.forEach(m => {
-                const content = m.message_content.toLowerCase();
-                if (goldTriggers.some(t => content.includes(t))) {
-                    goldMentionCount++;
-                }
-            });
-        }
+            let goldMentionCount = 0;
+            if (history) {
+                history.forEach(m => {
+                    const content = m.message_content.toLowerCase();
+                    if (goldTriggers.some(t => content.includes(t))) {
+                        goldMentionCount++;
+                    }
+                });
+            }
 
-        if (goldMentionCount >= 2) {
-            goldCooldown.add(message.channel.id);
-            setTimeout(() => goldCooldown.delete(message.channel.id), 300000);
+            if (goldMentionCount >= 2) {
+                goldCooldown.add(message.channel.id);
+                setTimeout(() => goldCooldown.delete(message.channel.id), 300000);
 
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_yes_gold').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('btn_no_gold').setLabel('No, I am rich.').setStyle(ButtonStyle.Secondary)
-            );
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('btn_yes_gold').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId('btn_no_gold').setLabel('No, I am rich.').setStyle(ButtonStyle.Secondary)
+                );
 
-            await message.channel.send({
-                content: `💅 I noticed you guys are discussing gold farming. Do you want me to pull up the Ultimate Gold Blueprint?`,
-                components: [row]
-            });
-        }
+                // 🛡️ LAYER 3 FORTIFIED
+                await message.channel.send({
+                    content: `💅 I noticed you guys are discussing gold farming. Do you want me to pull up the Ultimate Gold Blueprint?`,
+                    components: [row]
+                });
+            }
+        } catch (err) { console.warn("⚠️ Gold popup failed:", err.message); }
     }
 
     // 💎 6.5: PROACTIVE GEM GUIDE ENGINE
     if (!gemCooldown.has(message.channel.id)) {
-        const { data: history } = await ramClient
-            .from('chat_ram')
-            .select('message_content')
-            .eq('channel_id', message.channel.id)
-            .order('created_at', { ascending: false })
-            .limit(5);
+        try {
+            const { data: history } = await ramClient
+                .from('chat_ram')
+                .select('message_content')
+                .eq('channel_id', message.channel.id)
+                .order('created_at', { ascending: false })
+                .limit(5);
 
-        const gemTriggers = ['gem', 'need gems', 'low on gems', 'out of gems', 'how to farm gems', 'gem farming'];
+            const gemTriggers = ['gem', 'need gems', 'low on gems', 'out of gems', 'how to farm gems', 'gem farming'];
 
-        let gemMentionCount = 0;
-        if (history) {
-            history.forEach(m => {
-                const content = m.message_content.toLowerCase();
-                if (gemTriggers.some(t => content.includes(t))) {
-                    gemMentionCount++;
-                }
-            });
-        }
+            let gemMentionCount = 0;
+            if (history) {
+                history.forEach(m => {
+                    const content = m.message_content.toLowerCase();
+                    if (gemTriggers.some(t => content.includes(t))) {
+                        gemMentionCount++;
+                    }
+                });
+            }
 
-        if (gemMentionCount >= 2) {
-            gemCooldown.add(message.channel.id);
-            setTimeout(() => gemCooldown.delete(message.channel.id), 300000);
+            if (gemMentionCount >= 2) {
+                gemCooldown.add(message.channel.id);
+                setTimeout(() => gemCooldown.delete(message.channel.id), 300000);
 
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_yes_gem').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('btn_no_gem').setLabel('No, I have plenty.').setStyle(ButtonStyle.Secondary)
-            );
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('btn_yes_gem').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId('btn_no_gem').setLabel('No, I have plenty.').setStyle(ButtonStyle.Secondary)
+                );
 
-            await message.channel.send({
-                content: `💎 I noticed you guys are discussing gems. Do you want me to pull up the Gem Matrix?`,
-                components: [row]
-            });
-        }
+                // 🛡️ LAYER 3 FORTIFIED
+                await message.channel.send({
+                    content: `💎 I noticed you guys are discussing gems. Do you want me to pull up the Gem Matrix?`,
+                    components: [row]
+                });
+            }
+        } catch (err) { console.warn("⚠️ Gem popup failed:", err.message); }
     }
 }); 
 
@@ -459,33 +477,38 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isButton()) return;
 
-    // --- SUPPORT BUTTON---
-    if (interaction.customId === 'btn_yes_help') {
-        await interaction.message.edit({ components: [] });
-        await interaction.reply({
-            content: `🔔 **Tactical Support Initiated!** \n<@&1524079498646126662>, the team needs your breakdown! \n\n*Analysis complete. Protocols engaged.*`
-        });
-    } else if (interaction.customId === 'btn_no_thanks') {
-        await interaction.message.edit({ components: [] });
-        await interaction.reply({ content: `Fine, tough guys! Don't come crying to me when you lose. 💅` });
-    }
+    // 🛡️ LAYER 2 FORTIFIED: Button timeouts won't crash the server anymore
+    try {
+        // --- SUPPORT BUTTON---
+        if (interaction.customId === 'btn_yes_help') {
+            await interaction.message.edit({ components: [] });
+            await interaction.reply({
+                content: `🔔 **Tactical Support Initiated!** \n<@&1524079498646126662>, the team needs your breakdown! \n\n*Analysis complete. Protocols engaged.*`
+            });
+        } else if (interaction.customId === 'btn_no_thanks') {
+            await interaction.message.edit({ components: [] });
+            await interaction.reply({ content: `Fine, tough guys! Don't come crying to me when you lose. 💅` });
+        }
 
-    // --- GOLD BUTTONS ---
-    else if (interaction.customId === 'btn_yes_gold') {
-        await interaction.message.edit({ components: [] });
-        await interaction.reply({ content: getGoldGuide() });
-    } else if (interaction.customId === 'btn_no_gold') {
-        await interaction.message.edit({ components: [] });
-        await interaction.reply({ content: `No worries, King! Let me know if you ever need the Blueprint. 💰` });
-    }
+        // --- GOLD BUTTONS ---
+        else if (interaction.customId === 'btn_yes_gold') {
+            await interaction.message.edit({ components: [] });
+            await interaction.reply({ content: getGoldGuide() });
+        } else if (interaction.customId === 'btn_no_gold') {
+            await interaction.message.edit({ components: [] });
+            await interaction.reply({ content: `No worries, King! Let me know if you ever need the Blueprint. 💰` });
+        }
 
-    // --- GEM BUTTONS ---
-    else if (interaction.customId === 'btn_yes_gem') {
-        await interaction.message.edit({ components: [] });
-        await interaction.reply({ content: getGemGuide() });
-    } else if (interaction.customId === 'btn_no_gem') {
-        await interaction.message.edit({ components: [] });
-        await interaction.reply({ content: `Alright! I'll keep the Gem Matrix ready for whenever you need it. 💎` });
+        // --- GEM BUTTONS ---
+        else if (interaction.customId === 'btn_yes_gem') {
+            await interaction.message.edit({ components: [] });
+            await interaction.reply({ content: getGemGuide() });
+        } else if (interaction.customId === 'btn_no_gem') {
+            await interaction.message.edit({ components: [] });
+            await interaction.reply({ content: `Alright! I'll keep the Gem Matrix ready for whenever you need it. 💎` });
+        }
+    } catch (error) {
+        console.warn('⚠️ Interaction failed (possibly expired/timeout):', error.message);
     }
 });
 
@@ -494,7 +517,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // 8. HALL OF FAME LISTENER (Starboard)
 // ==========================================
 const TARGET_EMOJI = '✅'; 
-// Updated to the new Hall of Fame Channel ID
 const HALL_OF_FAME_CHANNEL_ID = '1527749743483158558'; 
 const REQUIRED_REACTIONS = 1; 
 
@@ -510,7 +532,6 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
 
     if (user.bot) return;
 
-    // Checks for both the actual emoji and the text string identifier
     const isTargetEmoji = reaction.emoji.name === '✅' || reaction.emoji.name === 'white_check_mark';
 
     if (isTargetEmoji && reaction.count >= REQUIRED_REACTIONS) {
@@ -544,8 +565,6 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
         }
     }
 });
-
-
 
 // ==========================================
 // GLOBAL ERROR HANDLERS (Prevents Render Crashes)
