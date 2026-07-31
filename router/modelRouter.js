@@ -6,6 +6,19 @@
  *   - Casual / Fun / General -> Gen 2/2.5 Models (Saves token quota)
  *   - Science / Tech / Space / Business / Coding -> Gen 3 Models
  *   - Exhausts Key 1 model options before switching to Key 2 (aiapi)
+ *
+ * CHANGELOG (this refactor)
+ *   - Aligned with the @google/genai SDK migration in api/gemini.js. A
+ *     "model" entry in the lineup is now { id, ai } — a model id string
+ *     plus the GoogleGenAI client for that API key — instead of a
+ *     pre-configured model object from the old getGenerativeModel() API.
+ *   - Call site changed: model.generateContent(prompt)
+ *       -> model.ai.models.generateContent({ model: model.id, contents, config })
+ *     `config` comes from the new `generationConfig` param (systemInstruction
+ *     + tools), passed in by api/gemini.js on every call.
+ *   - modelUsed tag now reads `model.id` — the new SDK's model entries don't
+ *     carry a `.model` property the way the old SDK's model objects did.
+ *   - Failover / cascade / logging behavior is otherwise unchanged.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -15,9 +28,9 @@ const COMPLEX_CATEGORY_REGEX = /science|tech|technology|space|physics|coding|cod
 
 // Intents requiring peak intelligence
 const HEAVY_INTENTS = new Set([
-  INTENTS.HEAVY_TASK, 
-  INTENTS.MODERATION, 
-  INTENTS.COMMAND, 
+  INTENTS.HEAVY_TASK,
+  INTENTS.MODERATION,
+  INTENTS.COMMAND,
   INTENTS.QUESTION,
   INTENTS.EMOTIONAL_DISCLOSURE
 ]);
@@ -34,6 +47,7 @@ function isComplexTask(intent, prompt) {
 
 /**
  * Builds the model cascade order based on task complexity, matching api.js tiers.
+ * Each entry is { id, ai } (see api/gemini.js buildModelSets()).
  */
 function buildModelLineup(isComplex, models) {
   if (isComplex) {
@@ -61,8 +75,15 @@ function buildModelLineup(isComplex, models) {
 
 /**
  * Executes prompt generation through the Smart Cascade & Multi-Key Failover loop.
+ *
+ * @param {object} params
+ * @param {object} params.classification - output of the intent classifier
+ * @param {string} params.prompt - the fully-assembled prompt text
+ * @param {Array<object>} params.modelSets - one { flash36, flash35, ... } bundle per API key
+ * @param {object} [params.generationConfig] - { systemInstruction, tools } passed
+ *   straight through to ai.models.generateContent's `config` on every call.
  */
-async function generate({ classification, prompt, modelSets }) {
+async function generate({ classification, prompt, modelSets, generationConfig = {} }) {
   const complex = isComplexTask(classification?.intent, prompt);
   let lastError;
 
@@ -76,17 +97,21 @@ async function generate({ classification, prompt, modelSets }) {
       if (!model) continue;
 
       try {
-        const result = await model.generateContent(prompt);
+        const result = await model.ai.models.generateContent({
+          model: model.id,
+          contents: prompt,
+          config: generationConfig,
+        });
         const tierTag = complex ? 'Gen3-Heavy' : 'Gen2-Light';
-        
-        return { 
-          result, 
-          modelUsed: `${model.model} [${tierTag}] (Key ${keyIndex + 1})` 
+
+        return {
+          result,
+          modelUsed: `${model.id} [${tierTag}] (Key ${keyIndex + 1})`
         };
-        
+
       } catch (error) {
         const status = error.status || 'Error';
-        console.warn(`⚠️ [ROUTER] ${model.model} on Key ${keyIndex + 1} skipped (${status}). Cascading to next model...`);
+        console.warn(`⚠️ [ROUTER] ${model.id} on Key ${keyIndex + 1} skipped (${status}). Cascading to next model...`);
         lastError = error;
       }
     }
