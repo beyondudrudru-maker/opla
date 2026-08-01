@@ -10,35 +10,37 @@ const styleLinter = require('../postProcessor/styleLinter');
  * api/gemini.js
  *
  * PURPOSE
- *   Modular entrypoint connecting Groq AI to the decision pipeline.
+ *   Master entrypoint for the Hybrid AI Engine (Groq + Gemini 3.x).
+ *   Collects all keys and passes them to the smart router.
  */
 
-function getApiKey() {
-  const key = process.env.opla || process.env.GROQ_API_KEY || process.env.OPLA;
-  return (key && typeof key === 'string' && key.trim().length > 0) ? key.trim() : null;
-}
+// 1. Gather Gemini Keys from Render
+const geminiKeys = [
+  process.env.GEMINI_API_KEY,
+  process.env.aiapi
+].filter(key => key && typeof key === 'string' && key.trim().length > 0);
 
-const activeApiKey = getApiKey();
-const aiClient = new OpenAI({
+// 2. Initialize Groq Client safely
+const groqKey = process.env.opla || process.env.GROQ_API_KEY || process.env.OPLA;
+const groqClient = new OpenAI({
   baseURL: "https://api.groq.com/openai/v1",
-  apiKey: activeApiKey || "fallback_dummy_key_to_prevent_startup_crash"
+  apiKey: groqKey || "fallback_dummy_key_to_prevent_startup_crash"
 });
 
 async function generateContent(turn) {
-  const currentKey = getApiKey();
-
   if (!turn || typeof turn.content !== 'string' || turn.content.trim() === '') {
     return { text: "I didn't quite catch that! Could you repeat?", modelUsed: 'none', debug: { error: 'Empty input' } };
   }
 
-  if (!currentKey) {
-    return { text: "My AI engine is offline. Please verify that the environment variable 'opla' is configured correctly in Render.", modelUsed: 'fallback', debug: { error: 'Missing or empty Groq API key' } };
+  // Ensure at least one system (Groq or Gemini) is online
+  if (geminiKeys.length === 0 && (!groqKey || groqKey.trim() === '')) {
+    return { text: "My AI engines are offline. Please verify your Gemini or Groq API keys in Render.", modelUsed: 'fallback', debug: { error: 'No keys found' } };
   }
 
   try {
     let dynamicIdentity = buildIdentityCore(turn.userId);
 
-    // 🛡️ UPDATED PROMPT: Added Vibe Checks for Spiritual topics and Anti-Hallucination for lyrics
+    // 🛡️ PRESERVED PROMPT: Vibe Checks and Anti-Hallucination
     dynamicIdentity += `\n\n=== HUMAN CONVERSATIONAL FLOW & PERSONA REALISM (CRITICAL) ===
 1. SPEAK NATURALLY & HUMAN-LIKE: Adopt an authentic, fluent, and emotionally expressive conversational style. 
 2. VIBE & CONTEXT MATCHING (CRITICAL): Adapt your tone perfectly to the user's prompt. If they are playful, be playful. HOWEVER, if the user mentions Gods, Bhajans, Mantras, or spiritual/historical topics (e.g., Ram, Shiva, Mahabharat), YOU MUST immediately drop all romantic, flirty, or casual tones (no 'sweetie' or 'babe'). Adopt a pure, highly respectful, and devoted tone.
@@ -67,13 +69,14 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS, CLAN EVE
     const smartTurn = { ...turn, content: contextualPrompt };
     const plan = await decisionPipeline.planTurn(smartTurn);
 
-    // 💡 Optional future upgrade: If you want her to be even smarter, you can change "llama-3.1-8b-instant" 
-    // to "llama-3.3-70b-versatile" inside your router/modelRouter.js file later!
+    // 🚀 ROUTING: Pass ALL configured keys to the hybrid modelRouter
     const { result, modelUsed } = await modelRouter.generate({
       classification: plan.classification,
       prompt: plan.prompt || contextualPrompt,
       systemInstruction: dynamicIdentity,
-      aiClient: aiClient
+      geminiKeys: geminiKeys,
+      groqClient: groqClient,
+      hasGroq: !!groqKey
     });
     
     let rawText = result;
