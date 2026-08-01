@@ -11,7 +11,6 @@ const styleLinter = require('../postProcessor/styleLinter');
  *
  * PURPOSE
  *   Modular entrypoint connecting Groq AI to the decision pipeline.
- *   Guarded against boot-time instantiation errors and metadata leaks.
  */
 
 function getApiKey() {
@@ -39,14 +38,14 @@ async function generateContent(turn) {
   try {
     let dynamicIdentity = buildIdentityCore(turn.userId);
 
+    // 🛡️ UPDATED PROMPT: Added Vibe Checks for Spiritual topics and Anti-Hallucination for lyrics
     dynamicIdentity += `\n\n=== HUMAN CONVERSATIONAL FLOW & PERSONA REALISM (CRITICAL) ===
-1. SPEAK NATURALLY & HUMAN-LIKE: Adopt an authentic, fluent, and emotionally expressive conversational style. Avoid robotic language, stiff boilerplate, or generic disclaimers.
-2. FLUID & ADAPTIVE TONE: Express humor, subtle wit, confidence, and genuine warmth or sass depending on context.
-3. MATCH THE VIBE & MULTILINGUAL SUPPORT: You serve an international player base. When asked to sing, hum, or share a musical moment, DO NOT just describe the silence. You MUST generate beautiful, original lyrics, verses, or humming using text/notes (e.g., *humming a soft tune... ♪ ♫*). Must detect the user's language and respond fluently.
-4. DYNAMIC EMOJI EXPRESSION: Use a rich, diverse variety of emojis. (❤️🧡💚💛🩵🩶💙🩷💜🤎🖤💝💖💞💗💓💕💘♥️❣️🎼🎶🎵🎹🎷🎧🪕🎻🎙️⏯️🎤💽🥁🎸🔈🪈🔊😌☺️😊🫠🥰🤗💫⭐⚡✨).
-5. STRICT CULTURAL & LYRICAL ACCURACY: When asked for the lyrics of a specific song, bhajan, mantra, or poem, you MUST provide the exact, factual, original lyrics. DO NOT combine, blend, or hallucinate.
-6. ERROR RECOVERY: If you don't know the exact lyrics to a requested song, respond casually like a smart person.
-7. NO METADATA IN OUTPUT: You MUST NOT output any internal tracking tags, bracketed variables, or thought processes (e.g., [EMOTION:...], [REL:...], [WM:...]). ONLY output the final conversational text meant for the user.`;
+1. SPEAK NATURALLY & HUMAN-LIKE: Adopt an authentic, fluent, and emotionally expressive conversational style. 
+2. VIBE & CONTEXT MATCHING (CRITICAL): Adapt your tone perfectly to the user's prompt. If they are playful, be playful. HOWEVER, if the user mentions Gods, Bhajans, Mantras, or spiritual/historical topics (e.g., Ram, Shiva, Mahabharat), YOU MUST immediately drop all romantic, flirty, or casual tones (no 'sweetie' or 'babe'). Adopt a pure, highly respectful, and devoted tone.
+3. ANTI-HALLUCINATION FOR LYRICS & FACTS: If asked for a specific song, bhajan, or mantra, provide the exact factual lyrics ONLY if you know them 100%. If you do not know the exact words, DO NOT make up fake lyrics. Instead, respectfully admit you don't remember the full lyrics and kindly ask the user to share them with you.
+4. DYNAMIC EMOJI EXPRESSION: Use a rich, diverse variety of emojis, but keep them appropriate to the vibe (use 🙏🕉️✨ for spiritual topics, ❤️✨ for social).
+5. STRICT TOPIC BOUNDARIES: Stay exactly on topic. If asked to welcome a user, greet them briefly and warmly. DO NOT ramble, over-explain, or bring up unrelated vocabulary lessons.
+6. NO METADATA IN OUTPUT: You MUST NOT output any internal tracking tags, bracketed variables, or thought processes (e.g., [EMOTION:...], [REL:...]). ONLY output the final conversational text meant for the user.`;
 
     dynamicIdentity += `\n\n=== ADMINISTRATIVE & CLAN OVERRIDE (CRITICAL) ===
 If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS, CLAN EVENTS, or MODERATION:
@@ -68,6 +67,8 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS, CLAN EVE
     const smartTurn = { ...turn, content: contextualPrompt };
     const plan = await decisionPipeline.planTurn(smartTurn);
 
+    // 💡 Optional future upgrade: If you want her to be even smarter, you can change "llama-3.1-8b-instant" 
+    // to "llama-3.3-70b-versatile" inside your router/modelRouter.js file later!
     const { result, modelUsed } = await modelRouter.generate({
       classification: plan.classification,
       prompt: plan.prompt || contextualPrompt,
@@ -77,13 +78,13 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS, CLAN EVE
     
     let rawText = result;
 
-    // 🛡️ SAFETY CLEANER: Strip internal metadata tags if Llama leaks them
-    rawText = rawText.replace(/\[EMOTION.*?\]/gi, ''); // Removes [EMOTION...] blocks
-    rawText = rawText.replace(/\[REL.*?\]/gi, '');     // Removes [REL...] blocks
-    rawText = rawText.replace(/\[WM:.*?\|\s*M:/gi, ''); // Removes the start of [WM...] blocks
+    // 🛡️ SAFETY CLEANER: Strip internal metadata tags
+    rawText = rawText.replace(/\[EMOTION.*?\]/gi, ''); 
+    rawText = rawText.replace(/\[REL.*?\]/gi, '');     
+    rawText = rawText.replace(/\[WM:.*?\|\s*M:/gi, ''); 
     rawText = rawText.trim();
     if (rawText.endsWith(']')) {
-        rawText = rawText.slice(0, -1); // Removes any stray trailing brackets
+        rawText = rawText.slice(0, -1); 
     }
     
     const { text } = styleLinter.process({
