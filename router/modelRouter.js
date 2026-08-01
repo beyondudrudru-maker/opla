@@ -2,126 +2,97 @@
  * router/modelRouter.js
  *
  * PURPOSE
- *   Executes Smart Tier Routing and Multi-Key Failover.
- *   - Casual / Fun / General -> Gen 2/2.5 Models (Saves token quota)
- *   - Science / Tech / Space / Business / Coding -> Gen 3 Models
- *   - Exhausts Key 1 model options before switching to Key 2 (aiapi)
- *
- * CHANGELOG (this refactor)
- *   - Aligned with the @google/genai SDK migration in api/gemini.js. A
- *     "model" entry in the lineup is now { id, ai } — a model id string
- *     plus the GoogleGenAI client for that API key — instead of a
- *     pre-configured model object from the old getGenerativeModel() API.
- *   - Call site changed: model.generateContent(prompt)
- *       -> model.ai.models.generateContent({ model: model.id, contents, config })
- *     `config` comes from the new `generationConfig` param (systemInstruction
- *     + tools), passed in by api/gemini.js on every call.
- *   - modelUsed tag now reads `model.id` — the new SDK's model entries don't
- *     carry a `.model` property the way the old SDK's model objects did.
- *   - Failover / cascade / logging behavior is otherwise unchanged.
- *   - DROPPED flash25 (gemini-2.5-flash) / flash2 (gemini-2.5-flash-lite)
- *     from both lineups: both are hard-404ing ("no longer available to
- *     new users") on this project's keys, ahead of and independent of the
- *     official Oct 16 2026 shutdown date. Down to a 4-model cascade. See
- *     api/gemini.js CHANGELOG for the full explanation before re-adding.
+ *   Executes Smart Tier Routing, Multi-Key Failover, and Rate-Limit Handling.
+ *   Built with strict undefined-filtering to prevent runtime crashes.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
 
-// Keywords that force allocation to heavy Gen 3 models
 const COMPLEX_CATEGORY_REGEX = /science|tech|technology|space|physics|coding|code|script|business|finance|economy|analyze|explain|history|stotram|mantra|lyrics/i;
 
-// Intents requiring peak intelligence
 const HEAVY_INTENTS = new Set([
-  INTENTS.HEAVY_TASK,
-  INTENTS.MODERATION,
-  INTENTS.COMMAND,
+  INTENTS.HEAVY_TASK, 
+  INTENTS.MODERATION, 
+  INTENTS.COMMAND, 
   INTENTS.QUESTION,
   INTENTS.EMOTIONAL_DISCLOSURE
 ]);
 
-/**
- * Determines whether a turn requires Gen 3 heavy models.
- */
 function isComplexTask(intent, prompt) {
   if (HEAVY_INTENTS.has(intent)) return true;
   if (COMPLEX_CATEGORY_REGEX.test(prompt)) return true;
-  if (prompt.length > 120) return true; // Long prompts benefit from Gen 3 reasoning
+  if (prompt.length > 120) return true;
   return false;
 }
 
-/**
- * Builds the model cascade order based on task complexity, matching api.js tiers.
- * Each entry is { id, ai } (see api/gemini.js buildModelSets()).
- */
 function buildModelLineup(isComplex, models) {
-  if (isComplex) {
-    // 🧠 COMPLEX LINEUP: Gen 3 heavy models first, falling back to lighter ones
-    return [
-      models.flash36,  // Gen 3.6 Flash
-      models.flash35,  // Gen 3.5 Flash
-      models.lite35,   // Gen 3.5 Flash Lite
-      models.lite31    // Gen 3.1 Flash Lite (Fallback)
-    ];
-  }
-
-  // ⚡ LIGHT / CASUAL LINEUP: cheapest/fastest tiers first to conserve quota
-  return [
-    models.lite31,    // Gen 3.1 Flash Lite
-    models.lite35,    // Gen 3.5 Flash Lite
-    models.flash35,   // Gen 3.5 Flash
-    models.flash36    // Gen 3.6 Flash (Backup)
+  // We include legacy names (flashModel, liteModel) just in case of file mismatches
+  const lineup = isComplex ? [
+    models.flash36, models.flash35, models.lite35, 
+    models.lite31, models.flash25, models.flash2, models.flashModel
+  ] : [
+    models.flash25, models.flash2, models.lite31, 
+    models.lite35, models.flash35, models.flash36, models.liteModel
   ];
+
+  // 🛡️ CRITICAL SAFETY LAYER: Filter out any undefined or broken models
+  return lineup.filter(model => model && typeof model.generateContent === 'function');
 }
 
-/**
- * Executes prompt generation through the Smart Cascade & Multi-Key Failover loop.
- *
- * @param {object} params
- * @param {object} params.classification - output of the intent classifier
- * @param {string} params.prompt - the fully-assembled prompt text
- * @param {Array<object>} params.modelSets - one { flash36, flash35, ... } bundle per API key
- * @param {object} [params.generationConfig] - { systemInstruction, tools } passed
- *   straight through to ai.models.generateContent's `config` on every call.
- */
-async function generate({ classification, prompt, modelSets, generationConfig = {} }) {
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function generate({ classification, prompt, modelSets }) {
   const complex = isComplexTask(classification?.intent, prompt);
   let lastError;
 
-  // 🔄 OUTER LOOP: Iterate through API Keys (Key 1 -> Key 2 / aiapi)
+  // 🔄 OUTER LOOP: Iterate through API Keys
   for (let keyIndex = 0; keyIndex < modelSets.length; keyIndex++) {
     const models = modelSets[keyIndex];
     const lineup = buildModelLineup(complex, models);
 
-    // 🔄 INNER LOOP: Try all models in the current key's lineup first
+    if (lineup.length === 0) {
+      console.warn(`⚠️ [ROUTER] Key ${keyIndex + 1} has no valid models configured. Skipping...`);
+      continue;
+    }
+
+    // 🔄 INNER LOOP: Iterate through the safe models
     for (const model of lineup) {
-      if (!model) continue;
+      // Try up to 2 times per model with a short backoff if 429 is hit
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          // Execute standard generateContent safely
+          const result = await model.generateContent(prompt);
+          
+          const tierTag = complex ? 'Gen3-Heavy' : 'Gen2-Light';
+          
+          return { 
+            result, 
+            modelUsed: `Gemini AI [${tierTag}] (Key ${keyIndex + 1})` 
+          };
+          
+        } catch (error) {
+          const status = error.status || error?.error?.code || 'Error';
+          
+          // Handle Rate Limits (429) gracefully
+          if (status === 429 || String(error.message).includes('429') || String(error.message).includes('RESOURCE_EXHAUSTED')) {
+            console.warn(`⚠️ [ROUTER] Rate limit (429) hit. Backing off for ${attempt * 1500}ms...`);
+            await delay(attempt * 1500);
+            continue;
+          }
 
-      try {
-        const result = await model.ai.models.generateContent({
-          model: model.id,
-          contents: prompt,
-          config: generationConfig,
-        });
-        const tierTag = complex ? 'Gen3-Heavy' : 'Gen2-Light';
-
-        return {
-          result,
-          modelUsed: `${model.id} [${tierTag}] (Key ${keyIndex + 1})`
-        };
-
-      } catch (error) {
-        const status = error.status || 'Error';
-        console.warn(`⚠️ [ROUTER] ${model.id} on Key ${keyIndex + 1} skipped (${status}). Cascading to next model...`);
-        lastError = error;
+          // Non-429 error (e.g., 500, safety block), break retry and cascade to next model
+          console.warn(`⚠️ [ROUTER] Model skipped due to error (${status}). Cascading...`);
+          lastError = error;
+          break; 
+        }
       }
     }
 
-    console.warn(`⚠️ [ROUTER] Key ${keyIndex + 1} lineup completely exhausted. Failing over to next API key...`);
+    console.warn(`⚠️ [ROUTER] Key ${keyIndex + 1} lineup exhausted. Failing over to next API key...`);
   }
 
   console.error('❌ [ROUTER] Critical: All models across all API keys failed.');
-  throw lastError;
+  throw lastError || new Error('All model quotas exhausted or invalid configuration.');
 }
 
 module.exports = { buildModelLineup, generate };
