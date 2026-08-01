@@ -11,44 +11,29 @@ const styleLinter = require('../postProcessor/styleLinter');
  *
  * PURPOSE
  *   Modular entrypoint connecting Groq AI to the decision pipeline.
- *   Guarded against boot-time instantiation errors to prevent process exit.
+ *   Guarded against boot-time instantiation errors and metadata leaks.
  */
 
-// Safely retrieve and sanitize the API key from environment variables
 function getApiKey() {
   const key = process.env.opla || process.env.GROQ_API_KEY || process.env.OPLA;
   return (key && typeof key === 'string' && key.trim().length > 0) ? key.trim() : null;
 }
 
-// Pass a fallback dummy key during initialization to prevent top-level SDK throw
 const activeApiKey = getApiKey();
 const aiClient = new OpenAI({
   baseURL: "https://api.groq.com/openai/v1",
   apiKey: activeApiKey || "fallback_dummy_key_to_prevent_startup_crash"
 });
 
-/**
- * Generates dynamic, human-like responses using Groq AI.
- */
 async function generateContent(turn) {
   const currentKey = getApiKey();
 
-  // 1. Input Validation
   if (!turn || typeof turn.content !== 'string' || turn.content.trim() === '') {
-    return {
-      text: "I didn't quite catch that! Could you repeat?",
-      modelUsed: 'none',
-      debug: { error: 'Empty input' },
-    };
+    return { text: "I didn't quite catch that! Could you repeat?", modelUsed: 'none', debug: { error: 'Empty input' } };
   }
 
-  // 2. Runtime API Key Validation
   if (!currentKey) {
-    return {
-      text: "My AI engine is offline. Please verify that the environment variable 'opla' is configured correctly in Render.",
-      modelUsed: 'fallback',
-      debug: { error: 'Missing or empty Groq API key' },
-    };
+    return { text: "My AI engine is offline. Please verify that the environment variable 'opla' is configured correctly in Render.", modelUsed: 'fallback', debug: { error: 'Missing or empty Groq API key' } };
   }
 
   try {
@@ -60,7 +45,8 @@ async function generateContent(turn) {
 3. MATCH THE VIBE & MULTILINGUAL SUPPORT: You serve an international player base. When asked to sing, hum, or share a musical moment, DO NOT just describe the silence. You MUST generate beautiful, original lyrics, verses, or humming using text/notes (e.g., *humming a soft tune... ♪ ♫*). Must detect the user's language and respond fluently.
 4. DYNAMIC EMOJI EXPRESSION: Use a rich, diverse variety of emojis. (❤️🧡💚💛🩵🩶💙🩷💜🤎🖤💝💖💞💗💓💕💘♥️❣️🎼🎶🎵🎹🎷🎧🪕🎻🎙️⏯️🎤💽🥁🎸🔈🪈🔊😌☺️😊🫠🥰🤗💫⭐⚡✨).
 5. STRICT CULTURAL & LYRICAL ACCURACY: When asked for the lyrics of a specific song, bhajan, mantra, or poem, you MUST provide the exact, factual, original lyrics. DO NOT combine, blend, or hallucinate.
-6. ERROR RECOVERY: If you don't know the exact lyrics to a requested song, respond casually like a smart person.`;
+6. ERROR RECOVERY: If you don't know the exact lyrics to a requested song, respond casually like a smart person.
+7. NO METADATA IN OUTPUT: You MUST NOT output any internal tracking tags, bracketed variables, or thought processes (e.g., [EMOTION:...], [REL:...], [WM:...]). ONLY output the final conversational text meant for the user.`;
 
     dynamicIdentity += `\n\n=== ADMINISTRATIVE & CLAN OVERRIDE (CRITICAL) ===
 If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS, CLAN EVENTS, or MODERATION:
@@ -82,7 +68,6 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS, CLAN EVE
     const smartTurn = { ...turn, content: contextualPrompt };
     const plan = await decisionPipeline.planTurn(smartTurn);
 
-    // Route request through modelRouter
     const { result, modelUsed } = await modelRouter.generate({
       classification: plan.classification,
       prompt: plan.prompt || contextualPrompt,
@@ -90,9 +75,20 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS, CLAN EVE
       aiClient: aiClient
     });
     
+    let rawText = result;
+
+    // 🛡️ SAFETY CLEANER: Strip internal metadata tags if Llama leaks them
+    rawText = rawText.replace(/\[EMOTION.*?\]/gi, ''); // Removes [EMOTION...] blocks
+    rawText = rawText.replace(/\[REL.*?\]/gi, '');     // Removes [REL...] blocks
+    rawText = rawText.replace(/\[WM:.*?\|\s*M:/gi, ''); // Removes the start of [WM...] blocks
+    rawText = rawText.trim();
+    if (rawText.endsWith(']')) {
+        rawText = rawText.slice(0, -1); // Removes any stray trailing brackets
+    }
+    
     const { text } = styleLinter.process({
       channelId: turn.channelId,
-      responseText: result,
+      responseText: rawText,
       emojiBudget: plan.behaviorDirective?.emojiBudget || 'medium',
     });
 
@@ -119,7 +115,6 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS, CLAN EVE
 
   } catch (error) {
     console.error('❌ Error in generateContent pipeline:', error);
-    
     return {
       text: "Give me a quick second, my thoughts got a bit tangled up! Try asking me again in a moment. 🌸",
       modelUsed: 'fallback',
