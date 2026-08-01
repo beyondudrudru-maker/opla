@@ -7,25 +7,48 @@ const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
 
 /**
- * api/gemini.js (Now Powered by Groq AI)
+ * api/gemini.js
  *
  * PURPOSE
- *   Modular entrypoint connecting Groq AI to the smart decision pipeline.
- *   Passes data safely to the modelRouter for error-proof execution.
+ *   Modular entrypoint connecting Groq AI to the decision pipeline.
+ *   Guarded against boot-time instantiation errors to prevent process exit.
  */
 
+// Safely retrieve and sanitize the API key from environment variables
+function getApiKey() {
+  const key = process.env.opla || process.env.GROQ_API_KEY || process.env.OPLA;
+  return (key && typeof key === 'string' && key.trim().length > 0) ? key.trim() : null;
+}
+
+// Pass a fallback dummy key during initialization to prevent top-level SDK throw
+const activeApiKey = getApiKey();
 const aiClient = new OpenAI({
   baseURL: "https://api.groq.com/openai/v1",
-  apiKey: process.env.opla 
+  apiKey: activeApiKey || "fallback_dummy_key_to_prevent_startup_crash"
 });
 
+/**
+ * Generates dynamic, human-like responses using Groq AI.
+ */
 async function generateContent(turn) {
+  const currentKey = getApiKey();
+
+  // 1. Input Validation
   if (!turn || typeof turn.content !== 'string' || turn.content.trim() === '') {
-    return { text: "I didn't quite catch that! Could you repeat?", modelUsed: 'none', debug: { error: 'Empty input' } };
+    return {
+      text: "I didn't quite catch that! Could you repeat?",
+      modelUsed: 'none',
+      debug: { error: 'Empty input' },
+    };
   }
 
-  if (!process.env.opla) {
-    return { text: "I'm feeling a bit disconnected from my brain right now!", modelUsed: 'fallback', debug: { error: 'No API key' } };
+  // 2. Runtime API Key Validation
+  if (!currentKey) {
+    return {
+      text: "My AI engine is offline. Please verify that the environment variable 'opla' is configured correctly in Render.",
+      modelUsed: 'fallback',
+      debug: { error: 'Missing or empty Groq API key' },
+    };
   }
 
   try {
@@ -59,7 +82,7 @@ If the user's command involves SERVER MANAGEMENT, PUBLIC ANNOUNCEMENTS, CLAN EVE
     const smartTurn = { ...turn, content: contextualPrompt };
     const plan = await decisionPipeline.planTurn(smartTurn);
 
-    // 🚀 Send data to the upgraded modelRouter!
+    // Route request through modelRouter
     const { result, modelUsed } = await modelRouter.generate({
       classification: plan.classification,
       prompt: plan.prompt || contextualPrompt,
