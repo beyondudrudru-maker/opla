@@ -2,8 +2,8 @@
  * router/modelRouter.js
  *
  * PURPOSE
- *   Executes Smart Tier Routing, Multi-Key Failover, and Rate-Limit Handling.
- *   Built with strict undefined-filtering to prevent runtime crashes.
+ *   Executes Smart Tier Routing and Rate-Limit Handling for Groq AI.
+ *   Cascades through free models to guarantee 0-error fault tolerance.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -25,74 +25,64 @@ function isComplexTask(intent, prompt) {
   return false;
 }
 
-function buildModelLineup(isComplex, models) {
-  // We include legacy names (flashModel, liteModel) just in case of file mismatches
-  const lineup = isComplex ? [
-    models.flash36, models.flash35, models.lite35, 
-    models.lite31, models.flash25, models.flash2, models.flashModel
-  ] : [
-    models.flash25, models.flash2, models.lite31, 
-    models.lite35, models.flash35, models.flash36, models.liteModel
-  ];
-
-  // 🛡️ CRITICAL SAFETY LAYER: Filter out any undefined or broken models
-  return lineup.filter(model => model && typeof model.generateContent === 'function');
-}
-
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function generate({ classification, prompt, modelSets }) {
+// 🛡️ Groq Free-Tier Fallback Lineup
+const GROQ_MODELS = [
+  "llama-3.1-8b-instant",  // Primary: Extremely fast
+  "llama3-8b-8192",        // Backup 1
+  "gemma2-9b-it",          // Backup 2
+  "mixtral-8x7b-32768"     // Backup 3 (Heavy)
+];
+
+async function generate({ classification, prompt, systemInstruction, aiClient }) {
   const complex = isComplexTask(classification?.intent, prompt);
   let lastError;
 
-  // 🔄 OUTER LOOP: Iterate through API Keys
-  for (let keyIndex = 0; keyIndex < modelSets.length; keyIndex++) {
-    const models = modelSets[keyIndex];
-    const lineup = buildModelLineup(complex, models);
-
-    if (lineup.length === 0) {
-      console.warn(`⚠️ [ROUTER] Key ${keyIndex + 1} has no valid models configured. Skipping...`);
-      continue;
-    }
-
-    // 🔄 INNER LOOP: Iterate through the safe models
-    for (const model of lineup) {
-      // Try up to 2 times per model with a short backoff if 429 is hit
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          // Execute standard generateContent safely
-          const result = await model.generateContent(prompt);
-          
-          const tierTag = complex ? 'Gen3-Heavy' : 'Gen2-Light';
-          
-          return { 
-            result, 
-            modelUsed: `Gemini AI [${tierTag}] (Key ${keyIndex + 1})` 
-          };
-          
-        } catch (error) {
-          const status = error.status || error?.error?.code || 'Error';
-          
-          // Handle Rate Limits (429) gracefully
-          if (status === 429 || String(error.message).includes('429') || String(error.message).includes('RESOURCE_EXHAUSTED')) {
-            console.warn(`⚠️ [ROUTER] Rate limit (429) hit. Backing off for ${attempt * 1500}ms...`);
-            await delay(attempt * 1500);
-            continue;
-          }
-
-          // Non-429 error (e.g., 500, safety block), break retry and cascade to next model
-          console.warn(`⚠️ [ROUTER] Model skipped due to error (${status}). Cascading...`);
-          lastError = error;
-          break; 
+  // 🔄 Iterate through the safe Groq models
+  for (const modelName of GROQ_MODELS) {
+    
+    // Try up to 2 times per model with a short backoff if 429 is hit
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        // Execute API Call
+        const completion = await aiClient.chat.completions.create({
+          model: modelName,
+          messages: [
+            { role: "system", content: systemInstruction },
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.7,
+          max_tokens: complex ? 1500 : 800
+        });
+        
+        const tierTag = complex ? 'Groq-Heavy' : 'Groq-Light';
+        
+        return { 
+          result: completion.choices[0].message.content, 
+          modelUsed: `${modelName} [${tierTag}]` 
+        };
+        
+      } catch (error) {
+        const status = error.status || error?.response?.status || 'Error';
+        
+        // Handle Rate Limits (429) gracefully
+        if (status === 429 || String(error.message).includes('429')) {
+          console.warn(`⚠️ [ROUTER] Rate limit (429) hit on ${modelName}. Backing off for ${attempt * 1500}ms...`);
+          await delay(attempt * 1500);
+          continue; // Try again
         }
+
+        // Non-429 error, break retry loop and cascade to next model
+        console.warn(`⚠️ [ROUTER] Model ${modelName} skipped due to error (${status}). Cascading...`);
+        lastError = error;
+        break; 
       }
     }
-
-    console.warn(`⚠️ [ROUTER] Key ${keyIndex + 1} lineup exhausted. Failing over to next API key...`);
   }
 
-  console.error('❌ [ROUTER] Critical: All models across all API keys failed.');
+  console.error('❌ [ROUTER] Critical: All Groq models failed.');
   throw lastError || new Error('All model quotas exhausted or invalid configuration.');
 }
 
-module.exports = { buildModelLineup, generate };
+module.exports = { generate };
