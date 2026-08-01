@@ -2,95 +2,116 @@
  * router/modelRouter.js
  *
  * PURPOSE
- *   Executes Dynamic Contextual Routing and Rate-Limit Handling.
- *   Maximizes efficiency by prioritizing models based on task complexity.
+ *   Balanced Hybrid Routing (Groq + Gemini 3.x Generation).
+ *   Intelligently splits the load and automatically falls back on failure.
  */
 
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { INTENTS } = require('../classifier/intentClassifier');
 
-// Keywords that demand high intelligence
 const COMPLEX_CATEGORY_REGEX = /science|tech|technology|space|physics|coding|code|script|business|finance|economy|analyze|explain|history|stotram|mantra|lyrics/i;
 
 const HEAVY_INTENTS = new Set([
-  INTENTS.HEAVY_TASK, 
-  INTENTS.MODERATION, 
-  INTENTS.COMMAND, 
-  INTENTS.QUESTION,
-  INTENTS.EMOTIONAL_DISCLOSURE
+  INTENTS.HEAVY_TASK, INTENTS.MODERATION, INTENTS.COMMAND, INTENTS.QUESTION, INTENTS.EMOTIONAL_DISCLOSURE
 ]);
 
 function isComplexTask(intent, prompt) {
   if (HEAVY_INTENTS.has(intent)) return true;
   if (COMPLEX_CATEGORY_REGEX.test(prompt)) return true;
-  if (prompt.length > 120) return true;
+  if (prompt && prompt.length > 120) return true;
   return false;
 }
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// 🛡️ TIERED ARRAYS: Separating models by capability and speed
-const SMART_MODELS = [
-  "llama-3.3-70b-versatile", // Highest intelligence
-  "llama3-70b-8192"          // Highly capable legacy backup
-];
+// Helper: Execute Groq
+async function callGroq(groqClient, modelName, prompt, systemInstruction, maxTokens) {
+  const completion = await groqClient.chat.completions.create({
+    model: modelName,
+    messages: [
+      { role: "system", content: systemInstruction },
+      { role: "user", content: prompt }
+    ],
+    temperature: 0.7,
+    max_tokens: maxTokens
+  });
+  return completion.choices[0].message.content;
+}
 
-const FAST_MODELS = [
-  "llama-3.1-8b-instant",    // Maximum speed & efficiency
-  "llama3-8b-8192"           // Lightweight legacy backup
-];
+// Helper: Execute Gemini (Updated for 3.x Generation API formats)
+async function callGemini(apiKey, modelName, prompt, systemInstruction) {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    systemInstruction: { role: "system", parts: [{ text: systemInstruction }] }
+  });
+  const response = await model.generateContent(prompt);
+  return response.response.text();
+}
 
-async function generate({ classification, prompt, systemInstruction, aiClient }) {
-  // 1. LOGIC GATE: Determine task complexity
+/**
+ * Main Hybrid Generator
+ */
+async function generate({ classification, prompt, systemInstruction, geminiKeys = [], groqClient, hasGroq }) {
   const complex = isComplexTask(classification?.intent, prompt);
   let lastError;
 
-  // 2. DYNAMIC ROUTING: Build the lineup based on the logic gate
-  // Complex = Smart first. Simple = Fast first.
-  const activeLineup = complex 
-    ? [...SMART_MODELS, ...FAST_MODELS] 
-    : [...FAST_MODELS, ...SMART_MODELS];
-
-  // 3. EXECUTION: Cascade through the intelligently sorted lineup
-  for (const modelName of activeLineup) {
-    
-    // Try up to 2 times for rate limits
-    for (let attempt = 1; attempt <= 2; attempt++) {
+  // ==========================================
+  // ROUTE 1: COMPLEX TASKS (Gemini 3.6 -> Groq 70B)
+  // ==========================================
+  if (complex) {
+    // 1A. Try Gemini 3.6 Flash First (Deep context, All-around help)
+    for (let i = 0; i < geminiKeys.length; i++) {
       try {
-        const completion = await aiClient.chat.completions.create({
-          model: modelName,
-          messages: [
-            { role: "system", content: systemInstruction },
-            { role: "user", content: prompt }
-          ],
-          temperature: complex ? 0.4 : 0.7, // Lower temperature for complex tasks (more logical)
-          max_tokens: complex ? 1000 : 400  // Efficient quota management
-        });
-        
-        const tierTag = complex ? 'Groq-Heavy-Logic' : 'Groq-Fast-Social';
-        
-        return { 
-          result: completion.choices[0].message.content, 
-          modelUsed: `${modelName} [${tierTag}]` 
-        };
-        
+        const text = await callGemini(geminiKeys[i], 'gemini-3.6-flash', prompt, systemInstruction);
+        return { result: text, modelUsed: `Gemini-3.6-Flash (Key ${i + 1})` };
       } catch (error) {
-        const status = error.status || error?.response?.status || 'Error';
-        
-        if (status === 429 || String(error.message).includes('429')) {
-          console.warn(`⚠️ [ROUTER] Rate limit hit on ${modelName}. Pausing ${attempt * 1500}ms...`);
-          await delay(attempt * 1500);
-          continue; 
-        }
-
-        console.warn(`⚠️ [ROUTER] ${modelName} rejected request (${status}). Switching to next logical fallback...`);
+        console.warn(`⚠️ [ROUTER] Gemini 3.6 failed (Key ${i + 1}): ${error.message}`);
         lastError = error;
-        break; 
+      }
+    }
+
+    // 1B. Fallback to Groq 70B if Gemini fails
+    if (hasGroq) {
+      try {
+        const text = await callGroq(groqClient, 'llama-3.3-70b-versatile', prompt, systemInstruction, 1000);
+        return { result: text, modelUsed: `Groq-Llama-3.3-70B [Fallback]` };
+      } catch (error) {
+        console.warn(`⚠️ [ROUTER] Groq 70B fallback failed: ${error.message}`);
+        lastError = error;
+      }
+    }
+  } 
+  
+  // ==========================================
+  // ROUTE 2: SIMPLE TASKS (Groq 8B -> Gemini 3.5 Lite)
+  // ==========================================
+  else {
+    // 2A. Try Groq 8B First (Blazing instant speed)
+    if (hasGroq) {
+      try {
+        const text = await callGroq(groqClient, 'llama-3.1-8b-instant', prompt, systemInstruction, 400);
+        return { result: text, modelUsed: `Groq-Llama-3.1-8B` };
+      } catch (error) {
+        console.warn(`⚠️ [ROUTER] Groq 8B failed: ${error.message}`);
+        lastError = error;
+      }
+    }
+
+    // 2B. Fallback to Gemini 3.5 Flash-Lite if Groq fails
+    for (let i = 0; i < geminiKeys.length; i++) {
+      try {
+        const text = await callGemini(geminiKeys[i], 'gemini-3.5-flash-lite', prompt, systemInstruction);
+        return { result: text, modelUsed: `Gemini-3.5-Flash-Lite (Key ${i + 1}) [Fallback]` };
+      } catch (error) {
+        console.warn(`⚠️ [ROUTER] Gemini 3.5 Lite fallback failed (Key ${i + 1}): ${error.message}`);
+        lastError = error;
       }
     }
   }
 
-  console.error('❌ [ROUTER] Critical: All primary and fallback models failed.');
-  throw lastError || new Error('All model quotas exhausted.');
+  console.error('❌ [ROUTER] Critical: All hybrid models (Groq + Gemini 3.x) failed.');
+  throw lastError || new Error('All model quotas exhausted or network down.');
 }
 
 module.exports = { generate };
