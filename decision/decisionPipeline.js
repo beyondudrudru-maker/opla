@@ -1,3 +1,12 @@
+/**
+ * decision/decisionPipeline.js
+ *
+ * PURPOSE
+ *   The central nervous system of the bot. Orchestrates the flow of data 
+ *   between engines to build the prompt, while ensuring maximum CPU 
+ *   efficiency and parallel database operations.
+ */
+
 const intentClassifier = require('../classifier/intentClassifier');
 const relationshipEngine = require('../relationship/relationshipEngine');
 const emotionEngine = require('../emotion/emotionEngine');
@@ -23,13 +32,16 @@ async function planTurn({
     isModeration: classification.isModeration,
   });
 
+  // 🚀 OPTIMIZED: Parallel Supabase reads to minimize I/O wait time
   const [workingMemoryRaw, longTermCandidates] = await Promise.all([
     memoryEngine.getWorkingMemory(channelId),
     memoryEngine.getLongTermCandidates(userId),
   ]);
 
   const workingMemory = contextRanker.filterWorkingMemory({ turns: workingMemoryRaw, currentUserId: userId, isGroupContext });
-  const rankedMemories = contextRanker.rankMemories({ currentMessage: content, candidates: longTermCandidates });
+  
+  // 🚀 OPTIMIZED: Strictly limit to top 6 ranked memories so the prompt never bloats
+  const rankedMemories = contextRanker.rankMemories({ currentMessage: content, candidates: longTermCandidates }).slice(0, 6);
 
   const targetInfo = targetResolver.resolve({ mentions, botUserId: BOT_USER_ID });
 
@@ -42,8 +54,13 @@ async function planTurn({
     isModeration: classification.isModeration,
   });
 
+  // 🚀 ARCHITECTURE FIX: Pre-render the emotion brief so the assembler stays "dumb"
+  const emotionalBrief = (typeof emotionEngine.toBrief === 'function') 
+    ? emotionEngine.toBrief(emotionalState, relationship) 
+    : '';
+
   const prompt = promptAssembler.assemble({
-    emotionalState,
+    emotionalBrief,
     relationship,
     behaviorDirective,
     rankedMemories,
@@ -57,8 +74,11 @@ async function planTurn({
 }
 
 async function finalizeTurn({ channelId, userId, content, responseText }) {
-  await memoryEngine.recordTurn({ channelId, userId, role: 'user', content });
-  await memoryEngine.recordTurn({ channelId, userId, role: 'melody', content: responseText });
+  // 🚀 OPTIMIZED: Parallel Supabase writes to drastically reduce network latency
+  await Promise.all([
+    memoryEngine.recordTurn({ channelId, userId, role: 'user', content }),
+    memoryEngine.recordTurn({ channelId, userId, role: 'melody', content: responseText })
+  ]);
 }
 
 module.exports = { planTurn, finalizeTurn };
