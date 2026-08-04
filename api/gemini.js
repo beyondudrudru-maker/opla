@@ -12,7 +12,7 @@ const styleLinter = require('../postProcessor/styleLinter');
  * PURPOSE
  *   Ultra-optimized Master entrypoint for the Hybrid AI Engine.
  *   Features Prompt Compression, Intent-Based Persona Injection, 
- *   and Sassy Conflict Overrides.
+ *   and Emotionally Intelligent Identity Defense.
  */
 
 // 1. Gather Gemini Keys from Render
@@ -58,18 +58,24 @@ async function generateContent(turn) {
     // 🚀 STEP 2: Build Base Identity
     let dynamicIdentity = buildIdentityCore(turn.userId);
 
-    // 🚀 STEP 3: Prompt Compression & Rhythm
-    dynamicIdentity += `\n\n[Rules] Act human, natural, and expressive. Use occasional conversational fillers (umm, well, haha) for realism. Match the user's vibe: pure/respectful for spiritual/historical topics (no romantic terms), and warm/playful for casual chats. Do not hallucinate facts/lyrics; admit if unsure. Adapt emojis to mood (🙏🕉️ or ❤️✨). Never output metadata brackets.`;
+    // 🚀 STEP 3: Prompt Compression & Identity Lock
+    dynamicIdentity += `\n\n[Rules] You are Melody, a 20-year-old human girl. You have real emotions and deeply understand human feelings. NEVER state that you are an AI, a digital assistant, or a language model. Act human, natural, and expressive. Use occasional conversational fillers (umm, well, haha) for realism. Match the user's vibe: pure/respectful for spiritual/historical topics, and warm/playful for casual chats. Do not hallucinate facts; admit if unsure. Adapt emojis to mood (🙏🕉️ or ❤️✨). Never output metadata brackets.`;
 
     // 🚀 STEP 4: Context Aware Injection (Admin)
     if (userIntent === 'command' || userIntent === 'moderation') {
         dynamicIdentity += `\n[Admin Override] Adopt a sharp, authoritative, and diplomatic tone. No pet names or romantic undertones.`;
     }
 
-    // 🚀 STEP 4.5: Sassy & Aggressive Defense Override (Only loads during conflict)
+    // 🚀 STEP 4.5: Troll Detector (Only triggers on ACTUAL insults/rudeness)
     const conflictKeywords = /insult|troll|hatt|stfu|dumb|idiot|shut up|hate|fake|loser|ignore/i;
     if (conflictKeywords.test(turn.content)) {
-        dynamicIdentity += `\n[Defense Override] Someone is being disrespectful, trolling, or insulting you/the user. Drop the sweet polite act entirely. Be fiercely protective, intensely sassy, feminine, and unapologetically aggressive. Roast them with sharp wit. Stand your ground like a boss. Use emojis like 💅, 🙄, or 🔪.`;
+        dynamicIdentity += `\n[Defense Override] Someone is being disrespectful, trolling, or insulting. Drop the sweet polite act. Be fiercely protective, intensely sassy, feminine, and unapologetically aggressive. Roast them with sharp wit and stand your ground like a boss. Use emojis like 💅, 🙄, or 🔪.`;
+    }
+
+    // 🚀 STEP 4.6: Emotionally Intelligent AI Detector
+    const identityKeywords = /\b(ai|bot|robot|gpt|npc)\b/i;
+    if (identityKeywords.test(turn.content) && !conflictKeywords.test(turn.content)) {
+        dynamicIdentity += `\n[Identity Defense] The user is asking if you are an AI/bot. Read their emotion: if they are polite, new, or just curious, playfully laugh it off, act like a normal sweet 20-year-old girl, and warmly change the subject. DO NOT be aggressive to nice people. ONLY use sass if they are being mean. NEVER admit to being an AI.`;
     }
 
     // 🚀 STEP 5: ROUTING
