@@ -6,24 +6,10 @@
  *   two separate Supabase projects:
  *
  *     ramClient  -> Project 1 ("RAM"): chat_ram, the lightweight ephemeral
- *                   activity log used by index.js and the popup engines
- *                   (6.3-6.5) plus the developer override (6.1.5).
+ *                   activity log.
  *
  *     coreClient -> Project 2 ("Core"): persistent stats, emotions,
- *                   memory, and behavior tables (user_profiles,
- *                   emotional_state, conversation_turns,
- *                   long_term_memories, moderation_flags) owned by
- *                   Melody's ai/gemini.js pipeline.
- *
- *   Nobody constructs their own client or writes raw queries elsewhere —
- *   everything routes through here.
- *
- * FUTURE SCALABILITY
- *   If you outgrow Supabase's Postgres, need read replicas, or want to
- *   split either project further, only this file and schema.sql need to
- *   change; every engine module depends on the function signatures below
- *   (or on the named ramClient/coreClient exports), not on Supabase
- *   directly.
+ *                   memory, and behavior tables owned by Melody's pipeline.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -143,28 +129,28 @@ async function getRecentTurns(channelId, limit = 12) {
     .slice(-limit);
 }
 
-async function getLongTermMemories(userId) {
+// 🚀 OPTIMIZED: Dynamic limits and recency ordering
+async function getLongTermMemories(userId, limit = 30) {
+  // Absolute safety bound to protect Render RAM
+  const safeLimit = Math.min(Math.max(Number(limit) || 30, 1), 50);
+
   if (coreClient) {
     const { data, error } = await coreClient
       .from('long_term_memories')
       .select('*')
       .eq('user_id', userId)
-      .order('emotional_score', { ascending: false })
-      .limit(50);
+      .order('created_at', { ascending: false })
+      .limit(safeLimit);
     if (error) throw error;
     return data || [];
   }
-  return coreMemoryStore.longTermMemories.get(userId) || [];
+  
+  const list = coreMemoryStore.longTermMemories.get(userId) || [];
+  return list.slice(-safeLimit).reverse();
 }
 
 async function addLongTermMemory(userId, memory) {
   if (coreClient) {
-    // Idempotent by design: relies on the unique (user_id, content_hash)
-    // constraint in schema.sql. ignoreDuplicates means a repeat call with
-    // the same content_hash (e.g. reflectionJob re-scanning overlapping
-    // turns on a later run) is a silent no-op, never a duplicate row and
-    // never an error. Callers (memory/memoryEngine.js) are responsible
-    // for computing content_hash before calling this.
     if (!memory.content_hash) {
       throw new Error('addLongTermMemory: memory.content_hash is required for dedup — compute it in memoryEngine before calling this.');
     }
@@ -174,11 +160,10 @@ async function addLongTermMemory(userId, memory) {
     if (error) throw error;
     return;
   }
-  // In-memory fallback: dedupe manually by content_hash since there's no
-  // DB constraint to lean on.
+  
   const list = coreMemoryStore.longTermMemories.get(userId) || [];
   if (memory.content_hash && list.some((m) => m.content_hash === memory.content_hash)) {
-    return; // already present, no-op
+    return; 
   }
   list.push({ ...memory, created_at: new Date().toISOString(), last_referenced: new Date().toISOString() });
   coreMemoryStore.longTermMemories.set(userId, list);
@@ -197,10 +182,6 @@ async function addModerationFlag(userId, flag) {
 
 // ==========================================
 // RAM ACCESSORS (route through ramClient)
-// These wrap chat_ram so callers that prefer helper functions over raw
-// `ramClient.from(...)` chains have that option. index.js may also use
-// the exported `ramClient` directly for its existing `.from('chat_ram')`
-// call sites — both paths hit Project 1.
 // ==========================================
 
 async function insertChatRamEntry(entry) {
@@ -239,12 +220,8 @@ async function deleteOldChatRam(cutoffIso) {
 }
 
 module.exports = {
-  // Raw clients — index.js's existing `supabase.from('chat_ram')` call
-  // sites should be updated to `ramClient.from('chat_ram')`.
   ramClient,
   coreClient,
-
-  // Core (persistent) accessors — used by Melody's ai/gemini.js pipeline
   getUserProfile,
   upsertUserProfile,
   getEmotionalState,
@@ -254,8 +231,6 @@ module.exports = {
   getLongTermMemories,
   addLongTermMemory,
   addModerationFlag,
-
-  // RAM (ephemeral) helper accessors — optional convenience wrappers
   insertChatRamEntry,
   getRecentChatRam,
   deleteOldChatRam,
