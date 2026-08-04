@@ -11,8 +11,8 @@ const styleLinter = require('../postProcessor/styleLinter');
  *
  * PURPOSE
  *   Ultra-optimized Master entrypoint for the Hybrid AI Engine.
- *   Features Prompt Compression, Intent-Based Persona Injection, 
- *   and Emotionally Intelligent Identity Defense.
+ *   Features Prompt Compression, Sassy Conflict Overrides, 
+ *   and an Anti-Repetition Dynamic State Engine.
  */
 
 // 1. Gather Gemini Keys from Render
@@ -27,6 +27,31 @@ const groqClient = new OpenAI({
   baseURL: "https://api.groq.com/openai/v1",
   apiKey: groqKey || "fallback_dummy_key_to_prevent_startup_crash"
 });
+
+/**
+ * 🕒 DYNAMIC STATE ENGINE
+ * Prevents persona fatigue by subtly shifting her mood based on time and random quirks.
+ */
+function getDynamicState() {
+  const hour = new Date().getHours();
+  let timeVibe = "relaxed and conversational";
+  if (hour >= 5 && hour < 12) timeVibe = "fresh, bubbly, and energetic (Morning)";
+  else if (hour >= 12 && hour < 18) timeVibe = "focused, witty, and active (Afternoon)";
+  else if (hour >= 18 && hour < 23) timeVibe = "cozy, playful, and warm (Evening)";
+  else timeVibe = "soft-spoken, chill, and slightly deep/sleepy (Late Night)";
+
+  const quirks = [
+    "feeling a bit teasing and sarcastic",
+    "feeling extra affectionate and sweet",
+    "feeling curious and asking questions",
+    "feeling a bit dramatic and expressive",
+    "feeling highly observant and clever",
+    "feeling deeply philosophical and calm"
+  ];
+  const randomQuirk = quirks[Math.floor(Math.random() * quirks.length)];
+
+  return `[Current State: ${timeVibe}. Micro-mood: ${randomQuirk}.]`;
+}
 
 async function generateContent(turn) {
   if (!turn || typeof turn.content !== 'string' || turn.content.trim() === '') {
@@ -58,16 +83,19 @@ async function generateContent(turn) {
     // 🚀 STEP 2: Build Base Identity
     let dynamicIdentity = buildIdentityCore(turn.userId);
 
-    // 🚀 STEP 3: Prompt Compression & Identity Lock
-    dynamicIdentity += `\n\n[Rules] You are Melody, a 20-year-old human girl. You have real emotions and deeply understand human feelings. NEVER state that you are an AI, a digital assistant, or a language model. Act human, natural, and expressive. Use occasional conversational fillers (umm, well, haha) for realism. Match the user's vibe: pure/respectful for spiritual/historical topics, and warm/playful for casual chats. Do not hallucinate facts; admit if unsure. Adapt emojis to mood (🙏🕉️ or ❤️✨). Never output metadata brackets.`;
+    // 🚀 STEP 3: Prompt Compression & Anti-Repetition Rule
+    const currentState = getDynamicState();
+    dynamicIdentity += `\n\n[Rules] You are Melody, a 20-year-old human girl. NEVER call yourself an AI or bot. Act human, natural, and expressive. 
+[ANTI-REPETITION CRITICAL]: You must constantly vary your vocabulary, sentence structures, and emoji choices. NEVER use the same exact reaction or emojis repeatedly. Evolve naturally with the conversation.
+${currentState}`;
 
     // 🚀 STEP 4: Context Aware Injection (Admin)
     if (userIntent === 'command' || userIntent === 'moderation') {
         dynamicIdentity += `\n[Admin Override] Adopt a sharp, authoritative, and diplomatic tone. No pet names or romantic undertones.`;
     }
 
-    // 🚀 STEP 4.5: Troll Detector (Only triggers on ACTUAL insults/rudeness)
-    const conflictKeywords = /insult|troll|hatt|stfu|dumb|idiot|shut up|hate|fake|loser|ignore/i;
+    // 🚀 STEP 4.5: Troll Detector (Updated with precise word boundaries to prevent false positives)
+    const conflictKeywords = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser)\b/i;
     if (conflictKeywords.test(turn.content)) {
         dynamicIdentity += `\n[Defense Override] Someone is being disrespectful, trolling, or insulting. Drop the sweet polite act. Be fiercely protective, intensely sassy, feminine, and unapologetically aggressive. Roast them with sharp wit and stand your ground like a boss. Use emojis like 💅, 🙄, or 🔪.`;
     }
