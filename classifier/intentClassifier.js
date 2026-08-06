@@ -4,7 +4,7 @@
  * PURPOSE
  *   Single source of truth for "what kind of message is this." 
  *   Runs locally on the server (0 token cost).
- *   Armored with fault-tolerance and fine-tuned for Gemini 3.5/3.6 (3rd Gen) & Llama 3 routing.
+ *   🚀 UPGRADE: Context-aware heavy routing (Action + Domain separation).
  */
 
 const INTENTS = Object.freeze({
@@ -18,39 +18,19 @@ const INTENTS = Object.freeze({
   UNKNOWN: 'unknown',
 });
 
-// 🚀 UPGRADE: Fine-tuned for your specific interests to route to 3.6/Groq properly
-const HEAVY_KEYWORDS = [
-  'code', 'python', 'javascript', 'c++', 'html', 'css', 'hardware', 'specs',
-  'math', 'calculate', 'explain', 'database', 'algorithm', 'error', 'debug',
-  'architecture', 'detailed', 'bhajan', 'lyrics', 'song', 'poem', 'mantra', 'translate',
-  'geopolitics', 'history', 'thesis', 'analyze', 'compare', 'summary'
-];
+// 🚀 UPGRADE: Split into Actions and Domains to prevent false-positives
+const HEAVY_ACTIONS = ['explain', 'analyze', 'compare', 'summary', 'summarize', 'translate', 'solve', 'debug'];
+const HARD_DOMAINS = ['code', 'python', 'javascript', 'c++', 'html', 'css', 'hardware', 'specs', 'math', 'calculate', 'database', 'algorithm', 'architecture', 'geopolitics', 'thesis'];
+const SOFT_DOMAINS = ['bhajan', 'lyrics', 'song', 'poem', 'mantra'];
 
 const COMMAND_PATTERN = /^(ban|kick|mute|delete|fix|solve|generate|write|announce|event)\b/i;
+const CASUAL_KEYWORDS = ['hi', 'hello', 'hey', 'morning', 'night', 'lol', 'lmao', 'bye', 'test', 'yo', 'kaise'];
+const MODERATION_KEYWORDS = ['kys', 'kill yourself', 'slur', 'nsfw', 'raid', 'spam', 'nuke'];
+const EMOTIONAL_KEYWORDS = ['sad', 'depressed', 'anxious', 'scared', 'worried', 'lonely', 'love you', 'miss you', 'hurt', 'crying', 'tired of', "can't sleep"];
+const QUESTION_PATTERN = /^(who|what|when|where|why|how|is|are|do|does|did|can you|could you|will|should)\b(?!.*\b(up|kaise|ho)\b)|\?$|^(tell me|give me|show me|list|name|recommend|suggest)\b/i;
 
-const CASUAL_KEYWORDS = [
-  'hi', 'hello', 'hey', 'morning', 'night', 'lol', 'lmao', 'bye', 'test', 'yo', 'kaise'
-];
-
-const MODERATION_KEYWORDS = [
-  'kys', 'kill yourself', 'slur', 'nsfw', 'raid', 'spam', 'nuke',
-];
-
-const EMOTIONAL_KEYWORDS = [
-  'sad', 'depressed', 'anxious', 'scared', 'worried', 'lonely', 'love you',
-  'miss you', 'hurt', 'crying', 'tired of', "can't sleep",
-];
-
-// 🚀 UPGRADE: Stricter question regex so casual chat drops to 3.5 Flash-Lite
-const QUESTION_PATTERN =
-  /^(who|what|when|where|why|how|is|are|do|does|did|can you|could you|will|should)\b(?!.*\b(up|kaise|ho)\b)|\?$|^(tell me|give me|show me|list|name|recommend|suggest)\b/i;
-
-/**
- * Safely classifies the user's text.
- */
 function classify({ content, hasCodeBlock = false, mentions = [] } = {}) {
   try {
-      // 🛡️ FAULT TOLERANCE: Ensure content is always a valid string
       if (typeof content !== 'string' || content.trim().length === 0) {
           return { intent: INTENTS.BANTER, complexity: 0.1, isModeration: false, confidence: 1.0 };
       }
@@ -69,15 +49,19 @@ function classify({ content, hasCodeBlock = false, mentions = [] } = {}) {
         return { intent: INTENTS.EMOTIONAL_DISCLOSURE, complexity: 0.4, isModeration: false, confidence: 0.7 };
       }
 
-      const needsHeavyLifting = hasCodeBlock || HEAVY_KEYWORDS.some((kw) => text.includes(kw));
-      if (needsHeavyLifting) {
+      // 🚀 UPGRADE: Smarter Heavy Task Detection
+      const hasHardDomain = HARD_DOMAINS.some(kw => text.includes(kw));
+      const hasAction = HEAVY_ACTIONS.some(kw => text.includes(kw));
+      const hasSoftDomain = SOFT_DOMAINS.some(kw => text.includes(kw));
+      
+      // It's heavy if it has a codeblock, a hard tech/science domain, OR (an action verb + a soft domain like a poem)
+      if (hasCodeBlock || hasHardDomain || (hasAction && hasSoftDomain)) {
         return { intent: INTENTS.HEAVY_TASK, complexity: 0.85, isModeration: false, confidence: 0.8 };
       }
 
       const isShort = text.length < 35;
       const isCasual = CASUAL_KEYWORDS.some((kw) => text.includes(kw));
       
-      // 🚀 UPGRADE: Prioritize Banter for short/casual messages even if they contain a question mark
       if (isCasual || (isShort && !QUESTION_PATTERN.test(text))) {
         return { intent: INTENTS.BANTER, complexity: 0.15, isModeration: false, confidence: 0.6 };
       }
