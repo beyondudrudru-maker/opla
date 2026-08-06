@@ -1,8 +1,17 @@
+/**
+ * events/messageCreate.js
+ * 
+ * PURPOSE
+ *   The primary entry point for Discord messages.
+ *   Orchestrates the flow: Discord -> Decision Pipeline -> Smart Router -> Discord -> Memory
+ */
+
 const { Events } = require('discord.js');
 const { getGoldGuide, getGemGuide } = require('../data/gameData.js');
 const supabase = require('../database/supabase.js');
 
-// 🚀 THE FIX: Import the smart router instead of the old aiBrain
+// 🚀 THE FIX: Import both the Pipeline AND the Router
+const { planTurn, finalizeTurn } = require('../decision/decisionPipeline.js');
 const { generate } = require('../router/modelRouter.js'); 
 
 // 🛡️ GLOBAL DEDUPLICATION SET (Prevents double processing)
@@ -72,48 +81,66 @@ module.exports = {
         }
 
         // ==========================================
-        // 3. SMART HYBRID AI ROUTER
+        // 3. FULL AI PIPELINE ORCHESTRATION
         // ==========================================
         if (!message.mentions.has(client.user)) return;
 
-        const userMessage = message.content.replace(`<@${client.user.id}>`, '').trim();
+        const rawUserMessage = message.content.replace(`<@${client.user.id}>`, '').trim();
         await message.channel.sendTyping();
 
-        // Construct dynamic context for the AI
+        // Construct dynamic context for the Pipeline
         const displayName = message.member?.displayName || message.author.username;
-        const roles = message.member?.roles.cache.map(r => r.name).join(', ') || 'None';
-        const channelContext = message.channel.type !== 'DM' ? 'Group Chat' : 'Direct Message';
+        const roles = message.member?.roles.cache.map(r => r.name) || [];
+        const isGroupContext = message.channel.type !== 'DM';
         
-        // 🚀 THE FIX: Authoritative System Instruction
-        const dynamicSystemInstruction = `
-        You are MELODY, a highly intelligent AI assistant for the !NF!N!TY gaming clan.
-        Current User: ${displayName}
-        User Roles: ${roles}
-        Chat Context: ${channelContext}
+        // Capture Mentions
+        const mentions = {
+            everyone: message.mentions.everyone,
+            users: [...message.mentions.users.values()]
+                .filter((u) => u.id !== client.user.id)
+                .map((u) => ({
+                    id: u.id,
+                    name: message.guild?.members.cache.get(u.id)?.displayName || u.username,
+                })),
+        };
 
+        // 🚀 Authoritative System Instruction (Protects from XML confusion)
+        const systemInstruction = `
+        You are MELODY, a highly intelligent AI assistant for the !NF!N!TY gaming clan.
         CRITICAL DIRECTIVES:
         1. ADAPTABILITY: Mirror the user's language, slang, and energy instantly (e.g., Hinglish, English, etc.).
         2. LIVE DATA: You are connected to the live internet. You MUST use your Google Search tool to look up current events, dates, sports winners, and real-time facts before you reply. Never claim you lack real-time updates.
+        3. CONTEXT PARSING: You will receive XML tags representing the user's emotional state, relationship tier, and past memory. Use this to inform your personality natively. Do NOT mention the XML tags to the user.
         `;
 
         try {
-            // Execute our smart router
+            // STEP 1: Plan the Turn (Intent, Emotion, Memory, XML Assembly)
+            const turnData = await planTurn({
+                userId: message.author.id,
+                displayName,
+                roles,
+                channelId: message.channel.id,
+                content: rawUserMessage,
+                isGroupContext,
+                mentions
+            });
+
+            // STEP 2: Execute the Smart Router
             const aiResponse = await generate({
-                classification: { intent: 'question' }, // Default to question to encourage searching
-                prompt: userMessage,
-                systemInstruction: dynamicSystemInstruction,
-                // Ensure your keys are loaded in your .env file
+                classification: turnData.classification, // True classification from the pipeline!
+                prompt: turnData.prompt,                 // The fully assembled XML prompt!
+                userMessage: rawUserMessage,             // Raw message to prevent XML domain misrouting!
+                systemInstruction: systemInstruction,
                 geminiKeys: [process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2], 
                 hasGroq: !!process.env.GROQ_API_KEY,
-                groqClient: client.groq // Assuming client.groq is initialized in your index.js
+                groqClient: client.groq 
             });
 
             const aiReply = aiResponse.result;
 
-            // ✂️ CHUNKING LOGIC (Prevents 2000+ Character Crashes)
+            // STEP 3: ✂️ Chunk and Send Response
             if (aiReply.length > 1950) {
                 const chunks = aiReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
-                
                 for (let i = 0; i < chunks.length; i++) {
                     await new Promise(resolve => setTimeout(resolve, 600));
                     if (i === 0) {
@@ -126,8 +153,16 @@ module.exports = {
                 await message.reply({ content: aiReply, allowedMentions: { repliedUser: false } });
             }
 
+            // STEP 4: Save the interaction to Supabase Memory!
+            await finalizeTurn({
+                channelId: message.channel.id,
+                userId: message.author.id,
+                content: rawUserMessage,
+                responseText: aiReply
+            });
+
         } catch (error) {
-            console.error('[AI ROUTER ERROR]', error);
+            console.error('❌ [AI PIPELINE ERROR]', error);
             await message.reply('My hybrid engine is running a bit slow right now, give me a moment! 💤');
         }
     }
