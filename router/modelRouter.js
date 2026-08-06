@@ -4,8 +4,8 @@
  * PURPOSE
  *   True Smart Cascading Hybrid Router with Full Error Logging & Cooldowns.
  *   - Groq (Llama-3.3-70B): Primary for Code, Math, and Data.
- *   - Gemini 3.6-Flash: Strictly for Heavy/Complex tasks & Fallback.
- *   - Gemini 3.5-Flash-Lite: Primary for fast, everyday chat & general questions.
+ *   - Gemini 3.6-Flash (3rd Gen): Strictly for Heavy/Complex tasks & Fallback.
+ *   - Gemini 3.5-Flash-Lite (3rd Gen): Primary for fast, everyday chat & general questions.
  */
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -37,35 +37,33 @@ function cooldownKey(apiKey, durationMs = 3600000) {
 }
 
 // 2. MEMORY-PROOF EXPERTISE & COMPLEXITY CLASSIFIERS
-function isGroqDomain(prompt) {
-  if (!prompt) return false;
-  const recentUserText = prompt.slice(-200).toLowerCase();
+// 🚀 FIX: Now strictly scans the raw userMessage, ignoring the XML prompt assembly!
+function isGroqDomain(userMessage) {
+  if (!userMessage) return false;
   const GROQ_EXPERT_REGEX = /math|calculate|equation|code|script|debug|python|javascript|html|css|sql|json|database|algorithm/i;
-  return GROQ_EXPERT_REGEX.test(recentUserText);
+  return GROQ_EXPERT_REGEX.test(userMessage.toLowerCase());
 }
 
-function isComplexTask(intent, prompt) {
-  // 🚀 FIX: Removed INTENTS.QUESTION so regular questions go to Gemini 3.5 Flash-Lite!
+function isComplexTask(intent, userMessage) {
   if (intent === INTENTS.HEAVY_TASK) return true;
   
-  if (!prompt) return false;
-  const recentUserText = prompt.slice(-200).toLowerCase();
-  const HEAVY_ANALYSIS_REGEX = /deep analysis|quantum|architecture|complex breakdown|thesis/i;
-  return HEAVY_ANALYSIS_REGEX.test(recentUserText);
+  if (!userMessage) return false;
+  const HEAVY_ANALYSIS_REGEX = /deep analysis|quantum|architecture|complex breakdown|thesis|geopolitics/i;
+  return HEAVY_ANALYSIS_REGEX.test(userMessage.toLowerCase());
 }
 
-// 3. DYNAMIC TEMPERATURE CONTROLLER
+// 3. DYNAMIC TEMPERATURE CONTROLLER (Used exclusively for Groq now)
 function getDynamicTemp(intent) {
   switch (intent) {
     case INTENTS.MODERATION:
     case INTENTS.COMMAND:
-      return 0.1; // Extremely precise/strict for code/logic
+      return 0.1; 
     case INTENTS.HEAVY_TASK:
-      return 0.3; // Low hallucination risk
+      return 0.3; 
     case INTENTS.EMOTIONAL_DISCLOSURE:
-      return 0.9; // Highly empathetic
+      return 0.9; 
     default:
-      return 0.8; // High conversational creativity for global users
+      return 0.8; 
   }
 }
 
@@ -83,15 +81,21 @@ async function callGroq(groqClient, modelName, prompt, systemInstruction, maxTok
   return completion.choices[0].message.content;
 }
 
-async function callGemini(apiKey, modelName, prompt, systemInstruction, temp) {
+// 🚀 FIX: Removed deprecated `temperature` to ensure 3rd Gen API compatibility
+async function callGemini(apiKey, modelName, prompt, systemInstruction) {
   const genAI = getGeminiClient(apiKey);
   const model = genAI.getGenerativeModel({
     model: modelName,
     systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
-    generationConfig: { temperature: temp },
+    // 🚀 FIX: Precise Search config for 3rd Gen models
     tools: [
       {
-        googleSearch: {}
+        googleSearchRetrieval: {
+          dynamicRetrievalConfig: {
+            mode: "MODE_DYNAMIC",
+            dynamicThreshold: 0.2
+          }
+        }
       }
     ]
   });
@@ -101,121 +105,109 @@ async function callGemini(apiKey, modelName, prompt, systemInstruction, temp) {
 
 /**
  * Main Smart Cascading Generator Function
+ * 🚀 FIX: Implemented a True Waterfall Cascade. No more `else if` dead ends!
  */
-async function generate({ classification, prompt, systemInstruction, geminiKeys = [], groqClient, hasGroq }) {
+async function generate({ classification, prompt, userMessage, systemInstruction, geminiKeys = [], groqClient, hasGroq }) {
   const currentIntent = classification?.intent || 'social';
-  const dynamicTemp = getDynamicTemp(currentIntent);
+  const groqTemp = getDynamicTemp(currentIntent);
   
-  const needsGroq = isGroqDomain(prompt);
-  const complex = isComplexTask(currentIntent, prompt);
+  const needsGroq = isGroqDomain(userMessage);
+  const complex = isComplexTask(currentIntent, userMessage);
   
   let lastError;
 
   // ==========================================
-  // ROUTE A: GROQ EXPERTISE (Math, Code, Data)
+  // TIER 1: GROQ EXPERTISE (Math, Code, Data)
   // ==========================================
   if (needsGroq && hasGroq) {
     try {
       const text = await callGroq(groqClient, 'llama-3.3-70b-versatile', prompt, systemInstruction, 1024, 0.2);
-      return { result: text, modelUsed: `Groq-Llama-3.3-70B [Primary-Expert] [Temp: 0.2]` };
+      return { result: text, modelUsed: `Groq-Llama-3.3-70B [Primary-Expert]` };
     } catch (error) {
-      console.warn(`⚠️ [ROUTER] Groq Expert Route failed: ${error.message}. Cascading to Gemini.`);
+      console.warn(`⚠️ [ROUTER] Groq Expert Route failed: ${error.message}. Cascading down...`);
       lastError = error;
-      
-      for (let i = 0; i < geminiKeys.length; i++) {
-        const key = geminiKeys[i];
-        if (isKeyCoolingDown(key)) continue;
-        try {
-          const text = await callGemini(key, 'gemini-3.6-flash', prompt, systemInstruction, 0.2);
-          return { result: text, modelUsed: `Gemini-3.6-Flash (Key ${i + 1}) [Groq-Fallback] [Temp: 0.2]` };
-        } catch (e) {
-          console.warn(`⚠️ [ROUTER] Gemini 3.6 fallback failed (Key ${i + 1}): ${e.message}`);
-          if (String(e.message).includes('429') || String(e.message).includes('503')) {
-            cooldownKey(key);
-          }
-        }
-      }
     }
   }
 
   // ==========================================
-  // ROUTE B: HEAVY / COMPLEX TASKS ONLY (Gemini 3.6 Primary)
+  // TIER 2: HEAVY / COMPLEX (Gemini 3.6 Primary)
   // ==========================================
-  else if (complex) {
+  // Triggers if it's explicitly complex, OR if Tier 1 (Groq) failed and fell through!
+  if (complex || needsGroq) {
     for (let i = 0; i < geminiKeys.length; i++) {
       const key = geminiKeys[i];
       if (isKeyCoolingDown(key)) continue;
 
       try {
-        const text = await callGemini(key, 'gemini-3.6-flash', prompt, systemInstruction, dynamicTemp);
-        return { result: text, modelUsed: `Gemini-3.6-Flash (Key ${i + 1}) [Primary-Complex] [Temp: ${dynamicTemp}]` };
+        const text = await callGemini(key, 'gemini-3.6-flash', prompt, systemInstruction);
+        return { result: text, modelUsed: `Gemini-3.6-Flash (Key ${i + 1}) [Heavy-Tier]` };
       } catch (error) {
         console.warn(`⚠️ [ROUTER] Gemini 3.6 failed (Key ${i + 1}): ${error.message}`);
         lastError = error;
-        if (String(error.message).includes('429') || String(error.message).includes('503')) {
-          cooldownKey(key);
-        }
+        if (String(error.message).includes('429') || String(error.message).includes('503')) cooldownKey(key);
       }
     }
 
-    if (hasGroq) {
+    // If Gemini 3.6 heavy failed, try Groq heavy as a fallback
+    if (hasGroq && !needsGroq) {
       try {
-        const text = await callGroq(groqClient, 'llama-3.3-70b-versatile', prompt, systemInstruction, 1000, dynamicTemp);
-        return { result: text, modelUsed: `Groq-Llama-3.3-70B [Complex-Fallback] [Temp: ${dynamicTemp}]` };
+        const text = await callGroq(groqClient, 'llama-3.3-70b-versatile', prompt, systemInstruction, 1000, groqTemp);
+        return { result: text, modelUsed: `Groq-Llama-3.3-70B [Complex-Fallback]` };
       } catch (error) {
-        console.warn(`⚠️ [ROUTER] Groq 70B complex fallback failed: ${error.message}`);
+        console.warn(`⚠️ [ROUTER] Groq 70B fallback failed: ${error.message}`);
         lastError = error;
       }
     }
   } 
   
   // ==========================================
-  // ROUTE C: EVERYDAY CHAT & QUESTIONS (Gemini 3.5 Primary)
+  // TIER 3: EVERYDAY CHAT (Gemini 3.5 Flash-Lite)
   // ==========================================
-  else {
-    // 1. Primary: Fast Gemini 3.5 Lite for all questions, social chat, and banter
-    for (let i = 0; i < geminiKeys.length; i++) {
-      const key = geminiKeys[i];
-      if (isKeyCoolingDown(key)) continue;
+  // If it's normal chat, it starts here. If Tier 1 or 2 failed, they cascade here!
+  for (let i = 0; i < geminiKeys.length; i++) {
+    const key = geminiKeys[i];
+    if (isKeyCoolingDown(key)) continue;
 
-      try {
-        const text = await callGemini(key, 'gemini-3.5-flash-lite', prompt, systemInstruction, dynamicTemp);
-        return { result: text, modelUsed: `Gemini-3.5-Flash-Lite (Key ${i + 1}) [Primary-Fast] [Temp: ${dynamicTemp}]` };
-      } catch (error) {
-        console.warn(`⚠️ [ROUTER] Gemini 3.5 Lite failed (Key ${i + 1}): ${error.message}`);
-        lastError = error;
-        if (String(error.message).includes('429') || String(error.message).includes('503')) {
-          cooldownKey(key);
-        }
-      }
-    }
-
-    // 2. Escalation: Try Gemini 3.6 if 3.5 Lite is cooling down
-    for (let i = 0; i < geminiKeys.length; i++) {
-      const key = geminiKeys[i];
-      if (isKeyCoolingDown(key)) continue;
-
-      try {
-        const text = await callGemini(key, 'gemini-3.6-flash', prompt, systemInstruction, dynamicTemp);
-        return { result: text, modelUsed: `Gemini-3.6-Flash (Key ${i + 1}) [Escalated-Normal] [Temp: ${dynamicTemp}]` };
-      } catch (error) {
-        console.warn(`⚠️ [ROUTER] Gemini 3.6 Escalation failed (Key ${i + 1}): ${error.message}`);
-        lastError = error;
-      }
-    }
-
-    // 3. Ultimate Fallback: Groq 8B Instant
-    if (hasGroq) {
-      try {
-        const text = await callGroq(groqClient, 'llama-3.1-8b-instant', prompt, systemInstruction, 400, dynamicTemp);
-        return { result: text, modelUsed: `Groq-Llama-3.1-8B [Ultimate-Fallback] [Temp: ${dynamicTemp}]` };
-      } catch (error) {
-        console.warn(`⚠️ [ROUTER] Groq 8B fallback failed: ${error.message}`);
-        lastError = error;
-      }
+    try {
+      const text = await callGemini(key, 'gemini-3.5-flash-lite', prompt, systemInstruction);
+      return { result: text, modelUsed: `Gemini-3.5-Flash-Lite (Key ${i + 1}) [Primary-Fast]` };
+    } catch (error) {
+      console.warn(`⚠️ [ROUTER] Gemini 3.5 Lite failed (Key ${i + 1}): ${error.message}`);
+      lastError = error;
+      if (String(error.message).includes('429') || String(error.message).includes('503')) cooldownKey(key);
     }
   }
 
+  // ==========================================
+  // TIER 4: EMERGENCY ESCALATIONS
+  // ==========================================
+  
+  // 1. Escalate to Gemini 3.6 if 3.5 Lite is down
+  for (let i = 0; i < geminiKeys.length; i++) {
+    const key = geminiKeys[i];
+    if (isKeyCoolingDown(key)) continue;
+
+    try {
+      const text = await callGemini(key, 'gemini-3.6-flash', prompt, systemInstruction);
+      return { result: text, modelUsed: `Gemini-3.6-Flash (Key ${i + 1}) [Escalated-Emergency]` };
+    } catch (error) {
+      console.warn(`⚠️ [ROUTER] Gemini 3.6 Escalation failed (Key ${i + 1}): ${error.message}`);
+      lastError = error;
+    }
+  }
+
+  // 2. Ultimate Fallback: Groq 8B Instant
+  if (hasGroq) {
+    try {
+      const text = await callGroq(groqClient, 'llama-3.1-8b-instant', prompt, systemInstruction, 400, groqTemp);
+      return { result: text, modelUsed: `Groq-Llama-3.1-8B [Ultimate-Fallback]` };
+    } catch (error) {
+      console.warn(`⚠️ [ROUTER] Groq 8B fallback failed: ${error.message}`);
+      lastError = error;
+    }
+  }
+
+  // If we reach this line, literally every key and every model has failed.
   console.error('❌ [ROUTER] Critical: All hybrid models (Groq + Gemini) failed or are cooling down.');
   throw lastError || new Error('All model quotas exhausted or cooling down.');
 }
