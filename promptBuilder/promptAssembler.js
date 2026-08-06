@@ -3,9 +3,15 @@
  *
  * PURPOSE
  *   Final lightweight prompt composer.
- *   No database access, model calls, ranking, or state mutation.
  *   Acts purely as a "dumb" assembler snapping pre-rendered blocks together.
+ *   🚀 UPGRADE: Uses XML tags which 3rd Gen Models (Gemini 3.5/3.6 & Llama 3) process with near-perfect accuracy.
  */
+
+// 🛡️ SECURITY: Strips XML tags from user input to prevent prompt injection hijacking
+function sanitize(text) {
+  if (typeof text !== 'string') return '';
+  return text.replace(/[<>]/g, '');
+}
 
 function renderRelationshipFraming(relationship = {}) {
   const tierMap = {
@@ -21,7 +27,7 @@ function renderRelationshipFraming(relationship = {}) {
   const tier = tierMap[relationship.tier] || 'Member';
   const familiarity = relationship.familiarity > 50 ? 'High' : 'Low';
 
-  return `[REL:${tier}|FAM:${familiarity}]`;
+  return `<UserContext tier="${tier}" familiarity="${familiarity}" />`;
 }
 
 function renderMemoryBlock(memories) {
@@ -29,89 +35,83 @@ function renderMemoryBlock(memories) {
 
   const content = memories
     .slice(0, 10)
-    .map(m => m?.content)
+    .map(m => sanitize(m?.content))
     .filter(Boolean)
-    .join('|');
+    .join(' | ');
 
-  // 🛡️ SECURITY: Marked untrusted so user memories can't execute prompt injection
-  return content ? `[LTM_UNTRUSTED:${content}]` : '';
+  return content ? `<LongTermMemory>${content}</LongTermMemory>` : '';
 }
 
 function renderWorkingMemory(workingMemory) {
-  if (!Array.isArray(workingMemory) || workingMemory.length === 0) {
-    return '';
-  }
+  if (!Array.isArray(workingMemory) || workingMemory.length === 0) return '';
 
   const lines = workingMemory
     .slice(-10)
     .map(t => {
-      const role = t.role === 'melody' ? 'M' : 'U';
-      return `${role}:${t.content}`;
+      const role = t.role === 'melody' ? 'AI' : 'User';
+      return `${role}: ${sanitize(t.content)}`;
     })
-    .join('|');
+    .join('\n');
 
-  // 🛡️ SECURITY: Marked untrusted to prevent conversational hijacking
-  return lines ? `[WM_UNTRUSTED:${lines}]` : '';
+  return lines ? `<RecentChatHistory>\n${lines}\n</RecentChatHistory>` : '';
 }
 
 function renderTargetBlock(targetInfo) {
   if (!targetInfo) return '';
 
   if (targetInfo.addressingEveryone) {
-    return '[TARGET:Group]';
+    return '<AudienceTarget>Group (Everyone)</AudienceTarget>';
   }
 
   if (targetInfo.hasThirdPartyTarget) {
-    // 🛡️ LIMIT: Cap at 5 targets to prevent token bloat from massive Discord mentions
     const targets = (targetInfo.targets || [])
       .slice(0, 5)
-      .map(t => t.name)
+      .map(t => sanitize(t.name))
       .filter(Boolean)
-      .join(',');
+      .join(', ');
 
-    return targets ? `[TARGET:${targets}]` : '';
+    return targets ? `<AudienceTarget>${targets}</AudienceTarget>` : '';
   }
 
   return '';
 }
 
 function renderTaskDirective(behavior = {}) {
-  const parts = [
-    behavior.targetLength ? `LEN:${behavior.targetLength}` : '',
-    Array.isArray(behavior.tone) && behavior.tone.length
-      ? `TONE:${behavior.tone.join(',')}`
-      : '',
-    behavior.emojiBudget ? `EMOJI:${behavior.emojiBudget}` : '',
-    behavior.preferReact ? 'REACT:Y' : '',
-    behavior.askFollowUp ? 'ASK:Y' : '',
-    Array.isArray(behavior.forbidTraits) && behavior.forbidTraits.length
-      ? `NO:${behavior.forbidTraits.join(',')}`
-      : '',
-  ].filter(Boolean);
+  const directives = [];
+  
+  if (behavior.targetLength) directives.push(`Length: ${behavior.targetLength}`);
+  if (Array.isArray(behavior.tone) && behavior.tone.length) directives.push(`Tone: ${behavior.tone.join(', ')}`);
+  if (behavior.emojiBudget) directives.push(`Max Emojis: ${behavior.emojiBudget}`);
+  if (behavior.preferReact) directives.push(`Action: Acknowledge politely`);
+  if (behavior.askFollowUp) directives.push(`Action: End with an engaging question`);
+  if (Array.isArray(behavior.forbidTraits) && behavior.forbidTraits.length) directives.push(`AVOID: ${behavior.forbidTraits.join(', ')}`);
 
-  return parts.length ? `[DIR:${parts.join('|')}]` : '';
+  return directives.length ? `<BehaviorDirectives>\n${directives.join('\n')}\n</BehaviorDirectives>` : '';
 }
 
 function assemble({
-  emotionalBrief, // String pre-calculated in decisionPipeline
+  emotionalBrief,
   relationship,
   behaviorDirective,
   rankedMemories,
   workingMemory,
   userMessage,
   targetInfo,
+  speakerName
 }) {
-  return [
-    emotionalBrief,
+  // Assemble the blocks using clean XML structures that modern LLMs love
+  const promptBlocks = [
+    emotionalBrief ? `<EmotionalState>${sanitize(emotionalBrief)}</EmotionalState>` : '',
     renderRelationshipFraming(relationship),
-    renderMemoryBlock(rankedMemories),
-    renderWorkingMemory(workingMemory),
     renderTargetBlock(targetInfo),
     renderTaskDirective(behaviorDirective),
-    `[MSG] ${userMessage}`,
-  ]
-    .filter(Boolean) // Instantly removes any empty blocks to save tokens
-    .join('\n');
+    renderMemoryBlock(rankedMemories),
+    renderWorkingMemory(workingMemory),
+    `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`
+  ];
+
+  // Instantly removes any empty blocks to save tokens, and joins with newlines
+  return promptBlocks.filter(Boolean).join('\n');
 }
 
 module.exports = {
