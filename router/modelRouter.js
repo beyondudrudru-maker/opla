@@ -4,8 +4,8 @@
  * PURPOSE
  *   True Smart Cascading Hybrid Router with Full Error Logging & Cooldowns.
  *   - Groq (Llama-3.3-70B): Primary for Code, Math, and Data.
- *   - Gemini 3.6-Flash: Primary for Complex/Heavy tasks & Fallback.
- *   - Gemini 3.5-Flash-Lite: Primary for fast, everyday conversational chat.
+ *   - Gemini 3.6-Flash: Primary for Complex/Heavy tasks & Fallback (Internet Connected).
+ *   - Gemini 3.5-Flash-Lite: Primary for fast, everyday conversational chat (Internet Connected).
  */
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -84,7 +84,14 @@ async function callGemini(apiKey, modelName, prompt, systemInstruction, temp) {
   const model = genAI.getGenerativeModel({
     model: modelName,
     systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
-    generationConfig: { temperature: temp }
+    generationConfig: { temperature: temp },
+    // 🚀 THE UPGRADE: Live Internet Search Grounding!
+    // This stops hallucinations and fetches real-time data for facts and dates.
+    tools: [
+      {
+        googleSearch: {}
+      }
+    ]
   });
   const response = await model.generateContent(prompt);
   return response.response.text();
