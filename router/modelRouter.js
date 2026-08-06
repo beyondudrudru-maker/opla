@@ -2,16 +2,15 @@
  * router/modelRouter.js
  *
  * PURPOSE
- *   True Smart Cascading Hybrid Router — v2 (Round-Robin + Circuit Breaker Edition)
+ *   True Smart Cascading Hybrid Router — v3 (Concurrency Safe Edition)
  *   - Groq (Llama-3.3-70B): Primary for Code, Math, and Data.
  *   - Gemini 3.6-Flash (3rd Gen): Strictly for Heavy/Complex tasks & Fallback.
- *   - Gemini 3.5-Flash-Lite (3rd Gen): Primary for fast, everyday chat & general questions.
+ *   - Gemini 3.5-Flash-Lite (3rd Gen): Primary for fast, everyday chat.
  *
- * WHAT'S NEW IN v2
- *   1. Stateful round-robin key rotation (per model pool) — spreads RPM evenly across accounts.
- *   2. A real circuit breaker (CLOSED -> OPEN -> HALF_OPEN) per model+key combo. 
- *   3. Prompt compression utility, applied ONLY on the last-resort Groq 8B emergency call.
- *   4. Jittered exponential backoff — fast retries for transient errors.
+ * WHAT'S NEW IN v3
+ *   1. HALF_OPEN Probe Lock: Prevents race conditions during recovery. Only
+ *      one concurrent request is allowed to test a cooling-down API.
+ *   2. Cleaned up documentation around Tier 2 fallback logic.
  */
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -30,10 +29,10 @@ function getGeminiClient(apiKey) {
 }
 
 // ============================================================
-// 2. CIRCUIT BREAKER — per model+key combo
+// 2. CIRCUIT BREAKER (Concurrency Safe)
 // ============================================================
 const CIRCUIT_STATE = { CLOSED: 'CLOSED', OPEN: 'OPEN', HALF_OPEN: 'HALF_OPEN' };
-const BREAKER_COOLDOWN_MS = 60 * 1000; // 60s cooldown for rate limits
+const BREAKER_COOLDOWN_MS = 60 * 1000; 
 
 const GROQ_CLIENT_ID = 'groq-single-client';
 const breakers = new Map(); 
@@ -45,20 +44,32 @@ function breakerId(apiKeyOrClientId, modelName) {
 
 function getBreaker(id) {
   if (!breakers.has(id)) {
-    breakers.set(id, { state: CIRCUIT_STATE.CLOSED, openedAt: 0, trippedBy: null });
+    // 🚀 FIX: Added probeInFlight lock to prevent concurrent probe spam
+    breakers.set(id, { state: CIRCUIT_STATE.CLOSED, openedAt: 0, trippedBy: null, probeInFlight: false });
   }
   return breakers.get(id);
 }
 
 function isBreakerOpen(id) {
   const b = getBreaker(id);
+  
   if (b.state === CIRCUIT_STATE.CLOSED) return false;
+
+  // 🚀 FIX: Concurrency Lock Check
+  if (b.state === CIRCUIT_STATE.HALF_OPEN) {
+    if (b.probeInFlight) return true; // Treat as OPEN if a probe is already testing the API
+    b.probeInFlight = true; // Lock it for this request!
+    return false;
+  }
 
   const elapsed = Date.now() - b.openedAt;
   if (elapsed > BREAKER_COOLDOWN_MS) {
+    // Cooldown finished. Transition to HALF_OPEN and instantly lock the probe!
     b.state = CIRCUIT_STATE.HALF_OPEN;
+    b.probeInFlight = true; 
     return false;
   }
+  
   return b.state === CIRCUIT_STATE.OPEN;
 }
 
@@ -67,6 +78,7 @@ function tripBreaker(id, reason) {
   b.state = CIRCUIT_STATE.OPEN;
   b.openedAt = Date.now();
   b.trippedBy = reason;
+  b.probeInFlight = false; // Reset lock on hard fail
   console.warn(`🔌 [BREAKER] OPEN for ${id} (${reason}) — cooling down 60s`);
 }
 
@@ -78,6 +90,14 @@ function resetBreaker(id) {
   b.state = CIRCUIT_STATE.CLOSED;
   b.openedAt = 0;
   b.trippedBy = null;
+  b.probeInFlight = false; // Safely remove lock on success
+}
+
+function releaseProbe(id) {
+  const b = getBreaker(id);
+  if (b.state === CIRCUIT_STATE.HALF_OPEN) {
+    b.probeInFlight = false; // Release lock if a non-429 transient error blocked the probe
+  }
 }
 
 function isHardLimitError(error) {
@@ -104,7 +124,7 @@ function nextKeyOrder(poolName, keys) {
 }
 
 // ============================================================
-// 4. MEMORY-PROOF EXPERTISE & COMPLEXITY CLASSIFIERS 
+// 4. ROUTING CLASSIFIERS
 // ============================================================
 function isGroqDomain(userMessage) {
   if (!userMessage) return false;
@@ -120,7 +140,7 @@ function isComplexTask(intent, userMessage) {
 }
 
 // ============================================================
-// 5. DYNAMIC TEMPERATURE CONTROLLER (Groq only)
+// 5. DYNAMIC TEMPERATURE
 // ============================================================
 function getDynamicTemp(intent) {
   switch (intent) {
@@ -133,43 +153,32 @@ function getDynamicTemp(intent) {
 }
 
 // ============================================================
-// 6. TOKEN COMPRESSION — EMERGENCY TIER ONLY
+// 6. TOKEN COMPRESSION (Emergency Tier)
 // ============================================================
-const EMERGENCY_MEMORY_CHAR_CAP = 300; 
+const EMERGENCY_MEMORY_CHAR_CAP = 300;
 
 function compressForEmergency(prompt) {
   if (!prompt) return prompt;
-
   let compressed = prompt;
-
-  // 🚀 FINAL TOUCH: Completely drop LongTermMemory for 8B to save massive tokens
   compressed = compressed.replace(/<LongTermMemory>[\s\S]*?<\/LongTermMemory>/i, '');
-
-  // 🚀 FINAL TOUCH: Aggressively truncate RecentChatHistory to keep ONLY the most recent messages (end of string)
   compressed = compressed.replace(/<RecentChatHistory>([\s\S]*?)<\/RecentChatHistory>/i, (match, inner) => {
     if (inner.length <= EMERGENCY_MEMORY_CHAR_CAP) return match;
-    const truncated = inner.slice(-EMERGENCY_MEMORY_CHAR_CAP); // Keep the END!
+    const truncated = inner.slice(-EMERGENCY_MEMORY_CHAR_CAP);
     return `<RecentChatHistory>\n...[truncated for emergency]...\n${truncated}\n</RecentChatHistory>`;
   });
-
-  // Cheap whitespace compression everywhere else.
-  compressed = compressed
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-
+  compressed = compressed.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   return compressed;
 }
 
 // ============================================================
-// 7. RETRY HELPERS — Jitter + Exponential backoff
+// 7. RETRY HELPERS
 // ============================================================
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function backoffDelay(attempt) {
-  const base = 500 * Math.pow(2, attempt); 
+  const base = 500 * Math.pow(2, attempt);
   const jitter = Math.random() * 250;
   return base + jitter;
 }
@@ -223,7 +232,7 @@ async function callGemini(apiKey, modelName, prompt, systemInstruction) {
 }
 
 // ============================================================
-// 9. GEMINI KEY-POOL RUNNER
+// 9. POOL RUNNERS
 // ============================================================
 async function runGeminiPool(poolName, modelName, geminiKeys, prompt, systemInstruction, labelFn) {
   const order = nextKeyOrder(poolName, geminiKeys);
@@ -238,10 +247,14 @@ async function runGeminiPool(poolName, modelName, geminiKeys, prompt, systemInst
       return { result: text, modelUsed: labelFn(index) };
     } catch (error) {
       console.warn(`⚠️ [ROUTER] ${modelName} failed (Key ${index + 1}): ${error.message}`);
-      if (isHardLimitError(error)) tripBreaker(id, error.message);
+      if (isHardLimitError(error)) {
+        tripBreaker(id, error.message);
+      } else {
+        releaseProbe(id); // Safely release lock if failure was just a transient timeout
+      }
     }
   }
-  return null; 
+  return null;
 }
 
 async function runGroqGuarded(groqClient, modelName, prompt, systemInstruction, maxTokens, temp) {
@@ -254,7 +267,11 @@ async function runGroqGuarded(groqClient, modelName, prompt, systemInstruction, 
     return text;
   } catch (error) {
     console.warn(`⚠️ [ROUTER] Groq ${modelName} failed: ${error.message}`);
-    if (isHardLimitError(error)) tripBreaker(id, error.message);
+    if (isHardLimitError(error)) {
+      tripBreaker(id, error.message);
+    } else {
+      releaseProbe(id);
+    }
     throw error;
   }
 }
@@ -280,7 +297,7 @@ async function generate({ classification, prompt, userMessage, systemInstruction
       if (text !== null) return { result: text, modelUsed: 'Groq-Llama-3.3-70B [Primary-Expert]' };
       console.warn('🔌 [ROUTER] Groq Expert breaker open. Cascading down...');
     } catch (error) {
-      console.warn(`⚠️ [ROUTER] Groq Expert Route failed: ${error.message}. Cascading down...`);
+      console.warn(`⚠️ [ROUTER] Groq Expert Route failed. Cascading down...`);
       lastError = error;
     }
   }
@@ -299,13 +316,15 @@ async function generate({ classification, prompt, userMessage, systemInstruction
     );
     if (heavy) return heavy;
 
+    // 🚀 FIX: Documented logic: If needsGroq is true, Groq 70B ALREADY failed in Tier 1.
+    // We strictly use `!needsGroq` to prevent pointlessly double-hitting a dead API.
     if (hasGroq && !needsGroq) {
       try {
         const text = await runGroqGuarded(groqClient, 'llama-3.3-70b-versatile', prompt, systemInstruction, 1000, groqTemp);
         if (text !== null) return { result: text, modelUsed: 'Groq-Llama-3.3-70B [Complex-Fallback]' };
         console.warn('🔌 [ROUTER] Groq Complex-Fallback breaker open. Cascading down...');
       } catch (error) {
-        console.warn(`⚠️ [ROUTER] Groq 70B fallback failed: ${error.message}`);
+        console.warn(`⚠️ [ROUTER] Groq 70B fallback failed. Cascading down...`);
         lastError = error;
       }
     }
@@ -344,9 +363,8 @@ async function generate({ classification, prompt, userMessage, systemInstruction
       if (text !== null) {
         return { result: text, modelUsed: 'Groq-Llama-3.1-8B [Ultimate-Fallback, Compressed]' };
       }
-      console.warn('🔌 [ROUTER] Groq Ultimate-Fallback breaker open.');
     } catch (error) {
-      console.warn(`⚠️ [ROUTER] Groq 8B fallback failed: ${error.message}`);
+      console.warn(`⚠️ [ROUTER] Groq 8B fallback failed.`);
       lastError = error;
     }
   }
@@ -355,11 +373,13 @@ async function generate({ classification, prompt, userMessage, systemInstruction
   throw lastError || new Error('All model quotas exhausted or cooling down.');
 }
 
-// 🚀 FINAL TOUCH: Fixed map iteration for getRouterHealth so it exports properly
+// ============================================================
+// 11. OBSERVABILITY
+// ============================================================
 function getRouterHealth() {
   const snapshot = [];
   for (const [id, b] of breakers.entries()) {
-    snapshot.push({ id, state: b.state, trippedBy: b.trippedBy, openedAt: b.openedAt || null });
+    snapshot.push({ id, state: b.state, trippedBy: b.trippedBy, openedAt: b.openedAt || null, probeInFlight: b.probeInFlight });
   }
   return { breakers: snapshot, rrPointers: Object.fromEntries(rrPointers.entries()) };
 }
