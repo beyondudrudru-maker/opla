@@ -4,8 +4,8 @@
  * PURPOSE
  *   True Smart Cascading Hybrid Router with Full Error Logging & Cooldowns.
  *   - Groq (Llama-3.3-70B): Primary for Code, Math, and Data.
- *   - Gemini 3.6-Flash: Primary for Complex/Heavy tasks & Fallback (Internet Connected).
- *   - Gemini 3.5-Flash-Lite: Primary for fast, everyday conversational chat (Internet Connected).
+ *   - Gemini 3.6-Flash: Strictly for Heavy/Complex tasks & Fallback.
+ *   - Gemini 3.5-Flash-Lite: Primary for fast, everyday chat & general questions.
  */
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -39,14 +39,19 @@ function cooldownKey(apiKey, durationMs = 3600000) {
 // 2. MEMORY-PROOF EXPERTISE & COMPLEXITY CLASSIFIERS
 function isGroqDomain(prompt) {
   if (!prompt) return false;
-  // Isolate the tail-end of the prompt to avoid system prompt/memory pollution
   const recentUserText = prompt.slice(-200).toLowerCase();
   const GROQ_EXPERT_REGEX = /math|calculate|equation|code|script|debug|python|javascript|html|css|sql|json|database|algorithm/i;
   return GROQ_EXPERT_REGEX.test(recentUserText);
 }
 
-function isComplexTask(intent) {
-  return intent === INTENTS.HEAVY_TASK || intent === INTENTS.QUESTION;
+function isComplexTask(intent, prompt) {
+  // 🚀 FIX: Removed INTENTS.QUESTION so regular questions go to Gemini 3.5 Flash-Lite!
+  if (intent === INTENTS.HEAVY_TASK) return true;
+  
+  if (!prompt) return false;
+  const recentUserText = prompt.slice(-200).toLowerCase();
+  const HEAVY_ANALYSIS_REGEX = /deep analysis|quantum|architecture|complex breakdown|thesis/i;
+  return HEAVY_ANALYSIS_REGEX.test(recentUserText);
 }
 
 // 3. DYNAMIC TEMPERATURE CONTROLLER
@@ -56,7 +61,6 @@ function getDynamicTemp(intent) {
     case INTENTS.COMMAND:
       return 0.1; // Extremely precise/strict for code/logic
     case INTENTS.HEAVY_TASK:
-    case INTENTS.QUESTION:
       return 0.3; // Low hallucination risk
     case INTENTS.EMOTIONAL_DISCLOSURE:
       return 0.9; // Highly empathetic
@@ -65,7 +69,7 @@ function getDynamicTemp(intent) {
   }
 }
 
-// 4. API EXECUTORS (Stateless execution with full error capture)
+// 4. API EXECUTORS
 async function callGroq(groqClient, modelName, prompt, systemInstruction, maxTokens, temp) {
   const completion = await groqClient.chat.completions.create({
     model: modelName,
@@ -85,16 +89,9 @@ async function callGemini(apiKey, modelName, prompt, systemInstruction, temp) {
     model: modelName,
     systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
     generationConfig: { temperature: temp },
-    // 🚀 THE ULTIMATE UPGRADE: Aggressive Dynamic Retrieval
-    // A threshold of 0.2 forces the AI to search the internet for almost all factual claims.
     tools: [
       {
-        googleSearchRetrieval: {
-          dynamicRetrievalConfig: {
-            mode: "MODE_DYNAMIC",
-            dynamicThreshold: 0.2
-          }
-        }
+        googleSearch: {}
       }
     ]
   });
@@ -103,14 +100,14 @@ async function callGemini(apiKey, modelName, prompt, systemInstruction, temp) {
 }
 
 /**
- * Main Smart Cascading Generator Function with Full Fallback Logs
+ * Main Smart Cascading Generator Function
  */
 async function generate({ classification, prompt, systemInstruction, geminiKeys = [], groqClient, hasGroq }) {
   const currentIntent = classification?.intent || 'social';
   const dynamicTemp = getDynamicTemp(currentIntent);
   
   const needsGroq = isGroqDomain(prompt);
-  const complex = isComplexTask(currentIntent);
+  const complex = isComplexTask(currentIntent, prompt);
   
   let lastError;
 
@@ -125,7 +122,6 @@ async function generate({ classification, prompt, systemInstruction, geminiKeys 
       console.warn(`⚠️ [ROUTER] Groq Expert Route failed: ${error.message}. Cascading to Gemini.`);
       lastError = error;
       
-      // Fallback to Gemini 3.6 if Groq fails its own expertise
       for (let i = 0; i < geminiKeys.length; i++) {
         const key = geminiKeys[i];
         if (isKeyCoolingDown(key)) continue;
@@ -143,7 +139,7 @@ async function generate({ classification, prompt, systemInstruction, geminiKeys 
   }
 
   // ==========================================
-  // ROUTE B: COMPLEX GENERAL (Gemini 3.6 Primary)
+  // ROUTE B: HEAVY / COMPLEX TASKS ONLY (Gemini 3.6 Primary)
   // ==========================================
   else if (complex) {
     for (let i = 0; i < geminiKeys.length; i++) {
@@ -162,7 +158,6 @@ async function generate({ classification, prompt, systemInstruction, geminiKeys 
       }
     }
 
-    // Fallback to Groq 70B if Gemini complex keys fail
     if (hasGroq) {
       try {
         const text = await callGroq(groqClient, 'llama-3.3-70b-versatile', prompt, systemInstruction, 1000, dynamicTemp);
@@ -175,10 +170,10 @@ async function generate({ classification, prompt, systemInstruction, geminiKeys 
   } 
   
   // ==========================================
-  // ROUTE C: NORMAL EVERYDAY CHAT (Gemini 3.5 Primary)
+  // ROUTE C: EVERYDAY CHAT & QUESTIONS (Gemini 3.5 Primary)
   // ==========================================
   else {
-    // 1. Try Fast Gemini 3.5 Lite
+    // 1. Primary: Fast Gemini 3.5 Lite for all questions, social chat, and banter
     for (let i = 0; i < geminiKeys.length; i++) {
       const key = geminiKeys[i];
       if (isKeyCoolingDown(key)) continue;
@@ -195,7 +190,7 @@ async function generate({ classification, prompt, systemInstruction, geminiKeys 
       }
     }
 
-    // 2. Escalation: Try Gemini 3.6 if 3.5 is unavailable
+    // 2. Escalation: Try Gemini 3.6 if 3.5 Lite is cooling down
     for (let i = 0; i < geminiKeys.length; i++) {
       const key = geminiKeys[i];
       if (isKeyCoolingDown(key)) continue;
