@@ -7,7 +7,7 @@
  * "unknown" rather than an estimate.
  */
 
-const queryEngine = require('../gameQueryEngine.js');
+const queryEngine = require('./gameQueryEngine.js');
 
 function _summarizeSquad(squad) {
   const rows = [];
