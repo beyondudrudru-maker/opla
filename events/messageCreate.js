@@ -3,16 +3,18 @@
  * 
  * PURPOSE
  *   The primary entry point for Discord messages.
- *   Orchestrates the flow: Discord -> Decision Pipeline -> Smart Router -> Discord -> Memory
+ *   Orchestrates the flow: Discord -> Deterministic Gatekeeper -> Decision Pipeline -> AI -> Memory
  */
 
 const { Events } = require('discord.js');
 const { getGoldGuide, getGemGuide } = require('../data/gameData.js');
 const supabase = require('../database/supabase.js');
 
-// 🚀 THE FIX: Import both the Pipeline AND the Router
 const { planTurn, finalizeTurn } = require('../decision/decisionPipeline.js');
 const { generate } = require('../router/modelRouter.js'); 
+
+// 🚀 NEW: Import the Deterministic Game Domain Router
+const gameDomainRouter = require('../router/gameDomainRouter.js');
 
 // 🛡️ GLOBAL DEDUPLICATION SET (Prevents double processing)
 const processedMessages = new Set();
@@ -88,6 +90,37 @@ module.exports = {
         const rawUserMessage = message.content.replace(`<@${client.user.id}>`, '').trim();
         await message.channel.sendTyping();
 
+        // 🚀 THE GATEKEEPER: DETERMINISTIC GAME ROUTING LAYER
+        let gameResult = { resolved: false, context: null, intent: 'UNKNOWN' };
+        try {
+            gameResult = gameDomainRouter.route(rawUserMessage);
+            console.log(`[GAME ROUTER] input="${rawUserMessage}" intent=${gameResult.intent} resolved=${gameResult.resolved}`);
+        } catch (err) {
+            console.error('❌ [GAME ROUTER ERROR]', err);
+        }
+
+        // IF RESOLVED: Instant deterministic answer. Bypass Gemini completely.
+        if (gameResult.resolved === true) {
+            console.log(`[GAME ROUTER] Deterministic answer — Gemini bypassed`);
+            
+            // Save to memory so the AI remembers this interaction later!
+            try {
+                await finalizeTurn({
+                    channelId: message.channel.id,
+                    userId: message.author.id,
+                    content: rawUserMessage,
+                    responseText: gameResult.reply
+                });
+            } catch (memErr) {
+                console.error('❌ [MEMORY LOGGING ERROR]', memErr);
+            }
+
+            return await message.reply({ content: gameResult.reply, allowedMentions: { repliedUser: false } });
+        }
+
+        // IF UNRESOLVED: Proceed to AI Pipeline
+        console.log(`[GAME ROUTER] Falling through to Melody AI`);
+
         // Construct dynamic context for the Pipeline
         const displayName = message.member?.displayName || message.author.username;
         const roles = message.member?.roles.cache.map(r => r.name) || [];
@@ -104,7 +137,6 @@ module.exports = {
                 })),
         };
 
-        // 🚀 Authoritative System Instruction (Protects from XML confusion)
         const systemInstruction = `
         You are MELODY, a highly intelligent AI assistant for the !NF!N!TY gaming clan.
         CRITICAL DIRECTIVES:
@@ -114,7 +146,7 @@ module.exports = {
         `;
 
         try {
-            // STEP 1: Plan the Turn (Intent, Emotion, Memory, XML Assembly)
+            // STEP 1: Plan the Turn
             const turnData = await planTurn({
                 userId: message.author.id,
                 displayName,
@@ -125,11 +157,17 @@ module.exports = {
                 mentions
             });
 
-            // STEP 2: Execute the Smart Router
+            // 🚀 INJECT STRATEGY CONTEXT: If the router prepared compact JSON for the AI, attach it to the prompt.
+            if (gameResult.context) {
+                const contextStr = typeof gameResult.context === 'object' ? JSON.stringify(gameResult.context, null, 2) : gameResult.context;
+                turnData.prompt += `\n\n<GameStrategyContext>\n${contextStr}\n</GameStrategyContext>`;
+            }
+
+            // STEP 2: Execute the Smart Router (Melody AI)
             const aiResponse = await generate({
-                classification: turnData.classification, // True classification from the pipeline!
-                prompt: turnData.prompt,                 // The fully assembled XML prompt!
-                userMessage: rawUserMessage,             // Raw message to prevent XML domain misrouting!
+                classification: turnData.classification, 
+                prompt: turnData.prompt,                 
+                userMessage: rawUserMessage,             
                 systemInstruction: systemInstruction,
                 geminiKeys: [process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2], 
                 hasGroq: !!process.env.GROQ_API_KEY,
@@ -153,7 +191,7 @@ module.exports = {
                 await message.reply({ content: aiReply, allowedMentions: { repliedUser: false } });
             }
 
-            // STEP 4: Save the interaction to Supabase Memory!
+            // STEP 4: Save the interaction to Supabase Memory
             await finalizeTurn({
                 channelId: message.channel.id,
                 userId: message.author.id,
