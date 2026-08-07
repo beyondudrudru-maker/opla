@@ -16,7 +16,7 @@
  * -------------------------------------------------------------
  */
 
-const { gameLibrary } = require('./gameKnowledge.js');
+const { gameLibrary } = require('../data/gameKnowledge.js');
 
 const { troops, heroes, bosses, arena, meta, troopHeroSynergy, heroSynergyIndex, indexes, formulas } = gameLibrary;
 
