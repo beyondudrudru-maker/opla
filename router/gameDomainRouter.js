@@ -1,8 +1,8 @@
 /**
  * router/gameDomainRouter.js
  * 
- * PURPOSE: Routes deterministically to JS engines or falls back to AI.
- * UPGRADED: Returns dual side-by-side Discord Embeds for hero/troop comparisons.
+ * PURPOSE: Routes comparisons by sending visual Embed Cards 
+ * AND passing context to the AI for deep tactical analysis.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -116,94 +116,13 @@ function route(text, recentContext = '') {
     }
   }
 
-  // 3. CALC / COMPARISON ENGINE (Dual Embeds for Hero/Troop Comparisons)
-  if (intent === 'CALC' || (entities.heroNames && entities.heroNames.length >= 2)) {
-    
-    // 🦸‍♂️ Hero vs Hero Dual Cards
-    if (entities.heroNames && entities.heroNames.length >= 2) {
-      const h1 = queryEngine.getHero(entities.heroNames[0]);
-      const h2 = queryEngine.getHero(entities.heroNames[1]);
-
-      if (h1 && h2) {
-        const embed1 = new EmbedBuilder()
-          .setColor('#3498DB')
-          .setTitle(`🦸‍♂️ ${h1.name}`)
-          .addFields(
-            { name: 'Faction / Rarity', value: `${h1.faction} (${h1.rarity})`, inline: false },
-            { name: '❤️ HP', value: h1.stats?.hp ? h1.stats.hp.toLocaleString() : 'N/A', inline: true },
-            { name: '🛡️ Defense', value: String(h1.stats?.defense || 'N/A'), inline: true },
-            { name: '⚔️ Attack', value: h1.stats?.attack ? h1.stats.attack.toLocaleString() : 'N/A', inline: true }
-          );
-        if (h1.ability) {
-          embed1.addFields({ name: `✨ Ability: ${h1.ability.name}`, value: h1.ability.description });
-        }
-
-        const embed2 = new EmbedBuilder()
-          .setColor('#E74C3C')
-          .setTitle(`🦸‍♂️ ${h2.name}`)
-          .addFields(
-            { name: 'Faction / Rarity', value: `${h2.faction} (${h2.rarity})`, inline: false },
-            { name: '❤️ HP', value: h2.stats?.hp ? h2.stats.hp.toLocaleString() : 'N/A', inline: true },
-            { name: '🛡️ Defense', value: String(h2.stats?.defense || 'N/A'), inline: true },
-            { name: '⚔️ Attack', value: h2.stats?.attack ? h2.stats.attack.toLocaleString() : 'N/A', inline: true }
-          );
-        if (h2.ability) {
-          embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: h2.ability.description });
-        }
-
-        // Return dual embeds for instant visual comparison
-        return { resolved: true, embeds: [embed1, embed2] };
-      }
-    }
-
-    if (entities.troopNames && entities.troopNames.length >= 2) {
-      const squadA = [{ troop: entities.troopNames[0], level: entities.levels[0] || 10, count: entities.counts[0] || 1 }];
-      const squadB = [{ troop: entities.troopNames[1], level: entities.levels[1] || entities.levels[0] || 10, count: entities.counts[1] || 1 }];
-      const squadResult = compareSquads(squadA, squadB);
-      
-      if (squadResult && !squadResult.note) {
-         const aTot = squadResult.squadA.totals;
-         const bTot = squadResult.squadB.totals;
-         const embed1 = new EmbedBuilder()
-            .setColor('#3498DB')
-            .setTitle(`🛡️ ${squadA[0].count}x ${squadA[0].troop} (Lv${squadA[0].level})`)
-            .addFields(
-                { name: '❤️ Total HP', value: aTot.totalHp.toLocaleString(), inline: true },
-                { name: '⚔️ Total DMG', value: aTot.totalDamage.toLocaleString(), inline: true }
-            );
-
-         const embed2 = new EmbedBuilder()
-            .setColor('#E74C3C')
-            .setTitle(`🗡️ ${squadB[0].count}x ${squadB[0].troop} (Lv${squadB[0].level})`)
-            .addFields(
-                { name: '❤️ Total HP', value: bTot.totalHp.toLocaleString(), inline: true },
-                { name: '⚔️ Total DMG', value: bTot.totalDamage.toLocaleString(), inline: true }
-            );
-
-         return { resolved: true, embeds: [embed1, embed2] };
-      }
-    }
-
-    if (entities.levels.length === 2) {
-      const growth = strategyEngine.getTroopGrowth(entities.troopName, entities.levels[0], entities.levels[1]);
-      if (growth && growth.hp.absolute !== null) {
-        const embed = new EmbedBuilder()
-            .setColor('#3498DB')
-            .setTitle(`📈 ${entities.troopName} Growth (Lv${entities.levels[0]} → Lv${entities.levels[1]})`)
-            .addFields(
-                { name: '❤️ HP Growth', value: `+${growth.hp.absolute.toLocaleString()} (+${growth.hp.percent}%)`, inline: true },
-                { name: '⚔️ DMG Growth', value: `+${growth.damage.absolute.toLocaleString()} (+${growth.damage.percent}%)`, inline: true }
-            );
-        return { resolved: true, embeds: [embed] };
-      }
-    }
-  }
-
-  // 4. STRATEGY ENGINE (Requires AI Intelligence & Tactical Breakdown)
+  // 🚀 CRITICAL FIX: For Hero/Troop Comparisons, we want AI Intelligence to run!
+  // So we let it fall through to the Strategy Engine, but we can also pre-build context.
+  
   const strategyData = build(intent, entities);
   
   return { 
-    resolved: false, 
+    resolved: false, // <--- This forces it to pass data to Melody AI so she can write the comparison text!
     intent, 
     entities, 
     context: strategyData.sufficient ? strategyData.context : null 
