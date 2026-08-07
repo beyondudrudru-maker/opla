@@ -1,8 +1,8 @@
 /**
  * router/gameDomainRouter.js
  * 
- * PURPOSE: Routes comparisons by sending visual Embed Cards 
- * AND passing context to the AI for deep tactical analysis.
+ * PURPOSE: Routes comparisons so they flow into the AI pipeline 
+ * to generate deep intelligence, analysis, and verdicts alongside data.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -116,13 +116,11 @@ function route(text, recentContext = '') {
     }
   }
 
-  // 🚀 CRITICAL FIX: For Hero/Troop Comparisons, we want AI Intelligence to run!
-  // So we let it fall through to the Strategy Engine, but we can also pre-build context.
-  
+  // 3. STRATEGY & COMPARISON ENGINE (Passed to AI Pipeline for intelligence, analysis, and verdict)
   const strategyData = build(intent, entities);
   
   return { 
-    resolved: false, // <--- This forces it to pass data to Melody AI so she can write the comparison text!
+    resolved: false, 
     intent, 
     entities, 
     context: strategyData.sufficient ? strategyData.context : null 
