@@ -1,7 +1,7 @@
 /**
  * router/gameDomainRouter.js
  * 
- * PURPOSE: Returns visual cards AND triggers AI intelligence for deep comparison & verdict.
+ * PURPOSE: Returns visual cards AND passes context to the AI pipeline for deep intelligent comparisons.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -95,7 +95,7 @@ function route(text, recentContext = '') {
             .addFields(
               { name: '❤️ HP', value: data.hp?.toLocaleString() || 'N/A', inline: true },
               { name: '⚔️ Damage', value: data.damage?.toLocaleString() || 'N/A', inline: true },
-              { name: '🛡️ Defense', value: String(data.defense || 'N/A', inline: true },
+              { name: '🛡️ Defense', value: String(data.defense || 'N/A'), inline: true },
               { name: '👥 Units', value: String(data.units || 1), inline: true }
             );
 
@@ -114,7 +114,7 @@ function route(text, recentContext = '') {
     }
   }
 
-  // 3. COMPARISON ENGINE (🚀 GENERATES EMBED CARDS + PASSES DATA TO AI FOR INTELLIGENT ANALYSIS)
+  // 3. COMPARISON ENGINE (🚀 GENERATES DUAL EMBED CARDS + PASSES DATA TO AI FOR INTELLIGENT ANALYSIS)
   let prebuiltEmbeds = [];
   if (intent === 'CALC' || (entities.heroNames && entities.heroNames.length >= 2)) {
     if (entities.heroNames && entities.heroNames.length >= 2) {
