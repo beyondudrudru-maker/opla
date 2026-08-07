@@ -13,8 +13,26 @@ const { compareSquads } = require('../engine/squadCalculator.js');
 const ecoModule = require('../data/economyRatios.js');
 const economyRatios = ecoModule.economyRatios || ecoModule;
 
-function route(text) {
-  const { intent, entities } = classify(text);
+// 🚀 ADDED recentContext parameter to handle follow-up pronouns
+function route(text, recentContext = '') {
+  let { intent, entities } = classify(text);
+
+  // 🧠 PRONOUN & FOLLOW-UP RESOLUTION
+  // Checks if user said "her", "his", "this", "ability" but didn't name the troop/hero again.
+  if (!entities.troopName && !entities.heroName && /\b(her|his|him|she|he|it|this|that|them)\b/i.test(text)) {
+      const pastEntities = resolveEntities(recentContext);
+      if (pastEntities.troopName) entities.troopName = pastEntities.troopName;
+      if (pastEntities.heroName) entities.heroName = pastEntities.heroName;
+      if (pastEntities.troopNames && pastEntities.troopNames.length > 0) entities.troopNames = pastEntities.troopNames;
+      if (pastEntities.heroNames && pastEntities.heroNames.length > 0) entities.heroNames = pastEntities.heroNames;
+      if (pastEntities.levels && pastEntities.levels.length > 0 && entities.levels.length === 0) entities.levels = pastEntities.levels;
+
+      if (intent === 'UNKNOWN' && /\b(ability|skill|stat|stats|hp|damage|health)\b/i.test(text)) {
+          intent = 'FACT';
+      } else if (intent === 'UNKNOWN') {
+          intent = 'STRATEGY';
+      }
+  }
 
   if (intent === 'GOLD' || intent === 'GEM') {
     const isGold = intent === 'GOLD';
@@ -42,12 +60,11 @@ function route(text) {
   }
 
   if (intent === 'FACT') {
-    // 🚀 NEW: HERO CARD EMBED
     if (entities.heroName && !entities.troopName) {
         const hero = queryEngine.getHero(entities.heroName);
         if (hero) {
             const embed = new EmbedBuilder()
-                .setColor('#9B59B6') // Hero Purple
+                .setColor('#9B59B6')
                 .setTitle(`🦸‍♂️ ${hero.name} (Hero Card)`)
                 .addFields(
                     { name: 'Faction', value: hero.faction || 'N/A', inline: true },
@@ -66,7 +83,6 @@ function route(text) {
         }
     }
 
-    // TROOP CARD EMBED
     if (entities.troopName) {
         const lvl = entities.levels.length > 0 ? entities.levels[0] : 10;
         const data = queryEngine.getTroopLevel(entities.troopName, lvl);
