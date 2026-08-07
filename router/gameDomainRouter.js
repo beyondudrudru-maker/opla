@@ -1,7 +1,7 @@
 /**
  * router/gameDomainRouter.js
  * 
- * PURPOSE: Clean, deterministic routing for embeds and game data.
+ * PURPOSE: Returns visual cards AND triggers AI intelligence for deep comparison & verdict.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -95,7 +95,7 @@ function route(text, recentContext = '') {
             .addFields(
               { name: '❤️ HP', value: data.hp?.toLocaleString() || 'N/A', inline: true },
               { name: '⚔️ Damage', value: data.damage?.toLocaleString() || 'N/A', inline: true },
-              { name: '🛡️ Defense', value: String(data.defense || 'N/A'), inline: true },
+              { name: '🛡️ Defense', value: String(data.defense || 'N/A', inline: true },
               { name: '👥 Units', value: String(data.units || 1), inline: true }
             );
 
@@ -114,7 +114,8 @@ function route(text, recentContext = '') {
     }
   }
 
-  // 3. COMPARISON ENGINE (🚀 DUAL EMBED CARDS - 100% ACCURATE, NO HALLUCINATIONS)
+  // 3. COMPARISON ENGINE (🚀 GENERATES EMBED CARDS + PASSES DATA TO AI FOR INTELLIGENT ANALYSIS)
+  let prebuiltEmbeds = [];
   if (intent === 'CALC' || (entities.heroNames && entities.heroNames.length >= 2)) {
     if (entities.heroNames && entities.heroNames.length >= 2) {
       const h1 = queryEngine.getHero(entities.heroNames[0]);
@@ -130,12 +131,8 @@ function route(text, recentContext = '') {
             { name: '🛡️ Defense', value: String(h1.stats?.defense || 'N/A'), inline: true },
             { name: '⚔️ Attack', value: h1.stats?.attack ? h1.stats.attack.toLocaleString() : 'N/A', inline: true }
           );
-        if (h1.talent) {
-          embed1.addFields({ name: `🌟 Talent: ${h1.talent.name}`, value: h1.talent.description });
-        }
-        if (h1.ability) {
-          embed1.addFields({ name: `✨ Ability: ${h1.ability.name}`, value: h1.ability.description });
-        }
+        if (h1.talent) embed1.addFields({ name: `🌟 Talent: ${h1.talent.name}`, value: h1.talent.description });
+        if (h1.ability) embed1.addFields({ name: `✨ Ability: ${h1.ability.name}`, value: h1.ability.description });
 
         const embed2 = new EmbedBuilder()
           .setColor('#E74C3C')
@@ -146,24 +143,20 @@ function route(text, recentContext = '') {
             { name: '🛡️ Defense', value: String(h2.stats?.defense || 'N/A'), inline: true },
             { name: '⚔️ Attack', value: h2.stats?.attack ? h2.stats.attack.toLocaleString() : 'N/A', inline: true }
           );
-        if (h2.talent) {
-          embed2.addFields({ name: `🌟 Talent: ${h2.talent.name}`, value: h2.talent.description });
-        }
-        if (h2.ability) {
-          embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: h2.ability.description });
-        }
+        if (h2.talent) embed2.addFields({ name: `🌟 Talent: ${h2.talent.name}`, value: h2.talent.description });
+        if (h2.ability) embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: h2.ability.description });
 
-        // Return resolved: true so it sends both cards directly without AI text scrambling
-        return { resolved: true, embeds: [embed1, embed2] };
+        prebuiltEmbeds = [embed1, embed2];
       }
     }
   }
 
-  // 4. STRATEGY ENGINE (For pure strategy questions)
+  // 4. STRATEGY & AI INTELLIGENCE PIPELINE
   const strategyData = build(intent, entities);
   
   return { 
-    resolved: false, 
+    resolved: false, // <--- Triggers AI pipeline so Melody analyzes the stats!
+    embeds: prebuiltEmbeds.length > 0 ? prebuiltEmbeds : null, // <--- Sends visual cards alongside AI text!
     intent, 
     entities, 
     context: strategyData.sufficient ? strategyData.context : null 
