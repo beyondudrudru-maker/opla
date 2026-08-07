@@ -379,20 +379,32 @@ client.on(Events.MessageCreate, async (message) => {
                 parse: allowedToPingEveryone ? ['everyone'] : []
             };
 
-            // 👇 CHUNKING LOGIC
-            if (finalReply.length > 1950) {
-                const chunks = finalReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
-                for (let i = 0; i < chunks.length; i++) {
-                    if (i === 0) {
-                        await message.reply({ content: chunks[i], allowedMentions: mentionOptions });
-                    } else {
-                        await new Promise(resolve => setTimeout(resolve, 600)); 
-                        await message.channel.send({ content: chunks[i], allowedMentions: { parse: mentionOptions.parse } });
-                    }
-                }
-            } else {
-                await message.reply({ content: finalReply, allowedMentions: mentionOptions });
-            }
+            // 🚀 HYBRID OUTPUT: Attach Prebuilt Embeds (if any from router) to the AI response
+    // 🚀 HYBRID OUTPUT: Attach Prebuilt Embeds (if any from router) to the AI response
+    const replyPayload = { 
+        content: finalReply, 
+        allowedMentions: mentionOptions 
+    };
+    
+    if (gameResult.embeds && gameResult.embeds.length > 0) {
+        replyPayload.embeds = gameResult.embeds;
+    }
+            
+
+if (finalReply.length > 1950) {
+    const chunks = finalReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
+    for (let i = 0; i < chunks.length; i++) {
+        if (i === 0) {
+            await message.reply({ ...replyPayload, content: chunks[i] });
+        } else {
+            await new Promise(resolve => setTimeout(resolve, 600)); 
+            await message.channel.send({ content: chunks[i], allowedMentions: { parse: mentionOptions.parse } });
+        }
+    }
+} else {
+    await message.reply(replyPayload);
+}
+            
 
             // Log AI reply to RAM safely
             try {
