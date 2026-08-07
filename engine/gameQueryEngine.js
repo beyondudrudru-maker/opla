@@ -1,35 +1,16 @@
 /**
  * MELODY Game Query Engine
- * -------------------------------------------------------------
- * Reads gameKnowledge.js and exposes lookup / comparison / search /
- * power-calculation helpers for the Discord bot to call.
- *
- * RULES THIS FILE FOLLOWS:
- *  - Never invents a stat. If a value isn't in gameKnowledge.js,
- *    the function returns null (or "unknown" for text fields).
- *  - Never collapses level 1-10 arrays into a range. All level
- *    lookups index directly into the exact stored array.
- *  - All power/bonus math reproduces calculator.html's formulas
- *    exactly (see gameLibrary.formulas), using the exact lookup
- *    tables stored in gameKnowledge.js — nothing is re-derived
- *    or approximated.
- * -------------------------------------------------------------
  */
 
 const { gameLibrary } = require('../data/gameKnowledge.js');
 
 const { troops, heroes, bosses, arena, meta, troopHeroSynergy, heroSynergyIndex, indexes, formulas } = gameLibrary;
 
-// ---------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------
-
 function normalize(str) {
   if (str === null || str === undefined) return '';
   return String(str).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/** Find a troop by name or id. Exact normalized match first, then substring match. Returns null if not found. */
 function _findTroopEntry(name) {
   if (!name) return null;
   const n = normalize(name);
@@ -50,7 +31,6 @@ function _findHeroEntry(name) {
   return hit || null;
 }
 
-/** level is 1-10. Returns the array index or null if out of range / not a valid integer. */
 function _levelIndex(level) {
   const lv = parseInt(level, 10);
   if (isNaN(lv) || lv < 1 || lv > 10) return null;
@@ -58,28 +38,21 @@ function _levelIndex(level) {
 }
 
 function _rarityKeyForPower(rarity) {
-  // Mirrors getRarity() in calculator.html
   const r = (rarity || '').toLowerCase();
   if (r === 'mythical') return 'legendary';
   if (['legendary', 'rare', 'epic'].includes(r)) return r;
   return 'epic';
 }
 
-// ---------------------------------------------------------------
-// TROOP LOOKUPS
-// ---------------------------------------------------------------
-
-/**
- * getTroop(name) -> full troop object (all levels, ability, tags, analysis) or null.
- */
 function getTroop(name) {
   return _findTroopEntry(name) || null;
 }
 
-/**
- * getTroopLevel(name, level) -> exact stats object for that single level, or null.
- * Example: getTroopLevel("Lava Golem", 7) -> { level:7, units:3, hp:24800, damage:940, defense:50, abilityStats:{...} }
- */
+// 🚀 NEW: Exported getHero function
+function getHero(name) {
+  return _findHeroEntry(name) || null;
+}
+
 function getTroopLevel(name, level) {
   const troop = _findTroopEntry(name);
   if (!troop) return null;
@@ -110,10 +83,6 @@ function getTroopLevel(name, level) {
   return out;
 }
 
-/**
- * getTroopAbility(name, level) -> { name, description, statsAtLevel } or null.
- * If level is omitted, statsAtLevel is null and levelStats (full L1-10 arrays) is returned instead.
- */
 function getTroopAbility(name, level) {
   const troop = _findTroopEntry(name);
   if (!troop) return null;
@@ -132,7 +101,7 @@ function getTroopAbility(name, level) {
 
   if (level !== undefined && level !== null) {
     const idx = _levelIndex(level);
-    if (idx === null) return result; // ability info still valid, just no per-level slice
+    if (idx === null) return result; 
     if (troop.ability.levelStats) {
       result.statsAtLevel = {};
       Object.keys(troop.ability.levelStats).forEach(statName => {
@@ -145,9 +114,6 @@ function getTroopAbility(name, level) {
   return result;
 }
 
-/**
- * compareTroop(name, levelA, levelB) -> side-by-side stats + deltas between two levels of the SAME troop.
- */
 function compareTroop(name, levelA, levelB) {
   const troop = _findTroopEntry(name);
   if (!troop) return null;
@@ -174,10 +140,6 @@ function compareTroop(name, levelA, levelB) {
   };
 }
 
-/**
- * getTroopGrowth(name, levelA, levelB) -> growth (absolute + % change) between two levels.
- * Distinct from compareTroop: focused on scaling/percent-growth rather than a flat side-by-side.
- */
 function getTroopGrowth(name, levelA, levelB) {
   const troop = _findTroopEntry(name);
   if (!troop) return null;
@@ -188,7 +150,7 @@ function getTroopGrowth(name, levelA, levelB) {
   function growth(x, y) {
     if (typeof x !== 'number' || typeof y !== 'number') return { absolute: null, percent: null };
     const absolute = y - x;
-    const percent = x === 0 ? null : Math.round((absolute / x) * 10000) / 100; // 2 decimal % 
+    const percent = x === 0 ? null : Math.round((absolute / x) * 10000) / 100; 
     return { absolute, percent };
   }
 
@@ -205,24 +167,8 @@ function getTroopGrowth(name, levelA, levelB) {
   };
 }
 
-// ---------------------------------------------------------------
-// SEARCH / FILTER
-// ---------------------------------------------------------------
-
-/**
- * findTroops(criteria) -> array of troop objects matching ALL provided criteria.
- * criteria (all optional):
- *   category: string ("Mages","Tank","Undead",...) — matches troop.categories
- *   rarity: string ("epic","legendary","rare")
- *   tag: string — matches troop.tags
- *   role: string — matches troop.analysis.primaryRole
- *   minHpAtLevel: { level, value } — hp at that level >= value
- *   minDamageAtLevel: { level, value } — damage at that level >= value
- *   nameContains: string
- */
 function findTroops(criteria = {}) {
   let results = troops.slice();
-
   if (criteria.category) {
     const c = normalize(criteria.category);
     results = results.filter(t => (t.categories || []).some(cat => normalize(cat) === c));
@@ -255,22 +201,11 @@ function findTroops(criteria = {}) {
       results = results.filter(t => typeof t.levels.damage[idx] === 'number' && t.levels.damage[idx] >= criteria.minDamageAtLevel.value);
     }
   }
-
   return results;
 }
 
-/**
- * findHeroes(criteria) -> array of hero objects matching ALL provided criteria.
- * criteria (all optional):
- *   faction: string
- *   rarity: string
- *   tag: string ("Attack-Buff","HP-Buff","Healing","Crowd-Control","Boss-Damage",...)
- *   targets: string ("Mage","Human","Undead","Tank","All Allies")
- *   nameContains: string
- */
 function findHeroes(criteria = {}) {
   let results = heroes.slice();
-
   if (criteria.faction) {
     const f = normalize(criteria.faction);
     results = results.filter(h => normalize(h.faction) === f);
@@ -291,13 +226,9 @@ function findHeroes(criteria = {}) {
     const nc = normalize(criteria.nameContains);
     results = results.filter(h => normalize(h.name).includes(nc));
   }
-
   return results;
 }
 
-/**
- * findHeroSynergies(troopName) -> { troopId, troopName, heroSynergies: [{heroId, heroName, reason}] } or null.
- */
 function findHeroSynergies(troopName) {
   const troop = _findTroopEntry(troopName);
   if (!troop) return null;
@@ -316,13 +247,6 @@ function findHeroSynergies(troopName) {
   return { troopId: troop.id, troopName: troop.name, heroSynergies: enriched };
 }
 
-// ---------------------------------------------------------------
-// POWER / BONUS CALCULATIONS  (mirrors calculator.html exactly)
-// ---------------------------------------------------------------
-
-/**
- * _heroPower(heroId, level) -> exact power value from formulas.lookupTables.HERO_POWER, or null.
- */
 function _heroPower(heroId, level) {
   const hero = heroes.find(h => h.id === heroId) || _findHeroEntry(heroId);
   if (!hero) return null;
@@ -334,9 +258,6 @@ function _heroPower(heroId, level) {
   return table[idx];
 }
 
-/**
- * _troopPower(troopId, level, squads) -> exact base power * squads, or null.
- */
 function _troopPower(troopIdOrName, level, squads = 1) {
   const troop = _findTroopEntry(troopIdOrName);
   if (!troop) return null;
@@ -348,14 +269,6 @@ function _troopPower(troopIdOrName, level, squads = 1) {
   return table[idx] * (squads || 1);
 }
 
-/**
- * calculateHeroBonus({ hero1Id, hero1Level, hero2Id, hero2Level, weaponName, weaponLevel, armorName, armorLevel, heroCollectionBonusPct })
- * -> { hero1Power, hero2Power, totalHeroPower, weaponBonusPct, armorBonusPct, heroCollectionBonusPct, totalBonusPct, multiplier }
- *
- * heroCollectionBonusPct must be supplied by the caller (it is a player-account-wide value from
- * owned-hero collection, not derivable from a single hero's data) — if omitted it is treated as 0,
- * never guessed.
- */
 function calculateHeroBonus(opts = {}) {
   const {
     hero1Id = null, hero1Level = 1,
@@ -372,10 +285,8 @@ function calculateHeroBonus(opts = {}) {
   if (hero2Id && hero2Power === null) return null;
 
   const totalHeroPower = (hero1Power || 0) + (hero2Power || 0);
-
   const weaponBonusPct = (weaponName && weaponName !== 'none') ? (weaponLevel || 0) * 0.20 : 0;
   const armorBonusPct = (armorName && armorName !== 'none') ? (armorLevel || 0) * 0.20 : 0;
-
   const collectionPct = (typeof heroCollectionBonusPct === 'number') ? heroCollectionBonusPct : 0;
   const totalBonusPct = collectionPct + weaponBonusPct + armorBonusPct;
   const multiplier = 1 + totalBonusPct / 100;
@@ -392,19 +303,13 @@ function calculateHeroBonus(opts = {}) {
   };
 }
 
-/**
- * calculateFinalPower({ troopUnits: [{ nameOrId, level, squads }], hero1Id, hero1Level, hero2Id, hero2Level,
- *                        weaponName, weaponLevel, armorName, armorLevel, heroCollectionBonusPct })
- * -> { armyPower, troopBreakdown, heroBonus, finalPower } or null if any referenced troop/hero can't be resolved.
- */
 function calculateFinalPower(opts = {}) {
   const { troopUnits = [] } = opts;
-
   let armyPower = 0;
   const troopBreakdown = [];
   for (const row of troopUnits) {
     const pwr = _troopPower(row.nameOrId, row.level, row.squads || 1);
-    if (pwr === null) return null; // unresolvable troop/level — do not silently drop or invent
+    if (pwr === null) return null; 
     armyPower += pwr;
     const troop = _findTroopEntry(row.nameOrId);
     troopBreakdown.push({
@@ -422,24 +327,9 @@ function calculateFinalPower(opts = {}) {
   const basePower = armyPower + heroBonus.totalHeroPower;
   const finalPower = Math.round(basePower * heroBonus.multiplier);
 
-  return {
-    armyPower,
-    troopBreakdown,
-    heroBonus,
-    basePower,
-    finalPower
-  };
+  return { armyPower, troopBreakdown, heroBonus, basePower, finalPower };
 }
 
-// ---------------------------------------------------------------
-// "BEST X" HELPERS  (ranked strictly by exact stored numbers)
-// ---------------------------------------------------------------
-
-/**
- * getBestTroopForRole(role, opts) -> troops with analysis.primaryRole === role,
- * sorted descending by HP at the given level (default 10). Returns [] if none match.
- * opts: { level = 10, limit = 5 }
- */
 function getBestTroopForRole(role, opts = {}) {
   const level = opts.level || 10;
   const limit = opts.limit || 5;
@@ -457,10 +347,6 @@ function getBestTroopForRole(role, opts = {}) {
   return ranked;
 }
 
-/**
- * getBestTroopForAttack(opts) -> troops sorted descending by damage at the given level (default 10).
- * opts: { level = 10, limit = 5, category (optional filter) }
- */
 function getBestTroopForAttack(opts = {}) {
   const level = opts.level || 10;
   const limit = opts.limit || 5;
@@ -480,11 +366,6 @@ function getBestTroopForAttack(opts = {}) {
   return ranked;
 }
 
-/**
- * getBestHeroForTroop(troopName, opts) -> synergized heroes for a troop, ranked by how many
- * buff categories (attack/HP/defense) they hit. If no synergy data exists, returns [].
- * opts: { limit = 5 }
- */
 function getBestHeroForTroop(troopName, opts = {}) {
   const limit = opts.limit || 5;
   const synergy = findHeroSynergies(troopName);
@@ -502,13 +383,10 @@ function getBestHeroForTroop(troopName, opts = {}) {
   return ranked;
 }
 
-// ---------------------------------------------------------------
-// EXPORTS
-// ---------------------------------------------------------------
-
 module.exports = {
   gameLibrary,
   getTroop,
+  getHero,
   getTroopLevel,
   getTroopAbility,
   compareTroop,
