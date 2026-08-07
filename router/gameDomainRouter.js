@@ -1,8 +1,8 @@
 /**
  * router/gameDomainRouter.js
  * 
- * PURPOSE: Routes deterministically to JS engines or falls back to AI.
- * UPGRADED: Returns dual side-by-side Discord Embeds for hero/troop comparisons.
+ * PURPOSE: Returns dual Embed Cards for visual display AND passes context 
+ * to the AI pipeline so Melody can write her deep analysis and verdict.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -116,10 +116,9 @@ function route(text, recentContext = '') {
     }
   }
 
-  // 3. CALC / COMPARISON ENGINE (Dual Embeds for Hero/Troop Comparisons)
+  // 3. COMPARISON EMBED BUILDER (Generates visual cards for comparisons while allowing AI text generation)
+  let prebuiltEmbeds = [];
   if (intent === 'CALC' || (entities.heroNames && entities.heroNames.length >= 2)) {
-    
-    // 🦸‍♂️ Hero vs Hero Dual Cards
     if (entities.heroNames && entities.heroNames.length >= 2) {
       const h1 = queryEngine.getHero(entities.heroNames[0]);
       const h2 = queryEngine.getHero(entities.heroNames[1]);
@@ -151,59 +150,17 @@ function route(text, recentContext = '') {
           embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: h2.ability.description });
         }
 
-        // Return dual embeds for instant visual comparison
-        return { resolved: true, embeds: [embed1, embed2] };
-      }
-    }
-
-    if (entities.troopNames && entities.troopNames.length >= 2) {
-      const squadA = [{ troop: entities.troopNames[0], level: entities.levels[0] || 10, count: entities.counts[0] || 1 }];
-      const squadB = [{ troop: entities.troopNames[1], level: entities.levels[1] || entities.levels[0] || 10, count: entities.counts[1] || 1 }];
-      const squadResult = compareSquads(squadA, squadB);
-      
-      if (squadResult && !squadResult.note) {
-         const aTot = squadResult.squadA.totals;
-         const bTot = squadResult.squadB.totals;
-         const embed1 = new EmbedBuilder()
-            .setColor('#3498DB')
-            .setTitle(`🛡️ ${squadA[0].count}x ${squadA[0].troop} (Lv${squadA[0].level})`)
-            .addFields(
-                { name: '❤️ Total HP', value: aTot.totalHp.toLocaleString(), inline: true },
-                { name: '⚔️ Total DMG', value: aTot.totalDamage.toLocaleString(), inline: true }
-            );
-
-         const embed2 = new EmbedBuilder()
-            .setColor('#E74C3C')
-            .setTitle(`🗡️ ${squadB[0].count}x ${squadB[0].troop} (Lv${squadB[0].level})`)
-            .addFields(
-                { name: '❤️ Total HP', value: bTot.totalHp.toLocaleString(), inline: true },
-                { name: '⚔️ Total DMG', value: bTot.totalDamage.toLocaleString(), inline: true }
-            );
-
-         return { resolved: true, embeds: [embed1, embed2] };
-      }
-    }
-
-    if (entities.levels.length === 2) {
-      const growth = strategyEngine.getTroopGrowth(entities.troopName, entities.levels[0], entities.levels[1]);
-      if (growth && growth.hp.absolute !== null) {
-        const embed = new EmbedBuilder()
-            .setColor('#3498DB')
-            .setTitle(`📈 ${entities.troopName} Growth (Lv${entities.levels[0]} → Lv${entities.levels[1]})`)
-            .addFields(
-                { name: '❤️ HP Growth', value: `+${growth.hp.absolute.toLocaleString()} (+${growth.hp.percent}%)`, inline: true },
-                { name: '⚔️ DMG Growth', value: `+${growth.damage.absolute.toLocaleString()} (+${growth.damage.percent}%)`, inline: true }
-            );
-        return { resolved: true, embeds: [embed] };
+        prebuiltEmbeds = [embed1, embed2];
       }
     }
   }
 
-  // 4. STRATEGY ENGINE (Requires AI Intelligence & Tactical Breakdown)
+  // 4. STRATEGY ENGINE (Passes data to AI Pipeline for intelligence, analysis, and verdict)
   const strategyData = build(intent, entities);
   
   return { 
     resolved: false, 
+    embeds: prebuiltEmbeds.length > 0 ? prebuiltEmbeds : null, // <--- Passes embeds along with AI text!
     intent, 
     entities, 
     context: strategyData.sufficient ? strategyData.context : null 
