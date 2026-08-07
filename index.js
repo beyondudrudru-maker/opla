@@ -554,7 +554,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     // 🛡️ LAYER 2 FORTIFIED: Button timeouts won't crash the server anymore
     try {
-        // --- SUPPORT BUTTON---
+        // --- SUPPORT BUTTON ---
         if (interaction.customId === 'btn_yes_help') {
             await interaction.message.edit({ components: [] });
             await interaction.reply({
@@ -594,7 +594,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         console.warn('⚠️ Interaction failed (possibly expired/timeout):', error.message);
     }
 });
-
 
 
 // ==========================================
