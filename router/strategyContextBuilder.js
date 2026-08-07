@@ -1,25 +1,42 @@
 /**
  * router/strategyContextBuilder.js
- *
- * The ONLY bridge between deterministic engines and the AI layer.
- * Builds the smallest JSON payload that answers the question, never the
- * raw gameLibrary. Reuses gameStrategyEngine's already-computed analysis
- * instead of recomputing anything.
  */
 
 const strategyEngine = require('../engine/gameStrategyEngine.js');
 const queryEngine = require('../engine/gameQueryEngine.js');
 
-/**
- * build(intent, entities, rawText) -> { context, sufficient }
- * `sufficient: false` means the router couldn't resolve enough to build a
- * useful context (e.g. unknown troop) — caller should surface an error
- * instead of calling AI.
- */
-function build(intent, entities /*, rawText */) {
-  const { troopName, troopNames, levels, heroName, category } = entities;
+function build(intent, entities) {
+  const { troopName, troopNames, heroNames, levels, heroName, category } = entities;
 
-  // Single-level strategy question: "Is Lava Golem good at level 7?"
+  // 🚀 If comparing two Troops via AI ("Alchemist vs Lava Golem who is better")
+  if (troopNames && troopNames.length >= 2) {
+    const t1 = queryEngine.getTroopLevel(troopNames[0], levels[0] || 10);
+    const t2 = queryEngine.getTroopLevel(troopNames[1], levels[1] || levels[0] || 10);
+    return {
+      sufficient: true,
+      context: {
+        task: "Compare these two troops based on the provided stats and explain which is better and in what scenarios.",
+        troop1: t1,
+        troop2: t2
+      }
+    };
+  }
+
+  // 🚀 If comparing two Heroes via AI ("Tristan vs Anavin")
+  if (heroNames && heroNames.length >= 2) {
+    const h1 = queryEngine.getHero(heroNames[0]);
+    const h2 = queryEngine.getHero(heroNames[1]);
+    return {
+        sufficient: true,
+        context: {
+            task: "Compare these two heroes based on their synergies, abilities, and faction.",
+            hero1: h1,
+            hero2: h2
+        }
+    };
+  }
+
+  // Single-level strategy question: "How to use Alchemist effectively?"
   if (troopName && levels.length <= 1) {
     const level = levels[0] || 10;
     const analysis = strategyEngine.analyzeTroopAtLevel(troopName, level);
@@ -35,63 +52,32 @@ function build(intent, entities /*, rawText */) {
           damage: analysis.stats.damage,
           defense: analysis.stats.defense,
           units: analysis.stats.units,
-          speed: analysis.stats.speed,
-          attackSpeed: analysis.stats.attackSpeed,
-          attackRange: analysis.stats.attackRange,
           ability: analysis.ability,
           tags: analysis.troop.tags
         },
         role: analysis.role,
         strengths: analysis.strengths,
-        weaknesses: analysis.weaknesses,
-        performanceScore: analysis.performanceScore
+        weaknesses: analysis.weaknesses
       }
     };
   }
 
-  // Level-vs-level strategy question with an interpretive angle:
-  // "Where does Lava Golem spike?" / "Is lvl9 worth it?"
+  // Level-vs-level strategy question with an interpretive angle
   if (troopName && levels.length >= 2) {
     const cmp = strategyEngine.compareTroopLevels(troopName, levels[0], levels[1]);
     if (cmp.error) return { context: null, sufficient: false, error: cmp.error };
-
-    return {
-      sufficient: true,
-      context: {
-        troopName,
-        levelA: cmp.levelA,
-        levelB: cmp.levelB,
-        absoluteGrowth: cmp.absoluteGrowth,
-        percentageGrowth: cmp.percentageGrowth,
-        importantBreakpoints: cmp.importantBreakpoints,
-        verdict: cmp.verdict
-      }
-    };
+    return { sufficient: true, context: { troopName, ...cmp } };
   }
 
-  // "Which hero is best for X" / "which mage buffs HP"
+  // "Which hero is best for X"
   if (troopName && !heroName) {
     const result = strategyEngine.findBestHeroesForTroop(troopName);
     if (result.error) return { context: null, sufficient: false, error: result.error };
-
-    return {
-      sufficient: true,
-      context: {
-        troop: { name: result.troopName },
-        compatibleHeroes: result.candidates.slice(0, 5)
-      }
-    };
+    return { sufficient: true, context: { troop: { name: result.troopName }, compatibleHeroes: result.candidates.slice(0, 5) } };
   }
 
-  // Category-only hero buff question: "which mage buffs HP"
   if (category) {
-    return {
-      sufficient: true,
-      context: {
-        category,
-        note: 'Use gameStrategyEngine.answerStrategyQuery({ type: "heroesForCategoryBuff", params: { category, buffType } }) upstream for the curated hero list; this context is a fallback shape.'
-      }
-    };
+    return { sufficient: true, context: { category, note: 'Strategy for category buffers.' } };
   }
 
   return { context: null, sufficient: false, error: 'Not enough resolved entities to build a strategy context.' };
