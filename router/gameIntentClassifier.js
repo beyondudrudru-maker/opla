@@ -1,0 +1,207 @@
+/**
+ * router/gameIntentClassifier.js
+ *
+ * Synchronous, rule-based intent classification + entity resolution for
+ * game questions. NO AI CALL happens in this file, ever.
+ *
+ * Reuses gameQueryEngine's fuzzy troop/hero lookup (getTroop / findHeroes)
+ * instead of re-implementing name matching.
+ */
+
+const queryEngine = require('../gameQueryEngine.js');
+const { gameLibrary } = queryEngine;
+
+const INTENTS = {
+  GOLD: 'GOLD',
+  GEM: 'GEM',
+  FACT: 'FACT',
+  CALC: 'CALC',
+  STRATEGY: 'STRATEGY',
+  UNKNOWN: 'UNKNOWN'
+};
+
+// ---------------------------------------------------------------
+// Keyword tables
+// ---------------------------------------------------------------
+
+const GOLD_REGEX = /\bgold\b/i;
+const GEM_REGEX = /\bgems?\b/i;
+
+const STAT_KEYWORDS = {
+  hp: /\b(hp|health)\b/i,
+  damage: /\b(damage|dmg)\b/i,
+  defense: /\b(defense|def)\b/i,
+  units: /\bunits?\b/i,
+  attackSpeed: /\battack\s*speed\b/i,
+  attackRange: /\battack\s*range\b/i,
+  speed: /\b(movement\s*speed|speed)\b/i,
+  aoeRadius: /\b(aoe|area\s*of\s*effect)\b/i,
+  ability: /\bability\b/i
+};
+
+// Phrases that signal a *calculation between two points* rather than a
+// single-point fact lookup. Checked before FACT because "how much HP does
+// X gain from level 1 to 7" contains a FACT stat keyword (hp) but is a CALC.
+const CALC_REGEX = /\b(gain|grow(th)?|increase|from\s+(?:lv\.?|lvl\.?|level)|to\s+(?:lv\.?|lvl\.?|level)|vs\.?\b|versus|compare|difference|change)/i;
+
+const STRATEGY_REGEX = /\b(good|worth|best|should i|recommend|perform|performs|performance|which hero|which mage|which heroes|synerg|counter|meta|spike|upgrading)\b/i;
+
+// ---------------------------------------------------------------
+// Entity extraction helpers
+// ---------------------------------------------------------------
+
+function extractLevels(text) {
+  const levels = [];
+  const re = /\b(?:lv\.?|lvl\.?|level)\s*(\d{1,2})\b/gi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const n = parseInt(m[1], 10);
+    if (n >= 1 && n <= 10) levels.push(n);
+  }
+  return levels;
+}
+
+function extractPercentages(text) {
+  const pcts = [];
+  const re = /\b(\d{1,3})\s*%/g;
+  let m;
+  while ((m = re.exec(text)) !== null) pcts.push(parseInt(m[1], 10));
+  return pcts;
+}
+
+function _troopMentionsWithIndex(text) {
+  const found = [];
+  for (const t of gameLibrary.troops) {
+    const re = new RegExp(`\\b${t.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    const m = re.exec(text);
+    if (m) found.push({ name: t.name, index: m.index });
+  }
+  found.sort((a, b) => a.index - b.index);
+  return found;
+}
+
+/**
+ * Counts are only recognized directly in front of an actual troop-name
+ * mention (e.g. "3 Lava Golem", "2x Immortal") — NOT any bare number
+ * before a lowercase word, which would also false-match level numbers
+ * sitting next to "vs" (e.g. "lvl 7 vs").
+ */
+function extractCounts(text) {
+  const mentions = _troopMentionsWithIndex(text);
+  const counts = [];
+  for (const mention of mentions) {
+    const before = text.slice(0, mention.index);
+    const m = before.match(/(\d{1,3})\s*x?\s*$/i);
+    counts.push(m ? parseInt(m[1], 10) : null);
+  }
+  return counts;
+}
+
+function extractGoldGemAmount(text) {
+  const m = text.match(/\b(\d{2,9})\s*(gold|gems?)\b/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function findTroopMentions(text) {
+  // Ordered by where the name actually appears in the message, not by
+  // gameKnowledge.js array order — matters for pairing counts/levels to
+  // the right troop in squad-comparison questions.
+  return _troopMentionsWithIndex(text).map(f => f.name);
+}
+
+function findHeroMentions(text) {
+  const found = [];
+  for (const h of gameLibrary.heroes || []) {
+    if (!h.name) continue;
+    const re = new RegExp(`\\b${h.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (re.test(text)) found.push(h.name);
+  }
+  return found;
+}
+
+// Maps singular/spoken forms the user is likely to type -> the canonical
+// category label used in gameKnowledge.js.
+const CATEGORY_SYNONYMS = {
+  Undead: /\bundead\b/i,
+  Tank: /\btanks?\b/i,
+  Mages: /\bmages?\b/i,
+  Ranger: /\brangers?\b/i,
+  Human: /\bhumans?\b/i,
+  Support: /\bsupports?\b/i
+};
+function findCategory(text) {
+  for (const [canonical, re] of Object.entries(CATEGORY_SYNONYMS)) {
+    if (re.test(text)) return canonical;
+  }
+  return null;
+}
+
+function findStat(text) {
+  for (const [stat, re] of Object.entries(STAT_KEYWORDS)) {
+    if (re.test(text)) return stat;
+  }
+  return null;
+}
+
+/**
+ * resolveEntities(text) -> compact entity bag. Unknown fields are null/empty.
+ */
+function resolveEntities(text) {
+  const troopMentions = findTroopMentions(text);
+  const heroMentions = findHeroMentions(text);
+
+  return {
+    troopName: troopMentions[0] || null,
+    troopNames: troopMentions,
+    heroName: heroMentions[0] || null,
+    heroNames: heroMentions,
+    category: findCategory(text),
+    tags: [],
+    levels: extractLevels(text),
+    stat: findStat(text),
+    ability: /\bability\b/i.test(text),
+    percentages: extractPercentages(text),
+    counts: extractCounts(text),
+    goldGemAmount: extractGoldGemAmount(text),
+    isComparison: /\bvs\.?\b|versus|compare/i.test(text)
+  };
+}
+
+/**
+ * classify(text) -> { intent, entities }
+ *
+ * Priority: GOLD/GEM > CALC > FACT > STRATEGY > UNKNOWN.
+ * (CALC is checked ahead of FACT because a two-point growth/comparison
+ * question usually also contains a plain stat keyword like "HP".)
+ */
+function classify(text) {
+  const raw = String(text || '');
+  const entities = resolveEntities(raw);
+
+  if (GOLD_REGEX.test(raw)) {
+    return { intent: INTENTS.GOLD, entities };
+  }
+  if (GEM_REGEX.test(raw)) {
+    return { intent: INTENTS.GEM, entities };
+  }
+
+  const hasTwoLevels = entities.levels.length >= 2;
+  const hasTwoTroops = entities.troopNames.length >= 2;
+  const looksLikeCalc = CALC_REGEX.test(raw) && (hasTwoLevels || hasTwoTroops || entities.isComparison);
+
+  if (looksLikeCalc) {
+    return { intent: INTENTS.CALC, entities };
+  }
+
+  if (STRATEGY_REGEX.test(raw)) {
+    return { intent: INTENTS.STRATEGY, entities };
+  }
+
+  if (entities.troopName && (entities.stat || entities.ability) && entities.levels.length <= 1) {
+    return { intent: INTENTS.FACT, entities };
+  }
+
+  return { intent: INTENTS.UNKNOWN, entities };
+}
+
+module.exports = { INTENTS, classify, resolveEntities };
