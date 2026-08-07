@@ -1,14 +1,7 @@
 /**
  * router/gameIntentClassifier.js
- *
- * Synchronous, rule-based intent classification + entity resolution for
- * game questions. NO AI CALL happens in this file, ever.
- *
- * Reuses gameQueryEngine's fuzzy troop/hero lookup (getTroop / findHeroes)
- * instead of re-implementing name matching.
  */
 
-// 🚀 FIX: Corrected import path to point to the engine folder to prevent crashes
 const queryEngine = require('../engine/gameQueryEngine.js');
 const { gameLibrary } = queryEngine;
 
@@ -21,12 +14,14 @@ const INTENTS = {
   UNKNOWN: 'UNKNOWN'
 };
 
-// ---------------------------------------------------------------
-// Keyword tables
-// ---------------------------------------------------------------
-
 const GOLD_REGEX = /\bgold\b/i;
 const GEM_REGEX = /\bgems?\b/i;
+
+// 🚀 FACT REGEX explicitly catches "Card" requests
+const FACT_REGEX = /\b(card|stats|info|details|what is)\b/i;
+
+// 🚀 STRATEGY REGEX explicitly catches "how to use", "who is better"
+const STRATEGY_REGEX = /\b(good|worth|best|should i|recommend|perform|performs|performance|which hero|which mage|which heroes|synerg|counter|meta|spike|upgrading|how|use|effectively|strategy|guide|better|who wins|who is better)\b/i;
 
 const STAT_KEYWORDS = {
   hp: /\b(hp|health)\b/i,
@@ -40,16 +35,7 @@ const STAT_KEYWORDS = {
   ability: /\bability\b/i
 };
 
-// Phrases that signal a *calculation between two points* rather than a
-// single-point fact lookup. Checked before FACT because "how much HP does
-// X gain from level 1 to 7" contains a FACT stat keyword (hp) but is a CALC.
-const CALC_REGEX = /\b(gain|grow(th)?|increase|from\s+(?:lv\.?|lvl\.?|level)|to\s+(?:lv\.?|lvl\.?|level)|vs\.?\b|versus|compare|difference|change)/i;
-
-const STRATEGY_REGEX = /\b(good|worth|best|should i|recommend|perform|performs|performance|which hero|which mage|which heroes|synerg|counter|meta|spike|upgrading)\b/i;
-
-// ---------------------------------------------------------------
-// Entity extraction helpers
-// ---------------------------------------------------------------
+const CALC_REGEX = /\b(gain|grow(th)?|increase|from\s+(?:lv\.?|lvl\.?|level)|to\s+(?:lv\.?|lvl\.?|level)|vs\.?\b|versus|compare|difference|change)\b/i;
 
 function extractLevels(text) {
   const levels = [];
@@ -81,12 +67,6 @@ function _troopMentionsWithIndex(text) {
   return found;
 }
 
-/**
- * Counts are only recognized directly in front of an actual troop-name
- * mention (e.g. "3 Lava Golem", "2x Immortal") — NOT any bare number
- * before a lowercase word, which would also false-match level numbers
- * sitting next to "vs" (e.g. "lvl 7 vs").
- */
 function extractCounts(text) {
   const mentions = _troopMentionsWithIndex(text);
   const counts = [];
@@ -104,9 +84,6 @@ function extractGoldGemAmount(text) {
 }
 
 function findTroopMentions(text) {
-  // Ordered by where the name actually appears in the message, not by
-  // gameKnowledge.js array order — matters for pairing counts/levels to
-  // the right troop in squad-comparison questions.
   return _troopMentionsWithIndex(text).map(f => f.name);
 }
 
@@ -120,8 +97,6 @@ function findHeroMentions(text) {
   return found;
 }
 
-// Maps singular/spoken forms the user is likely to type -> the canonical
-// category label used in gameKnowledge.js.
 const CATEGORY_SYNONYMS = {
   Undead: /\bundead\b/i,
   Tank: /\btanks?\b/i,
@@ -130,6 +105,7 @@ const CATEGORY_SYNONYMS = {
   Human: /\bhumans?\b/i,
   Support: /\bsupports?\b/i
 };
+
 function findCategory(text) {
   for (const [canonical, re] of Object.entries(CATEGORY_SYNONYMS)) {
     if (re.test(text)) return canonical;
@@ -144,9 +120,6 @@ function findStat(text) {
   return null;
 }
 
-/**
- * resolveEntities(text) -> compact entity bag. Unknown fields are null/empty.
- */
 function resolveEntities(text) {
   const troopMentions = findTroopMentions(text);
   const heroMentions = findHeroMentions(text);
@@ -164,26 +137,20 @@ function resolveEntities(text) {
     percentages: extractPercentages(text),
     counts: extractCounts(text),
     goldGemAmount: extractGoldGemAmount(text),
-    isComparison: /\bvs\.?\b|versus|compare/i.test(text)
+    isComparison: /\bvs\.?\b|versus|compare\b/i.test(text)
   };
 }
 
-/**
- * classify(text) -> { intent, entities }
- *
- * Priority: GOLD/GEM > CALC > FACT > STRATEGY > UNKNOWN.
- * (CALC is checked ahead of FACT because a two-point growth/comparison
- * question usually also contains a plain stat keyword like "HP".)
- */
 function classify(text) {
   const raw = String(text || '');
   const entities = resolveEntities(raw);
 
-  if (GOLD_REGEX.test(raw)) {
-    return { intent: INTENTS.GOLD, entities };
-  }
-  if (GEM_REGEX.test(raw)) {
-    return { intent: INTENTS.GEM, entities };
+  if (GOLD_REGEX.test(raw)) return { intent: INTENTS.GOLD, entities };
+  if (GEM_REGEX.test(raw)) return { intent: INTENTS.GEM, entities };
+
+  // 🚀 STRATEGY gets priority. If you ask "How to use", let the AI do it!
+  if (STRATEGY_REGEX.test(raw)) {
+    return { intent: INTENTS.STRATEGY, entities };
   }
 
   const hasTwoLevels = entities.levels.length >= 2;
@@ -194,13 +161,9 @@ function classify(text) {
     return { intent: INTENTS.CALC, entities };
   }
 
-  if (STRATEGY_REGEX.test(raw)) {
-    return { intent: INTENTS.STRATEGY, entities };
-  }
-
-  // 🚀 FIX: Removed the strict requirement for stat/ability keywords.
-  // Now, if a troop or hero is mentioned with 1 or 0 levels, it's instantly flagged as a FACT query.
-  if ((entities.troopName || entities.heroName) && entities.levels.length <= 1) {
+  // 🚀 FACT catches "Alchemist card" or "Anavin card"
+  const isShortQuery = raw.trim().split(/\s+/).length <= 4;
+  if (FACT_REGEX.test(raw) || (isShortQuery && (entities.troopName || entities.heroName))) {
     return { intent: INTENTS.FACT, entities };
   }
 
