@@ -301,19 +301,25 @@ client.on(Events.MessageCreate, async (message) => {
             if (gameResult.resolved === true) {
                 console.log(`[GAME ROUTER] Deterministic answer — Gemini bypassed`);
                 
+                // Construct the payload to support Embeds safely
+                const replyPayload = { allowedMentions: { repliedUser: false } };
+                if (gameResult.reply) replyPayload.content = gameResult.reply;
+                if (gameResult.embeds) replyPayload.embeds = gameResult.embeds;
+
                 // Save to memory so the AI remembers this interaction
                 try {
+                    const memLog = gameResult.reply ? gameResult.reply : `[Sent Embedded Card(s)]`;
                     await ramClient.from('chat_ram').insert([{
                         player_id: client.user.id,
                         player_name: "INF AI",
                         channel_id: message.channel.id,
-                        message_content: gameResult.reply
+                        message_content: memLog
                     }]);
                 } catch (dbErr) {
                     console.warn('⚠️ Failed to log JS reply to Supabase:', dbErr.message);
                 }
 
-                return await message.reply({ content: gameResult.reply, allowedMentions: { repliedUser: false } });
+                return await message.reply(replyPayload);
             }
 
             // IF UNRESOLVED: Proceed to AI Pipeline
@@ -433,7 +439,7 @@ client.on(Events.MessageCreate, async (message) => {
                 
                 // 🛡️ LAYER 3 FORTIFIED: Safe popup delivery
                 await message.channel.send({
-                    content: `💅 I noticed you boys are struggling. Do you need me to ping the Advisors for a strategy breakdown?`,
+                    content: `💅 I noticed you boys are struggling.Do you need me to ping the Advisors for a strategy breakdown?`,
                     components: [row]
                 });
             }
