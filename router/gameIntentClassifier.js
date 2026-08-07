@@ -17,10 +17,9 @@ const INTENTS = {
 const GOLD_REGEX = /\bgold\b/i;
 const GEM_REGEX = /\bgems?\b/i;
 
-// 🚀 FACT REGEX explicitly catches "Card" requests
-const FACT_REGEX = /\b(card|stats|info|details|what is)\b/i;
+// 🚀 ADDED 'tell me about' to catch card requests naturally
+const FACT_REGEX = /\b(card|stats|info|details|what is|tell me about)\b/i;
 
-// 🚀 STRATEGY REGEX explicitly catches "how to use", "who is better"
 const STRATEGY_REGEX = /\b(good|worth|best|should i|recommend|perform|performs|performance|which hero|which mage|which heroes|synerg|counter|meta|spike|upgrading|how|use|effectively|strategy|guide|better|who wins|who is better)\b/i;
 
 const STAT_KEYWORDS = {
@@ -87,12 +86,63 @@ function findTroopMentions(text) {
   return _troopMentionsWithIndex(text).map(f => f.name);
 }
 
+// 🚀 NEW: SMART HERO DETECTION (Aliases & Typos)
 function findHeroMentions(text) {
   const found = [];
+  const normalizedText = text.toLowerCase();
+
+  // Dictionary to catch nicknames, short names, and common typos
+  const aliases = {
+    "anavin": "FIRETAMER ANAVIN",
+    "firetamer": "FIRETAMER ANAVIN",
+    "edelina": "EDELINA, QUEEN OF THE FOREST",
+    "edilina": "EDELINA, QUEEN OF THE FOREST", // Typo catch
+    "xana": "FIRE FURY XANA",
+    "harkon": "HERALD OF FLAME HARKON",
+    "brutallus": "BRUTALLUS THE TERRORBRINGER",
+    "calyra": "CALYRA, CELESTIAL HEALER",
+    "calira": "CALYRA, CELESTIAL HEALER",
+    "atreya": "ATREYA, HAND OF VENGEANCE",
+    "remus": "REMUS THE INDESTRUCTIBLE",
+    "rumus": "REMUS THE INDESTRUCTIBLE", // Typo catch
+    "malium": "MALIUM, THE HERALD OF CORRUPTION",
+    "tristan": "CLERIC TRISTAN",
+    "cleric": "CLERIC TRISTAN",
+    "morgrane": "PLAGUE LORD MORGRANE",
+    "durand": "INQUISITOR DURAND",
+    "bumi": "BUMI THE DREAMWALKER",
+    "drake": "DRAKE, TERROR OF THE SEAS",
+    "keyra": "KEYRA THE WATER MAGE",
+    "zaheer": "ZAHEER THE AIRLORD",
+    "sigurd": "SIGURD THE ICE MAGE",
+    "bone dragon": "BONE DRAGON",
+    "morgana": "MORGANA THE DARK MAGE",
+    "ophelia": "OPHELIA THE SPELLCASTER",
+    "dragon rider": "DRAGON RIDER"
+  };
+
+  // 1. Direct Alias Matching
+  for (const [alias, fullName] of Object.entries(aliases)) {
+    const re = new RegExp(`\\b${alias}\\b`, 'i');
+    if (re.test(text) && !found.includes(fullName)) {
+      found.push(fullName);
+    }
+  }
+
+  // 2. Dynamic partial word matching (safety net)
   for (const h of gameLibrary.heroes || []) {
-    if (!h.name) continue;
-    const re = new RegExp(`\\b${h.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-    if (re.test(text)) found.push(h.name);
+    if (!h.name || found.includes(h.name)) continue;
+    const parts = h.name.replace(/,/g, '').split(/\s+/);
+    for (const part of parts) {
+        // Skip common filler words, only match unique identifying parts
+        if (part.length > 3 && !['THE', 'OF', 'QUEEN', 'LORD', 'HAND'].includes(part.toUpperCase())) { 
+            const re = new RegExp(`\\b${part}\\b`, 'i');
+            if (re.test(text)) {
+                found.push(h.name);
+                break;
+            }
+        }
+    }
   }
   return found;
 }
@@ -148,21 +198,21 @@ function classify(text) {
   if (GOLD_REGEX.test(raw)) return { intent: INTENTS.GOLD, entities };
   if (GEM_REGEX.test(raw)) return { intent: INTENTS.GEM, entities };
 
-  // 🚀 STRATEGY gets priority. If you ask "How to use", let the AI do it!
   if (STRATEGY_REGEX.test(raw)) {
     return { intent: INTENTS.STRATEGY, entities };
   }
 
   const hasTwoLevels = entities.levels.length >= 2;
   const hasTwoTroops = entities.troopNames.length >= 2;
-  const looksLikeCalc = CALC_REGEX.test(raw) && (hasTwoLevels || hasTwoTroops || entities.isComparison);
+  const hasTwoHeroes = entities.heroNames.length >= 2;
+  const looksLikeCalc = CALC_REGEX.test(raw) && (hasTwoLevels || hasTwoTroops || hasTwoHeroes || entities.isComparison);
 
   if (looksLikeCalc) {
     return { intent: INTENTS.CALC, entities };
   }
 
-  // 🚀 FACT catches "Alchemist card" or "Anavin card"
-  const isShortQuery = raw.trim().split(/\s+/).length <= 4;
+  // Allow up to 5 words to catch things like "tell me about rumus"
+  const isShortQuery = raw.trim().split(/\s+/).length <= 5;
   if (FACT_REGEX.test(raw) || (isShortQuery && (entities.troopName || entities.heroName))) {
     return { intent: INTENTS.FACT, entities };
   }
