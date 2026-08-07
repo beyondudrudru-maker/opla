@@ -552,7 +552,6 @@ if (finalReply.length > 1950) {
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isButton()) return;
 
-    // 🛡️ LAYER 2 FORTIFIED: Button timeouts won't crash the server anymore
     try {
         // --- SUPPORT BUTTON ---
         if (interaction.customId === 'btn_yes_help') {
@@ -568,10 +567,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // --- GOLD BUTTONS ---
         else if (interaction.customId === 'btn_yes_gold') {
             await interaction.message.edit({ components: [] });
-            const goldEmbed = getGoldGuide();[span_4](start_span)[span_4](end_span)
+            const goldEmbed = getGoldGuide();
             await interaction.reply({ 
                 content: `✨ Here is the Ultimate Gold Blueprint, ${interaction.user}:`, 
-                embeds: [goldEmbed][span_5](start_span)[span_5](end_span)
+                embeds: [goldEmbed] 
             });
         } else if (interaction.customId === 'btn_no_gold') {
             await interaction.message.edit({ components: [] });
@@ -581,10 +580,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // --- GEM BUTTONS ---
         else if (interaction.customId === 'btn_yes_gem') {
             await interaction.message.edit({ components: [] });
-            const gemEmbed = getGemGuide();[span_6](start_span)[span_6](end_span)
+            const gemEmbed = getGemGuide();
             await interaction.reply({ 
                 content: `💎 Here is the Gem Matrix for you, ${interaction.user}:`, 
-                embeds: [gemEmbed][span_7](start_span)[span_7](end_span)
+                embeds: [gemEmbed] 
             });
         } else if (interaction.customId === 'btn_no_gem') {
             await interaction.message.edit({ components: [] });
@@ -594,6 +593,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         console.warn('⚠️ Interaction failed (possibly expired/timeout):', error.message);
     }
 });
+
+
 
 
 // ==========================================
