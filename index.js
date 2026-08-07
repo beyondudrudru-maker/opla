@@ -288,10 +288,21 @@ client.on(Events.MessageCreate, async (message) => {
                 .filter(u => u.id !== client.user.id)
                 .map(u => ({ id: u.id, username: u.username }));
 
+            // 🧠 PRE-FETCH RECENT CHAT FOR PRONOUN/FOLLOW-UP RESOLUTION
+            let recentContext = '';
+            try {
+                const { data: recentChats } = await ramClient.from('chat_ram')
+                    .select('message_content')
+                    .eq('channel_id', message.channel.id)
+                    .order('created_at', { ascending: false })
+                    .limit(3);
+                if (recentChats) recentContext = recentChats.map(r => r.message_content).join(' ');
+            } catch (err) { }
+
             // 🚀 THE GATEKEEPER: DETERMINISTIC GAME ROUTING LAYER
             let gameResult = { resolved: false, context: null, intent: 'UNKNOWN' };
             try {
-                gameResult = gameDomainRouter.route(cleanText);
+                gameResult = gameDomainRouter.route(cleanText, recentContext);
                 console.log(`[GAME ROUTER] input="${cleanText}" intent=${gameResult.intent} resolved=${gameResult.resolved}`);
             } catch (err) {
                 console.error('❌ [GAME ROUTER ERROR]', err);
@@ -327,29 +338,25 @@ client.on(Events.MessageCreate, async (message) => {
 
             let knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
 
-            // 🚀 INJECT STRATEGY CONTEXT
-            // If the router prepared compact JSON for the AI, attach it to the prompt.
+            // 🚀 AGGRESSIVE STRATEGY CONTEXT INJECTION FOR THE AI
+            let aiPromptContent = cleanText;
             if (gameResult.context) {
                 const contextStr = typeof gameResult.context === 'object' 
                     ? JSON.stringify(gameResult.context, null, 2) 
                     : gameResult.context;
 
-                knowledgeContext = [
-                    knowledgeContext,
-                    '\n--- GAME STRATEGY CONTEXT (Use strictly as factual reference) ---\n',
-                    contextStr
-                ].filter(Boolean).join('\n');
+                aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question. Compare the stats directly and provide strategic advice based ONLY on these numbers. Do not invent abilities or stats.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${cleanText}`;
             }
 
             const roles = message.member ? message.member.roles.cache.map(r => r.name.toLowerCase()) : [];
 
-            // Execute the AI generation exactly as before
+            // Execute the AI generation
             const { text: aiReply, modelUsed, debug } = await melody.generateContent({
                 userId: message.author.id,
                 displayName: message.author.username,
                 roles,
                 channelId: message.channel.id,
-                content: cleanText,
+                content: aiPromptContent, // <-- Sends the strictly formatted payload
                 isGroupContext: Boolean(message.guild),
                 mentionedUsers,
                 knowledgeContext,
@@ -439,7 +446,7 @@ client.on(Events.MessageCreate, async (message) => {
                 
                 // 🛡️ LAYER 3 FORTIFIED: Safe popup delivery
                 await message.channel.send({
-                    content: `💅 I noticed you boys are struggling.Do you need me to ping the Advisors for a strategy breakdown?`,
+                    content: `💅 I noticed you boys are struggling. Do you need me to ping the Advisors for a strategy breakdown?`,
                     components: [row]
                 });
             }
@@ -449,7 +456,7 @@ client.on(Events.MessageCreate, async (message) => {
     // 💰 6.4: PROACTIVE GOLD GUIDE ENGINE
     if (!goldCooldown.has(message.channel.id)) {
         try {
-      const { data: history } = await ramClient
+            const { data: history } = await ramClient
                 .from('chat_ram')
                 .select('message_content')
                 .eq('channel_id', message.channel.id)
