@@ -1,5 +1,8 @@
 /**
  * router/gameDomainRouter.js
+ * 
+ * PURPOSE: Routes deterministically to JS engines or falls back to AI.
+ * UPGRADED: Returns dual side-by-side Discord Embeds for hero/troop comparisons.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -13,12 +16,10 @@ const { compareSquads } = require('../engine/squadCalculator.js');
 const ecoModule = require('../data/economyRatios.js');
 const economyRatios = ecoModule.economyRatios || ecoModule;
 
-// 🚀 ADDED recentContext parameter to handle follow-up pronouns
 function route(text, recentContext = '') {
   let { intent, entities } = classify(text);
 
   // 🧠 PRONOUN & FOLLOW-UP RESOLUTION
-  // Checks if user said "her", "his", "this", "ability" but didn't name the troop/hero again.
   if (!entities.troopName && !entities.heroName && /\b(her|his|him|she|he|it|this|that|them)\b/i.test(text)) {
       const pastEntities = resolveEntities(recentContext);
       if (pastEntities.troopName) entities.troopName = pastEntities.troopName;
@@ -34,6 +35,7 @@ function route(text, recentContext = '') {
       }
   }
 
+  // 1. GOLD / GEM ENGINE
   if (intent === 'GOLD' || intent === 'GEM') {
     const isGold = intent === 'GOLD';
     const ratios = isGold ? economyRatios.gold : economyRatios.gems;
@@ -59,6 +61,7 @@ function route(text, recentContext = '') {
     return { resolved: true, embeds: [embed] };
   }
 
+  // 2. FACT ENGINE (Single Card)
   if (intent === 'FACT') {
     if (entities.heroName && !entities.troopName) {
         const hero = queryEngine.getHero(entities.heroName);
@@ -68,13 +71,13 @@ function route(text, recentContext = '') {
                 .setTitle(`🦸‍♂️ ${hero.name} (Hero Card)`)
                 .addFields(
                     { name: 'Faction', value: hero.faction || 'N/A', inline: true },
-                    { name: 'Rarity', value: hero.rarity || 'N/A', inline: true }
+                    { name: 'Rarity', value: hero.rarity || 'N/A', inline: true },
+                    { name: '❤️ HP', value: hero.stats?.hp ? hero.stats.hp.toLocaleString() : 'N/A', inline: true },
+                    { name: '🛡️ Defense', value: String(hero.stats?.defense || 'N/A'), inline: true },
+                    { name: '⚔️ Attack', value: hero.stats?.attack ? hero.stats.attack.toLocaleString() : 'N/A', inline: true }
                 );
-            if (hero.tags && hero.tags.length > 0) {
-                embed.addFields({ name: '🏷️ Tags', value: hero.tags.join(', ') });
-            }
-            if (hero.synergies && hero.synergies.length > 0) {
-                embed.addFields({ name: '🤝 Synergies', value: hero.synergies.join(', ') });
+            if (hero.talent) {
+                embed.addFields({ name: `🌟 Talent: ${hero.talent.name}`, value: hero.talent.description });
             }
             if (hero.ability && hero.ability.description) {
                 embed.addFields({ name: `✨ Ability: ${hero.ability.name || 'Skill'}`, value: hero.ability.description });
@@ -113,8 +116,47 @@ function route(text, recentContext = '') {
     }
   }
 
-  if (intent === 'CALC' && entities.troopNames && entities.troopNames.length > 0) {
-    if (entities.troopNames.length >= 2) {
+  // 3. CALC / COMPARISON ENGINE (Dual Embeds for Hero/Troop Comparisons)
+  if (intent === 'CALC' || (entities.heroNames && entities.heroNames.length >= 2)) {
+    
+    // 🦸‍♂️ Hero vs Hero Dual Cards
+    if (entities.heroNames && entities.heroNames.length >= 2) {
+      const h1 = queryEngine.getHero(entities.heroNames[0]);
+      const h2 = queryEngine.getHero(entities.heroNames[1]);
+
+      if (h1 && h2) {
+        const embed1 = new EmbedBuilder()
+          .setColor('#3498DB')
+          .setTitle(`🦸‍♂️ ${h1.name}`)
+          .addFields(
+            { name: 'Faction / Rarity', value: `${h1.faction} (${h1.rarity})`, inline: false },
+            { name: '❤️ HP', value: h1.stats?.hp ? h1.stats.hp.toLocaleString() : 'N/A', inline: true },
+            { name: '🛡️ Defense', value: String(h1.stats?.defense || 'N/A'), inline: true },
+            { name: '⚔️ Attack', value: h1.stats?.attack ? h1.stats.attack.toLocaleString() : 'N/A', inline: true }
+          );
+        if (h1.ability) {
+          embed1.addFields({ name: `✨ Ability: ${h1.ability.name}`, value: h1.ability.description });
+        }
+
+        const embed2 = new EmbedBuilder()
+          .setColor('#E74C3C')
+          .setTitle(`🦸‍♂️ ${h2.name}`)
+          .addFields(
+            { name: 'Faction / Rarity', value: `${h2.faction} (${h2.rarity})`, inline: false },
+            { name: '❤️ HP', value: h2.stats?.hp ? h2.stats.hp.toLocaleString() : 'N/A', inline: true },
+            { name: '🛡️ Defense', value: String(h2.stats?.defense || 'N/A'), inline: true },
+            { name: '⚔️ Attack', value: h2.stats?.attack ? h2.stats.attack.toLocaleString() : 'N/A', inline: true }
+          );
+        if (h2.ability) {
+          embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: h2.ability.description });
+        }
+
+        // Return dual embeds for instant visual comparison
+        return { resolved: true, embeds: [embed1, embed2] };
+      }
+    }
+
+    if (entities.troopNames && entities.troopNames.length >= 2) {
       const squadA = [{ troop: entities.troopNames[0], level: entities.levels[0] || 10, count: entities.counts[0] || 1 }];
       const squadB = [{ troop: entities.troopNames[1], level: entities.levels[1] || entities.levels[0] || 10, count: entities.counts[1] || 1 }];
       const squadResult = compareSquads(squadA, squadB);
@@ -122,14 +164,23 @@ function route(text, recentContext = '') {
       if (squadResult && !squadResult.note) {
          const aTot = squadResult.squadA.totals;
          const bTot = squadResult.squadB.totals;
-         const embed = new EmbedBuilder()
-            .setColor('#E74C3C')
-            .setTitle('⚔️ Squad Comparison')
+         const embed1 = new EmbedBuilder()
+            .setColor('#3498DB')
+            .setTitle(`🛡️ ${squadA[0].count}x ${squadA[0].troop} (Lv${squadA[0].level})`)
             .addFields(
-                { name: `🛡️ Squad 1 (${squadA[0].count}x ${squadA[0].troop} Lv${squadA[0].level})`, value: `**❤️ HP:** ${aTot.totalHp.toLocaleString()}\n**⚔️ DMG:** ${aTot.totalDamage.toLocaleString()}`, inline: true },
-                { name: `🗡️ Squad 2 (${squadB[0].count}x ${squadB[0].troop} Lv${squadB[0].level})`, value: `**❤️ HP:** ${bTot.totalHp.toLocaleString()}\n**⚔️ DMG:** ${bTot.totalDamage.toLocaleString()}`, inline: true }
+                { name: '❤️ Total HP', value: aTot.totalHp.toLocaleString(), inline: true },
+                { name: '⚔️ Total DMG', value: aTot.totalDamage.toLocaleString(), inline: true }
             );
-         return { resolved: true, embeds: [embed] };
+
+         const embed2 = new EmbedBuilder()
+            .setColor('#E74C3C')
+            .setTitle(`🗡️ ${squadB[0].count}x ${squadB[0].troop} (Lv${squadB[0].level})`)
+            .addFields(
+                { name: '❤️ Total HP', value: bTot.totalHp.toLocaleString(), inline: true },
+                { name: '⚔️ Total DMG', value: bTot.totalDamage.toLocaleString(), inline: true }
+            );
+
+         return { resolved: true, embeds: [embed1, embed2] };
       }
     }
 
@@ -148,6 +199,7 @@ function route(text, recentContext = '') {
     }
   }
 
+  // 4. STRATEGY ENGINE (Requires AI Intelligence & Tactical Breakdown)
   const strategyData = build(intent, entities);
   
   return { 
