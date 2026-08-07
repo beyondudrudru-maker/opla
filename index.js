@@ -568,7 +568,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // --- GOLD BUTTONS ---
         else if (interaction.customId === 'btn_yes_gold') {
             await interaction.message.edit({ components: [] });
-            await interaction.reply({ content: getGoldGuide() });
+            const goldEmbed = getGoldGuide();[span_4](start_span)[span_4](end_span)
+            await interaction.reply({ 
+                content: `✨ Here is the Ultimate Gold Blueprint, ${interaction.user}:`, 
+                embeds: [goldEmbed][span_5](start_span)[span_5](end_span)
+            });
         } else if (interaction.customId === 'btn_no_gold') {
             await interaction.message.edit({ components: [] });
             await interaction.reply({ content: `No worries, King! Let me know if you ever need the Blueprint. 💰` });
@@ -577,7 +581,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // --- GEM BUTTONS ---
         else if (interaction.customId === 'btn_yes_gem') {
             await interaction.message.edit({ components: [] });
-            await interaction.reply({ content: getGemGuide() });
+            const gemEmbed = getGemGuide();[span_6](start_span)[span_6](end_span)
+            await interaction.reply({ 
+                content: `💎 Here is the Gem Matrix for you, ${interaction.user}:`, 
+                embeds: [gemEmbed][span_7](start_span)[span_7](end_span)
+            });
         } else if (interaction.customId === 'btn_no_gem') {
             await interaction.message.edit({ components: [] });
             await interaction.reply({ content: `Alright! I'll keep the Gem Matrix ready for whenever you need it. 💎` });
@@ -586,6 +594,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         console.warn('⚠️ Interaction failed (possibly expired/timeout):', error.message);
     }
 });
+
 
 
 // ==========================================
