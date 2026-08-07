@@ -1,7 +1,16 @@
-// data/gameData.js
+/**
+ * data/gameData.js
+ * 
+ * PURPOSE:
+ *   Provides structured Discord Embeds for guide commands and proactive popup buttons,
+ *   alongside raw string data injected into the AI retrieval layer.
+ */
+
 const { EmbedBuilder } = require('discord.js');
 
+// ============================================================
 // 1. MAIN GUIDE MENU (!guide)
+// ============================================================
 function getGuideMenu() {
     return new EmbedBuilder()
         .setColor('#1abc9c')
@@ -17,7 +26,9 @@ function getGuideMenu() {
         .setFooter({ text: '!NF!N!TY Clan // Database Query' });
 }
 
-// 2. GOLD GUIDE EMBED (!guide gold)
+// ============================================================
+// 2. GOLD GUIDE EMBED (!guide gold / Button Interactions)
+// ============================================================
 function getGoldGuide() {
     return new EmbedBuilder()
         .setColor('#f1c40f') 
@@ -40,7 +51,9 @@ function getGoldGuide() {
         .setFooter({ text: '!NF!N!TY Clan // Meta Blueprint' });
 }
 
-// 3. GEM GUIDE EMBED (!guide gem)
+// ============================================================
+// 3. GEM GUIDE EMBED (!guide gem / Button Interactions)
+// ============================================================
 function getGemGuide() {
     return new EmbedBuilder()
         .setColor('#9b59b6') // Purple color for Gems
@@ -63,7 +76,9 @@ function getGemGuide() {
         .setFooter({ text: '// DIRECTIVE RECEIVED — COLLECT AND USE WISELY //\n!NF!N!TY Clan // Meta Blueprint' });
 }
 
-// 4. RAW DATA FOR AI TRANSLATION (Gemini reads this)
+// ============================================================
+// 4. RAW TEXT DATA FOR AI RETRIEVAL INJECTION
+// ============================================================
 const rawGoldData = `
 PART 1: ARENA FARMING TACTICS
 1. The 7-Day Trap: For the first 7 days of a new Arena season, purposefully set a weak or normal defense formation. This keeps your rank lower, allowing you to easily farm weaker opponents.
@@ -99,11 +114,13 @@ Apply your gathered gems strictly to this percentage layout to prevent running d
 10% — Operational Reserves: Kept for emergency purchases, Conquest unlocks (1700 gems), or Demo mode testing (10 gems per Boss run).
 `;
 
+// ============================================================
 // 5. EXPORT ALL MODULES
+// ============================================================
 module.exports = { 
     getGuideMenu, 
     getGoldGuide, 
     rawGoldData,
-    getGemGuide, // 👈 Exporting the new Gem Embed
-    rawGemData   // 👈 Exporting the raw text for AI
+    getGemGuide,
+    rawGemData
 };
