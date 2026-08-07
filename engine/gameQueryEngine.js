@@ -383,6 +383,46 @@ function getBestHeroForTroop(troopName, opts = {}) {
   return ranked;
 }
 
+// 🚀 NEW: Entity Matcher for Domain and Query Routers
+function findEntityByName(query) {
+  if (!query) return null;
+  const troopHit = _findTroopEntry(query);
+  if (troopHit) {
+    return { type: 'troop', data: troopHit };
+  }
+  const heroHit = _findHeroEntry(query);
+  if (heroHit) {
+    return { type: 'hero', data: heroHit };
+  }
+  return null;
+}
+
+function formatEntityContext(entity) {
+  if (!entity) return null;
+  const { type, data } = entity;
+
+  if (type === 'hero') {
+    return `
+[EXACT DATABASE RECORD FOR HERO: ${data.name}]
+- Faction: ${data.faction}
+- Rarity: ${data.rarity}
+- Description: ${data.description}
+- Stats: HP: ${data.stats.hp}, Defense: ${data.stats.defense}, Attack: ${data.stats.attack}, Collection Bonus: ${data.stats.collectionBonus}
+- Talent: ${data.talent ? `${data.talent.name} - ${data.talent.description}` : 'None'}
+- Ability: ${data.ability ? `${data.ability.name} - ${data.ability.description}` : 'None'}
+    `.trim();
+  } else {
+    return `
+[EXACT DATABASE RECORD FOR TROOP: ${data.name}]
+- Rarity: ${data.rarity}
+- Categories: ${data.categories.join(', ')}
+- Description: ${data.description}
+- Base Stats: HP (Lv1): ${data.levels.hp[0]}, Damage (Lv1): ${data.levels.damage[0]}, Defense (Lv1): ${data.levels.defense[0]}
+- Ability: ${data.ability ? `${data.ability.name} - ${data.ability.description}` : 'None'}
+    `.trim();
+  }
+}
+
 module.exports = {
   gameLibrary,
   getTroop,
@@ -398,5 +438,7 @@ module.exports = {
   calculateFinalPower,
   getBestTroopForRole,
   getBestTroopForAttack,
-  getBestHeroForTroop
+  getBestHeroForTroop,
+  findEntityByName,
+  formatEntityContext
 };
