@@ -8,7 +8,8 @@
  * instead of re-implementing name matching.
  */
 
-const queryEngine = require('../gameQueryEngine.js');
+// 🚀 FIX: Corrected import path to point to the engine folder to prevent crashes
+const queryEngine = require('../engine/gameQueryEngine.js');
 const { gameLibrary } = queryEngine;
 
 const INTENTS = {
@@ -197,7 +198,9 @@ function classify(text) {
     return { intent: INTENTS.STRATEGY, entities };
   }
 
-  if (entities.troopName && (entities.stat || entities.ability) && entities.levels.length <= 1) {
+  // 🚀 FIX: Removed the strict requirement for stat/ability keywords.
+  // Now, if a troop or hero is mentioned with 1 or 0 levels, it's instantly flagged as a FACT query.
+  if ((entities.troopName || entities.heroName) && entities.levels.length <= 1) {
     return { intent: INTENTS.FACT, entities };
   }
 
