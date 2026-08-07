@@ -14,7 +14,7 @@
  * queryEngine.calculateHeroBonus / calculateFinalPower instead.
  */
 
-const queryEngine = require('../gameQueryEngine.js');
+const queryEngine = require('./gameQueryEngine.js');
 
 /**
  * simulateHeroBonus({ troopName, level, hpBonusPct, damageBonusPct })
