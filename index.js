@@ -18,6 +18,9 @@ const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval');
 const reflectionJob = require('./reflection/reflectionJob');
 const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData');
 
+// 🚀 NEW: IMPORT THE GAME ROUTER
+const gameDomainRouter = require('./router/gameDomainRouter');
+
 // 🛡️ DEDUPLICATION SET (Global)
 const processedMessages = new Set();
 
@@ -285,9 +288,56 @@ client.on(Events.MessageCreate, async (message) => {
                 .filter(u => u.id !== client.user.id)
                 .map(u => ({ id: u.id, username: u.username }));
 
-            const knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
+            // 🚀 THE GATEKEEPER: DETERMINISTIC GAME ROUTING LAYER
+            let gameResult = { resolved: false, context: null, intent: 'UNKNOWN' };
+            try {
+                gameResult = gameDomainRouter.route(cleanText);
+                console.log(`[GAME ROUTER] input="${cleanText}" intent=${gameResult.intent} resolved=${gameResult.resolved}`);
+            } catch (err) {
+                console.error('❌ [GAME ROUTER ERROR]', err);
+            }
+
+            // IF RESOLVED: Instant deterministic answer. Bypass Gemini completely.
+            if (gameResult.resolved === true) {
+                console.log(`[GAME ROUTER] Deterministic answer — Gemini bypassed`);
+                
+                // Save to memory so the AI remembers this interaction
+                try {
+                    await ramClient.from('chat_ram').insert([{
+                        player_id: client.user.id,
+                        player_name: "INF AI",
+                        channel_id: message.channel.id,
+                        message_content: gameResult.reply
+                    }]);
+                } catch (dbErr) {
+                    console.warn('⚠️ Failed to log JS reply to Supabase:', dbErr.message);
+                }
+
+                return await message.reply({ content: gameResult.reply, allowedMentions: { repliedUser: false } });
+            }
+
+            // IF UNRESOLVED: Proceed to AI Pipeline
+            console.log(`[GAME ROUTER] Falling through to Melody AI`);
+
+            let knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
+
+            // 🚀 INJECT STRATEGY CONTEXT
+            // If the router prepared compact JSON for the AI, attach it to the prompt.
+            if (gameResult.context) {
+                const contextStr = typeof gameResult.context === 'object' 
+                    ? JSON.stringify(gameResult.context, null, 2) 
+                    : gameResult.context;
+
+                knowledgeContext = [
+                    knowledgeContext,
+                    '\n--- GAME STRATEGY CONTEXT (Use strictly as factual reference) ---\n',
+                    contextStr
+                ].filter(Boolean).join('\n');
+            }
+
             const roles = message.member ? message.member.roles.cache.map(r => r.name.toLowerCase()) : [];
 
+            // Execute the AI generation exactly as before
             const { text: aiReply, modelUsed, debug } = await melody.generateContent({
                 userId: message.author.id,
                 displayName: message.author.username,
