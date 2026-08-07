@@ -2,18 +2,23 @@
  * router/modelRouter.js
  *
  * PURPOSE
- *   True Smart Cascading Hybrid Router — v3 (Concurrency Safe Edition)
+ *   True Smart Cascading Hybrid Router — v4 (OpenRouter Fallback Edition)
  *   - Groq (Llama-3.3-70B): Primary for Code, Math, and Data.
  *   - Gemini 3.6-Flash (3rd Gen): Strictly for Heavy/Complex tasks & Fallback.
  *   - Gemini 3.5-Flash-Lite (3rd Gen): Primary for fast, everyday chat.
+ *   - OpenRouter (Llama-3-8B free tier): Ultimate last-resort fallback when
+ *     both Groq and Gemini pools are exhausted or cooling down.
  *
- * WHAT'S NEW IN v3
- *   1. HALF_OPEN Probe Lock: Prevents race conditions during recovery. Only
- *      one concurrent request is allowed to test a cooling-down API.
- *   2. Cleaned up documentation around Tier 2 fallback logic.
+ * WHAT'S NEW IN v4
+ *   1. OpenRouter integration as Tier 5, using an OpenAI-compatible client.
+ *   2. callOpenRouter / runOpenRouterGuarded reuse the exact same
+ *      circuit-breaker, retry, and hard-limit detection primitives as Groq.
+ *   3. All v3 concurrency-safe HALF_OPEN probe locking, round-robin key
+ *      selection, emergency compression, and observability are untouched.
  */
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const OpenAI = require('openai');
 const { INTENTS } = require('../classifier/intentClassifier');
 
 // ============================================================
@@ -28,6 +33,35 @@ function getGeminiClient(apiKey) {
   return genAiClientCache.get(apiKey);
 }
 
+// ---- OpenRouter client (OpenAI-compatible) ----
+// Lazily constructed so the module doesn't blow up at require-time in
+// environments where OPENROUTER_API_KEY isn't set (e.g. it's optional).
+let openRouterClient = null;
+let openRouterInitAttempted = false;
+
+function getOpenRouterClient() {
+  if (openRouterInitAttempted) return openRouterClient;
+  openRouterInitAttempted = true;
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    console.warn('⚠️ [ROUTER] OPENROUTER_API_KEY not set — OpenRouter fallback tier disabled.');
+    return null;
+  }
+
+  openRouterClient = new OpenAI({
+    apiKey,
+    baseURL: 'https://openrouter.ai/api/v1',
+    defaultHeaders: {
+      // Optional but recommended by OpenRouter for attribution/analytics.
+      // Safe no-ops if unset.
+      'HTTP-Referer': process.env.OPENROUTER_SITE_URL || '',
+      'X-Title': process.env.OPENROUTER_SITE_NAME || ''
+    }
+  });
+  return openRouterClient;
+}
+
 // ============================================================
 // 2. CIRCUIT BREAKER (Concurrency Safe)
 // ============================================================
@@ -35,6 +69,7 @@ const CIRCUIT_STATE = { CLOSED: 'CLOSED', OPEN: 'OPEN', HALF_OPEN: 'HALF_OPEN' }
 const BREAKER_COOLDOWN_MS = 60 * 1000; 
 
 const GROQ_CLIENT_ID = 'groq-single-client';
+const OPENROUTER_CLIENT_ID = 'openrouter-single-client';
 const breakers = new Map(); 
 
 function breakerId(apiKeyOrClientId, modelName) {
@@ -231,6 +266,19 @@ async function callGemini(apiKey, modelName, prompt, systemInstruction) {
   return response.response.text();
 }
 
+async function callOpenRouter(client, modelName, prompt, systemInstruction, maxTokens, temp) {
+  const completion = await client.chat.completions.create({
+    model: modelName,
+    messages: [
+      { role: 'system', content: systemInstruction },
+      { role: 'user', content: prompt }
+    ],
+    temperature: temp,
+    max_tokens: maxTokens
+  });
+  return completion.choices[0].message.content;
+}
+
 // ============================================================
 // 9. POOL RUNNERS
 // ============================================================
@@ -267,6 +315,25 @@ async function runGroqGuarded(groqClient, modelName, prompt, systemInstruction, 
     return text;
   } catch (error) {
     console.warn(`⚠️ [ROUTER] Groq ${modelName} failed: ${error.message}`);
+    if (isHardLimitError(error)) {
+      tripBreaker(id, error.message);
+    } else {
+      releaseProbe(id);
+    }
+    throw error;
+  }
+}
+
+async function runOpenRouterGuarded(client, modelName, prompt, systemInstruction, maxTokens, temp) {
+  const id = breakerId(OPENROUTER_CLIENT_ID, modelName);
+  if (isBreakerOpen(id)) return null;
+
+  try {
+    const text = await withRetry(() => callOpenRouter(client, modelName, prompt, systemInstruction, maxTokens, temp));
+    resetBreaker(id);
+    return text;
+  } catch (error) {
+    console.warn(`⚠️ [ROUTER] OpenRouter ${modelName} failed: ${error.message}`);
     if (isHardLimitError(error)) {
       tripBreaker(id, error.message);
     } else {
@@ -369,7 +436,36 @@ async function generate({ classification, prompt, userMessage, systemInstruction
     }
   }
 
-  console.error('❌ [ROUTER] Critical: All hybrid models (Groq + Gemini) failed or are cooling down.');
+  // ==========================================
+  // TIER 5: OPENROUTER (Absolute Last Resort)
+  // ==========================================
+  // Reached only if every Groq tier and every Gemini key/pool above is
+  // either erroring or cooling down on its circuit breaker. Uses the same
+  // emergency-compressed prompt to keep the request small on a free-tier
+  // model with tighter context/rate limits.
+  const openRouterClient = getOpenRouterClient();
+  if (openRouterClient) {
+    try {
+      const compressedPrompt = compressForEmergency(prompt);
+      const text = await runOpenRouterGuarded(
+        openRouterClient,
+        'meta-llama/llama-3-8b-instruct:free',
+        compressedPrompt,
+        systemInstruction,
+        400,
+        groqTemp
+      );
+      if (text !== null) {
+        return { result: text, modelUsed: 'OpenRouter-Llama-3-8B [Tier5-Absolute-Fallback]' };
+      }
+      console.warn('🔌 [ROUTER] OpenRouter breaker open. No tiers remaining.');
+    } catch (error) {
+      console.warn(`⚠️ [ROUTER] OpenRouter fallback failed.`);
+      lastError = error;
+    }
+  }
+
+  console.error('❌ [ROUTER] Critical: All hybrid models (Groq + Gemini + OpenRouter) failed or are cooling down.');
   throw lastError || new Error('All model quotas exhausted or cooling down.');
 }
 
