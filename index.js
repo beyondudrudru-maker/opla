@@ -18,7 +18,7 @@ const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval');
 const reflectionJob = require('./reflection/reflectionJob');
 const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData');
 
-// 🚀 NEW: IMPORT THE GAME ROUTER
+// 🚀 IMPORT THE GAME ROUTER
 const gameDomainRouter = require('./router/gameDomainRouter');
 
 // 🛡️ DEDUPLICATION SET (Global)
@@ -31,7 +31,7 @@ app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
     console.log(`🌐 Web Server running.`);
 });
 
-// 3. DISCORD CLIENT SETUP (Updated with Partials for Hall of Fame)
+// 3. DISCORD CLIENT SETUP
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -443,7 +443,7 @@ client.on(Events.MessageCreate, async (message) => {
     // 💰 6.4: PROACTIVE GOLD GUIDE ENGINE
     if (!goldCooldown.has(message.channel.id)) {
         try {
-            const { data: history } = await ramClient
+      const { data: history } = await ramClient
                 .from('chat_ram')
                 .select('message_content')
                 .eq('channel_id', message.channel.id)
