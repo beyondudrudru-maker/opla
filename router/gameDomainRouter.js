@@ -1,8 +1,7 @@
 /**
  * router/gameDomainRouter.js
  * 
- * PURPOSE: Returns dual Embed Cards for visual display AND passes context 
- * to the AI pipeline so Melody can write her deep analysis and verdict.
+ * PURPOSE: Clean, deterministic routing for embeds and game data.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -10,7 +9,6 @@ const { classify, resolveEntities } = require('./gameIntentClassifier.js');
 const { build } = require('./strategyContextBuilder.js');
 const queryEngine = require('../engine/gameQueryEngine.js');
 const strategyEngine = require('../engine/gameStrategyEngine.js');
-const { simulateHeroBonus } = require('../engine/heroBonusSimulator.js');
 const { compareSquads } = require('../engine/squadCalculator.js');
 
 const ecoModule = require('../data/economyRatios.js');
@@ -116,8 +114,7 @@ function route(text, recentContext = '') {
     }
   }
 
-  // 3. COMPARISON EMBED BUILDER (Generates visual cards for comparisons while allowing AI text generation)
-  let prebuiltEmbeds = [];
+  // 3. COMPARISON ENGINE (🚀 DUAL EMBED CARDS - 100% ACCURATE, NO HALLUCINATIONS)
   if (intent === 'CALC' || (entities.heroNames && entities.heroNames.length >= 2)) {
     if (entities.heroNames && entities.heroNames.length >= 2) {
       const h1 = queryEngine.getHero(entities.heroNames[0]);
@@ -133,6 +130,9 @@ function route(text, recentContext = '') {
             { name: '🛡️ Defense', value: String(h1.stats?.defense || 'N/A'), inline: true },
             { name: '⚔️ Attack', value: h1.stats?.attack ? h1.stats.attack.toLocaleString() : 'N/A', inline: true }
           );
+        if (h1.talent) {
+          embed1.addFields({ name: `🌟 Talent: ${h1.talent.name}`, value: h1.talent.description });
+        }
         if (h1.ability) {
           embed1.addFields({ name: `✨ Ability: ${h1.ability.name}`, value: h1.ability.description });
         }
@@ -146,21 +146,24 @@ function route(text, recentContext = '') {
             { name: '🛡️ Defense', value: String(h2.stats?.defense || 'N/A'), inline: true },
             { name: '⚔️ Attack', value: h2.stats?.attack ? h2.stats.attack.toLocaleString() : 'N/A', inline: true }
           );
+        if (h2.talent) {
+          embed2.addFields({ name: `🌟 Talent: ${h2.talent.name}`, value: h2.talent.description });
+        }
         if (h2.ability) {
           embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: h2.ability.description });
         }
 
-        prebuiltEmbeds = [embed1, embed2];
+        // Return resolved: true so it sends both cards directly without AI text scrambling
+        return { resolved: true, embeds: [embed1, embed2] };
       }
     }
   }
 
-  // 4. STRATEGY ENGINE (Passes data to AI Pipeline for intelligence, analysis, and verdict)
+  // 4. STRATEGY ENGINE (For pure strategy questions)
   const strategyData = build(intent, entities);
   
   return { 
     resolved: false, 
-    embeds: prebuiltEmbeds.length > 0 ? prebuiltEmbeds : null, // <--- Passes embeds along with AI text!
     intent, 
     entities, 
     context: strategyData.sufficient ? strategyData.context : null 
