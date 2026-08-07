@@ -1,8 +1,7 @@
 /**
  * router/gameDomainRouter.js
  * 
- * PURPOSE: Routes comparisons so they flow into the AI pipeline 
- * to generate deep intelligence, analysis, and verdicts alongside data.
+ * PURPOSE: Returns visual cards AND triggers AI analysis for comparisons.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -116,7 +115,54 @@ function route(text, recentContext = '') {
     }
   }
 
-  // 3. STRATEGY & COMPARISON ENGINE (Passed to AI Pipeline for intelligence, analysis, and verdict)
+  // 3. CALC / COMPARISON ENGINE (Dual Visual Cards + AI Intelligence Pipeline)
+  if (intent === 'CALC' || (entities.heroNames && entities.heroNames.length >= 2)) {
+    if (entities.heroNames && entities.heroNames.length >= 2) {
+      const h1 = queryEngine.getHero(entities.heroNames[0]);
+      const h2 = queryEngine.getHero(entities.heroNames[1]);
+
+      if (h1 && h2) {
+        const embed1 = new EmbedBuilder()
+          .setColor('#3498DB')
+          .setTitle(`🦸‍♂️ ${h1.name}`)
+          .addFields(
+            { name: 'Faction / Rarity', value: `${h1.faction} (${h1.rarity})`, inline: false },
+            { name: '❤️ HP', value: h1.stats?.hp ? h1.stats.hp.toLocaleString() : 'N/A', inline: true },
+            { name: '🛡️ Defense', value: String(h1.stats?.defense || 'N/A'), inline: true },
+            { name: '⚔️ Attack', value: h1.stats?.attack ? h1.stats.attack.toLocaleString() : 'N/A', inline: true }
+          );
+        if (h1.ability) {
+          embed1.addFields({ name: `✨ Ability: ${h1.ability.name}`, value: h1.ability.description });
+        }
+
+        const embed2 = new EmbedBuilder()
+          .setColor('#E74C3C')
+          .setTitle(`🦸‍♂️ ${h2.name}`)
+          .addFields(
+            { name: 'Faction / Rarity', value: `${h2.faction} (${h2.rarity})`, inline: false },
+            { name: '❤️ HP', value: h2.stats?.hp ? h2.stats.hp.toLocaleString() : 'N/A', inline: true },
+            { name: '🛡️ Defense', value: String(h2.stats?.defense || 'N/A'), inline: true },
+            { name: '⚔️ Attack', value: h2.stats?.attack ? h2.stats.attack.toLocaleString() : 'N/A', inline: true }
+          );
+        if (h2.ability) {
+          embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: h2.ability.description });
+        }
+
+        // 🚀 CRITICAL FIX: We build the strategy data so AI can analyze it, 
+        // BUT we also attach the dual embeds so they render alongside the AI text!
+        const strategyData = build(intent, entities);
+        return { 
+          resolved: false, // Allows AI text generation
+          embeds: [embed1, embed2], // Renders the cards!
+          intent, 
+          entities, 
+          context: strategyData.sufficient ? strategyData.context : null 
+        };
+      }
+    }
+  }
+
+  // 4. STRATEGY ENGINE
   const strategyData = build(intent, entities);
   
   return { 
