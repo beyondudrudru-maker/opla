@@ -1,5 +1,8 @@
 /**
  * behavior/behaviorEngine.js
+ * 
+ * PURPOSE: Dynamically computes response parameters (length, tone, emojis, mode)
+ * based on user intent, emotional state, and relationship context.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -15,6 +18,7 @@ function decideLength(intent, userMessageLength) {
 }
 
 function decideEmojiBudget(emotionalState, isCreatorPath, isInformational) {
+  if (!emotionalState) return 0;
   if (isInformational) return isCreatorPath && emotionalState.warmth > 70 ? 1 : 0;
   if (isCreatorPath) return emotionalState.warmth > 60 ? 2 : 1;
   if (emotionalState.professionalism > 85) return 0;
@@ -42,7 +46,7 @@ function decideTone(intent, isModeration, isCreatorPath) {
     : ['Kind', 'Warm', 'Pro'];
 }
 
-function decide({ userId, emotionalState, intent, relationship, userMessageLength, isModeration }) {
+function decide({ userId, emotionalState = {}, intent, relationship, userMessageLength = 50, isModeration = false }) {
   const isCreatorPath = userId === CREATOR_ID;
   const isInformational = INFORMATIONAL_INTENTS.has(intent);
 
@@ -62,13 +66,14 @@ function decide({ userId, emotionalState, intent, relationship, userMessageLengt
     emojiBudget: decideEmojiBudget(emotionalState, isCreatorPath && !isModeration, isInformational),
     mode: decideMode(intent, isModeration),
     preferReact: !isCreatorPath && (intent === INTENTS.BANTER || intent === INTENTS.SOCIAL),
-    askFollowUp: intent === INTENTS.EMOTIONAL_DISCLOSURE || emotionalState.curiosity > 55,
+    askFollowUp: intent === INTENTS.EMOTIONAL_DISCLOSURE || (emotionalState.curiosity && emotionalState.curiosity > 55),
     forbidTraits: forbidTraits,
   };
 }
 
 // ⚡ TOKEN-COMPRESSED OUTPUT
 function toBrief(decision) {
+  if (!decision) return '[BEHAVIOR|UNKNOWN]';
   return `[BEHAVIOR|LEN:${decision.targetLength}|MODE:${decision.mode}|TONE:${decision.tone.join(',')}|EMOJI:${decision.emojiBudget}|REACT:${decision.preferReact ? 'Y':'N'}|ASK:${decision.askFollowUp ? 'Y':'N'}|NO:${decision.forbidTraits.join(',')}]`;
 }
 
