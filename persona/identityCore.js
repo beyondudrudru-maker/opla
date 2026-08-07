@@ -33,12 +33,16 @@ const IDENTITY_BOUNDARY = `[SYS:AdaptTone,StayInCharacter]`;
 /**
  * Dynamically constructs the system instruction payload.
  * 
- * @param {string} userId - The Discord ID of the user triggering the message.
+ * @param {string|number} userId - The Discord ID of the user triggering the message.
  * @returns {string} - The optimized system prompt.
  */
 function buildIdentityCore(userId) {
-  const sanitizedId = String(userId).trim();
+  // Defensive check: default to an empty string if userId is missing or invalid
+  const sanitizedId = userId ? String(userId).trim() : '';
+  
+  // Choose the relationship block based on whether the ID matches the creator
   const relationshipBlock = sanitizedId === CREATOR_ID ? CREATOR_BLOCK : OTHERS_BLOCK;
+  
   return `${SHARED_CORE}\n${relationshipBlock}\n${IDENTITY_BOUNDARY}`;
 }
 
