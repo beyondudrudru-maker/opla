@@ -7,8 +7,8 @@
  * instead of recomputing anything.
  */
 
-const strategyEngine = require('../gameStrategyEngine.js');
-const queryEngine = require('../gameQueryEngine.js');
+const strategyEngine = require('../engine/gameStrategyEngine.js');
+const queryEngine = require('../engine/gameQueryEngine.js');
 
 /**
  * build(intent, entities, rawText) -> { context, sufficient }
