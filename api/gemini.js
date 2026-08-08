@@ -1,9 +1,3 @@
-/**
- * generator/gemini.js
- * PURPOSE: Main AI generation handler coordinating persona, behavior,
- * game intelligence, multi-provider routing, and style linting.
- */
-
 require('dotenv').config();
 const { OpenAI } = require('openai');
 
@@ -53,7 +47,6 @@ const MICRO_MOODS = [
 ];
 
 function getTimeVibe() {
-  // Syncing to IST so her mood naturally matches local India time
   const hour = Number(
     new Intl.DateTimeFormat('en-IN', {
       hour: '2-digit',
@@ -72,7 +65,6 @@ function getDynamicState(userId) {
   const now = Date.now();
   const existing = dynamicStates.get(userId);
 
-  // Keep her mood stable for 30 minutes so she feels human, not random
   if (existing && now < existing.expiresAt) {
     return `[Current vibe: ${getTimeVibe()}. Micro-mood: ${existing.mood}.]`;
   }
@@ -80,7 +72,6 @@ function getDynamicState(userId) {
   const mood = MICRO_MOODS[Math.floor(Math.random() * MICRO_MOODS.length)];
   dynamicStates.set(userId, { mood, expiresAt: now + STATE_TTL });
 
-  // Prevent memory leaks
   if (dynamicStates.size > STATE_LIMIT) {
     const oldestKey = dynamicStates.keys().next().value;
     dynamicStates.delete(oldestKey);
@@ -114,7 +105,7 @@ async function generateContent(turn) {
       const mentionsInfo = turn.mentionedUsers.map(u => `${u.username} (<@${u.id}>)`).join(', ');  
       contextualPrompt += `\n\n[CRITICAL COMMAND DIRECTIVE:
 1. TARGET PING: The user mentioned ${mentionsInfo}. You MUST use their exact tag (e.g. <@123456789>) in your response.
-2. SMART ROAST RULE: If the user commands you to call someone a specific name or phrase (e.g., "X ko [words] kehdo"), extract the core nickname/insult, address the tagged user, and build a highly creative, sassy, and teasing roast around that specific concept with your own witty flavor! Do not just repeat the command instructions verbatim.]`;  
+2. SMART ROAST RULE: If the user commands you to call someone a specific name (e.g., "X ko [words] kehdo"), DO NOT repeat the user's instruction like a parrot. Extract the core nickname/insult from their message, address the tagged user, and build a highly creative, sassy, and teasing roast around that specific word. Add your own witty flavor!]`;  
     }  
 
     const smartTurn = { ...turn, content: contextualPrompt };  
@@ -173,7 +164,7 @@ Be authoritative, concise, professional, and diplomatic.
     if (isConflict) {  
       dynamicIdentity += `\n
 [CONFLICT MODE]
-Execute roasts using the core nickname or insult provided by the user, weaving it into your own creative, sharp, and sassy wording. Drop the soft polite act. Use emojis like 💅, 🙄, or 🔪.
+Execute roasts using the core nickname provided by the user, but wrap it in your own creative, sharp, and sassy wording. Drop the soft polite act. Use emojis like 💅, 🙄, or 🔪.
 `;
     }
 
@@ -196,6 +187,11 @@ Playfully laugh off AI questions as a 20yo human girl. Warmly change the subject
     });  
 
     let rawText = result || '';  
+    
+    // 🛡️ THE FIX: Strip out <think> blocks completely so Reasoning Models don't leak their internal logic!
+    rawText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    
+    // Clean up internal state tags
     rawText = rawText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();  
     if (rawText.endsWith(']')) rawText = rawText.slice(0, -1).trim();  
 
