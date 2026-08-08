@@ -1,30 +1,30 @@
 /**
  * router/gameDomainRouter.js
  * 
- * PURPOSE: Returns visual cards AND passes context to the AI pipeline for deep intelligent comparisons.
+ * PURPOSE: Resolves user queries into visual Embed Cards AND passes strict deterministic
+ * data contexts to the AI pipeline for deep, hallucination-free strategic analysis.
  */
 
 const { EmbedBuilder } = require('discord.js');
 const { classify, resolveEntities } = require('./gameIntentClassifier.js');
 const { build } = require('./strategyContextBuilder.js');
 const queryEngine = require('../engine/gameQueryEngine.js');
-const strategyEngine = require('../engine/gameStrategyEngine.js');
-const { compareSquads } = require('../engine/squadCalculator.js');
 
 const ecoModule = require('../data/economyRatios.js');
 const economyRatios = ecoModule.economyRatios || ecoModule;
 
 function route(text, recentContext = '') {
   let { intent, entities } = classify(text);
+  entities.rawText = text; // Ensure raw text is available for fallback matchers
 
-  // 🧠 PRONOUN & FOLLOW-UP RESOLUTION
-  if (!entities.troopName && !entities.heroName && /\b(her|his|him|she|he|it|this|that|them)\b/i.test(text)) {
+  // 🧠 1. PRONOUN & FOLLOW-UP RESOLUTION
+  if (!entities.troopName && !entities.heroName && (!entities.heroNames || entities.heroNames.length === 0) && /\b(her|his|him|she|he|it|this|that|them)\b/i.test(text)) {
       const pastEntities = resolveEntities(recentContext);
       if (pastEntities.troopName) entities.troopName = pastEntities.troopName;
       if (pastEntities.heroName) entities.heroName = pastEntities.heroName;
       if (pastEntities.troopNames && pastEntities.troopNames.length > 0) entities.troopNames = pastEntities.troopNames;
       if (pastEntities.heroNames && pastEntities.heroNames.length > 0) entities.heroNames = pastEntities.heroNames;
-      if (pastEntities.levels && pastEntities.levels.length > 0 && entities.levels.length === 0) entities.levels = pastEntities.levels;
+      if (pastEntities.levels && pastEntities.levels.length > 0 && (!entities.levels || entities.levels.length === 0)) entities.levels = pastEntities.levels;
 
       if (intent === 'UNKNOWN' && /\b(ability|skill|stat|stats|hp|damage|health)\b/i.test(text)) {
           intent = 'FACT';
@@ -33,7 +33,7 @@ function route(text, recentContext = '') {
       }
   }
 
-  // 1. GOLD / GEM ENGINE
+  // 💰 2. GOLD / GEM ENGINE
   if (intent === 'GOLD' || intent === 'GEM') {
     const isGold = intent === 'GOLD';
     const ratios = isGold ? economyRatios.gold : economyRatios.gems;
@@ -59,14 +59,18 @@ function route(text, recentContext = '') {
     return { resolved: true, embeds: [embed] };
   }
 
-  // 2. FACT ENGINE (Single Card)
-  if (intent === 'FACT') {
-    if (entities.heroName && !entities.troopName) {
-        const hero = queryEngine.getHero(entities.heroName);
-        if (hero) {
+  // 📝 3. FACT ENGINE (Single Card Generation)
+  if (intent === 'FACT' || intent === 'UNKNOWN') {
+    // Single Hero Lookup
+    if ((entities.heroName || (entities.heroNames && entities.heroNames.length === 1)) && (!entities.troopName && (!entities.troopNames || entities.troopNames.length === 0))) {
+        const heroQuery = entities.heroName || entities.heroNames[0];
+        const entity = queryEngine.findEntityByName(heroQuery);
+        
+        if (entity && entity.type === 'hero') {
+            const hero = entity.data;
             const embed = new EmbedBuilder()
                 .setColor('#9B59B6')
-                .setTitle(`🦸‍♂️ ${hero.name} (Hero Card)`)
+                .setTitle(`🦸‍♂️ ${hero.name}`)
                 .addFields(
                     { name: 'Faction', value: hero.faction || 'N/A', inline: true },
                     { name: 'Rarity', value: hero.rarity || 'N/A', inline: true },
@@ -74,19 +78,18 @@ function route(text, recentContext = '') {
                     { name: '🛡️ Defense', value: String(hero.stats?.defense || 'N/A'), inline: true },
                     { name: '⚔️ Attack', value: hero.stats?.attack ? hero.stats.attack.toLocaleString() : 'N/A', inline: true }
                 );
-            if (hero.talent) {
-                embed.addFields({ name: `🌟 Talent: ${hero.talent.name}`, value: hero.talent.description });
-            }
-            if (hero.ability && hero.ability.description) {
-                embed.addFields({ name: `✨ Ability: ${hero.ability.name || 'Skill'}`, value: hero.ability.description });
-            }
-            return { resolved: true, embeds: [embed] };
+            if (hero.talent) embed.addFields({ name: `🌟 Talent: ${hero.talent.name}`, value: hero.talent.description });
+            if (hero.ability && hero.ability.description) embed.addFields({ name: `✨ Ability: ${hero.ability.name || 'Skill'}`, value: hero.ability.description });
+            
+            return { resolved: true, embeds: [embed] }; // Single fact needs no AI, just the card
         }
     }
 
-    if (entities.troopName) {
-        const lvl = entities.levels.length > 0 ? entities.levels[0] : 10;
-        const data = queryEngine.getTroopLevel(entities.troopName, lvl);
+    // Single Troop Lookup
+    if ((entities.troopName || (entities.troopNames && entities.troopNames.length === 1)) && (!entities.heroName && (!entities.heroNames || entities.heroNames.length === 0))) {
+        const troopQuery = entities.troopName || entities.troopNames[0];
+        const lvl = (entities.levels && entities.levels.length > 0) ? entities.levels[0] : 10;
+        const data = queryEngine.getTroopLevel(troopQuery, lvl);
         
         if (data) {
           const embed = new EmbedBuilder()
@@ -99,7 +102,7 @@ function route(text, recentContext = '') {
               { name: '👥 Units', value: String(data.units || 1), inline: true }
             );
 
-          const ability = queryEngine.getTroopAbility(entities.troopName, lvl);
+          const ability = queryEngine.getTroopAbility(troopQuery, lvl);
           if (ability && ability.name) {
               let abText = ability.description;
               if (ability.statsAtLevel) {
@@ -109,58 +112,83 @@ function route(text, recentContext = '') {
               }
               embed.addFields({ name: `✨ Ability: ${ability.name}`, value: abText });
           }
-          return { resolved: true, embeds: [embed] };
+          return { resolved: true, embeds: [embed] }; // Single fact needs no AI, just the card
         }
     }
   }
 
-  // 3. COMPARISON ENGINE (🚀 GENERATES DUAL EMBED CARDS + PASSES DATA TO AI FOR INTELLIGENT ANALYSIS)
+  // ⚔️ 4. COMPARISON ENGINE (Dual Cards + AI Fallthrough)
   let prebuiltEmbeds = [];
-  if (intent === 'CALC' || (entities.heroNames && entities.heroNames.length >= 2)) {
+  
+  // Hero vs Hero
+  if (entities.isComparison || intent === 'CALC' || (entities.heroNames && entities.heroNames.length >= 2)) {
+    let nameA, nameB;
+    
     if (entities.heroNames && entities.heroNames.length >= 2) {
-      const h1 = queryEngine.getHero(entities.heroNames[0]);
-      const h2 = queryEngine.getHero(entities.heroNames[1]);
+        nameA = entities.heroNames[0];
+        nameB = entities.heroNames[1];
+    } else {
+        const vsMatch = text.match(/(.+?)\s+vs\s+(.+)/i);
+        if (vsMatch) {
+            nameA = vsMatch[1].trim();
+            nameB = vsMatch[2].trim();
+        }
+    }
 
-      if (h1 && h2) {
-        const embed1 = new EmbedBuilder()
-          .setColor('#3498DB')
-          .setTitle(`🦸‍♂️ ${h1.name}`)
-          .addFields(
-            { name: 'Faction / Rarity', value: `${h1.faction} (${h1.rarity})`, inline: false },
-            { name: '❤️ HP', value: h1.stats?.hp ? h1.stats.hp.toLocaleString() : 'N/A', inline: true },
-            { name: '🛡️ Defense', value: String(h1.stats?.defense || 'N/A'), inline: true },
-            { name: '⚔️ Attack', value: h1.stats?.attack ? h1.stats.attack.toLocaleString() : 'N/A', inline: true }
-          );
-        if (h1.talent) embed1.addFields({ name: `🌟 Talent: ${h1.talent.name}`, value: h1.talent.description });
-        if (h1.ability) embed1.addFields({ name: `✨ Ability: ${h1.ability.name}`, value: h1.ability.description });
+    if (nameA && nameB) {
+        const entityA = queryEngine.findEntityByName(nameA);
+        const entityB = queryEngine.findEntityByName(nameB);
 
-        const embed2 = new EmbedBuilder()
-          .setColor('#E74C3C')
-          .setTitle(`🦸‍♂️ ${h2.name}`)
-          .addFields(
-            { name: 'Faction / Rarity', value: `${h2.faction} (${h2.rarity})`, inline: false },
-            { name: '❤️ HP', value: h2.stats?.hp ? h2.stats.hp.toLocaleString() : 'N/A', inline: true },
-            { name: '🛡️ Defense', value: String(h2.stats?.defense || 'N/A'), inline: true },
-            { name: '⚔️ Attack', value: h2.stats?.attack ? h2.stats.attack.toLocaleString() : 'N/A', inline: true }
-          );
-        if (h2.talent) embed2.addFields({ name: `🌟 Talent: ${h2.talent.name}`, value: h2.talent.description });
-        if (h2.ability) embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: h2.ability.description });
+        if (entityA && entityB && entityA.type === 'hero' && entityB.type === 'hero') {
+            const h1 = entityA.data;
+            const h2 = entityB.data;
 
-        prebuiltEmbeds = [embed1, embed2];
-      }
+            const embed1 = new EmbedBuilder()
+              .setColor('#3498DB')
+              .setTitle(`🦸‍♂️ ${h1.name}`)
+              .addFields(
+                { name: 'Faction / Rarity', value: `${h1.faction || 'N/A'} (${h1.rarity || 'N/A'})`, inline: false },
+                { name: '❤️ HP', value: h1.stats?.hp ? h1.stats.hp.toLocaleString() : 'N/A', inline: true },
+                { name: '🛡️ Defense', value: String(h1.stats?.defense || 'N/A'), inline: true },
+                { name: '⚔️ Attack', value: h1.stats?.attack ? h1.stats.attack.toLocaleString() : 'N/A', inline: true }
+              );
+            if (h1.talent) embed1.addFields({ name: `🌟 Talent: ${h1.talent.name}`, value: h1.talent.description });
+            if (h1.ability) embed1.addFields({ name: `✨ Ability: ${h1.ability.name}`, value: h1.ability.description });
+
+            const embed2 = new EmbedBuilder()
+              .setColor('#E74C3C')
+              .setTitle(`🦸‍♂️ ${h2.name}`)
+              .addFields(
+                { name: 'Faction / Rarity', value: `${h2.faction || 'N/A'} (${h2.rarity || 'N/A'})`, inline: false },
+                { name: '❤️ HP', value: h2.stats?.hp ? h2.stats.hp.toLocaleString() : 'N/A', inline: true },
+                { name: '🛡️ Defense', value: String(h2.stats?.defense || 'N/A'), inline: true },
+                { name: '⚔️ Attack', value: h2.stats?.attack ? h2.stats.attack.toLocaleString() : 'N/A', inline: true }
+              );
+            if (h2.talent) embed2.addFields({ name: `🌟 Talent: ${h2.talent.name}`, value: h2.talent.description });
+            if (h2.ability) embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: h2.ability.description });
+
+            prebuiltEmbeds = [embed1, embed2];
+        }
     }
   }
 
-  // 4. STRATEGY & AI INTELLIGENCE PIPELINE
+  // 🧠 5. STRATEGY & AI INTELLIGENCE PIPELINE
+  // We ALWAYS build context. If sufficient, we pass it to AI to generate the markdown analysis.
   const strategyData = build(intent, entities);
   
-  return { 
-    resolved: false, // <--- Triggers AI pipeline so Melody analyzes the stats!
-    embeds: prebuiltEmbeds.length > 0 ? prebuiltEmbeds : null, // <--- Sends visual cards alongside AI text!
-    intent, 
-    entities, 
-    context: strategyData.sufficient ? strategyData.context : null 
-  };
+  // If we have visual embeds AND a valid context, we let the AI handle the text explanation while returning the embeds!
+  if (strategyData.sufficient || prebuiltEmbeds.length > 0) {
+      return { 
+        resolved: false, // Force it to fall through to Melody AI for text generation
+        embeds: prebuiltEmbeds.length > 0 ? prebuiltEmbeds : null,
+        intent, 
+        entities, 
+        context: strategyData.sufficient ? strategyData.context : null 
+      };
+  }
+
+  // Fallback if it's completely unresolvable locally
+  return { resolved: false, intent, entities, context: null };
 }
 
 module.exports = { route };
