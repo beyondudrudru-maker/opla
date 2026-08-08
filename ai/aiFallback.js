@@ -17,11 +17,14 @@ STRICT RULES:
 2. ZERO HALLUCINATION: You are STRICTLY FORBIDDEN from inventing, guessing, or assuming stats, abilities, factions, or rarities. Base your analysis ONLY on the provided <GameData>. If data is missing, explicitly state: "I don't have the exact database record for this" and stop.
 3. DISCORD OPTIMIZED FORMATTING (CRITICAL): 
    - NEVER use raw Markdown tables (like |---|---|). They break on mobile devices and look messy.
-   - Break information down paragraph-by-paragraph or point-by-point.
-   - Use Discord highlights: **Bold** for names and key attributes (e.g., **HP**, **Attack**), and bullet points (•) for clean, readable lists.
-   - Use clear double line-breaks to separate major sections.
+   - CRITICAL: Every single stat MUST be placed on a brand new line. Do not group them into one paragraph.
 4. STRUCTURE FOR COMPARISONS & ANALYSIS:
-   • **Core Stats Face-Off:** Compare or list them cleanly using bullet points.
+   • **Core Stats Face-Off:** List them cleanly using a VERTICAL list. 
+     Example format you MUST follow:
+     **Anavin:**
+     • **HP:** 38,250
+     • **Defense:** 300
+     • **Attack:** 900
    • **Abilities & Tactical Synergy:** Intelligently explain how their specific talents/abilities work on the battlefield based ONLY on the provided text.
    • **Final Verdict:** Give a diplomatic, strategic conclusion on who excels in which scenario. Be decisive but professional.`;
 
@@ -39,7 +42,7 @@ async function askAI({ userMessage, intent, context, geminiKeys = [], groqClient
 ${context ? JSON.stringify(context, null, 2) : 'No exact data found in database.'}
 </GameData>
 
-[INSTRUCTION: Analyze the provided <GameData> thoroughly. Format your response cleanly using structured bullet points, bold highlights, clear headings, and a decisive final verdict. ABSOLUTELY NO MARKDOWN TABLES. Rely exclusively on the provided data.]`;
+[INSTRUCTION: Analyze the provided <GameData> thoroughly. Format your response cleanly using vertical bullet points. EVERY stat must be on a new line. Bold the highlights, use clear headings, and give a decisive final verdict. ABSOLUTELY NO MARKDOWN TABLES.]`;
 
   const { result } = await modelRouter.generate({
     classification: classification || { intent: intent || 'strategy' },
