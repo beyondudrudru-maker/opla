@@ -4,13 +4,14 @@
  * PURPOSE
  *   Final lightweight prompt composer.
  *   Acts purely as a "dumb" assembler snapping pre-rendered blocks together.
- *   🚀 UPGRADE: Uses XML tags which 3rd Gen Models (Gemini 3.5/3.6 & Llama 3) process with near-perfect accuracy.
+ *   🚀 UPGRADE: Advanced XML escaping, Game Data injection, and stricter behavioral mapping.
  */
 
-// 🛡️ SECURITY: Strips XML tags from user input to prevent prompt injection hijacking
+// 🛡️ SECURITY & STABILITY: Escapes XML tags instead of stripping them.
+// This prevents prompt injection while ensuring code snippets (like HTML or < brackets) aren't destroyed!
 function sanitize(text) {
   if (typeof text !== 'string') return '';
-  return text.replace(/[<>]/g, '');
+  return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function renderRelationshipFraming(relationship = {}) {
@@ -39,7 +40,7 @@ function renderMemoryBlock(memories) {
     .filter(Boolean)
     .join(' | ');
 
-  return content ? `<LongTermMemory>${content}</LongTermMemory>` : '';
+  return content ? `<LongTermMemory>\n${content}\n</LongTermMemory>` : '';
 }
 
 function renderWorkingMemory(workingMemory) {
@@ -48,12 +49,12 @@ function renderWorkingMemory(workingMemory) {
   const lines = workingMemory
     .slice(-10)
     .map(t => {
-      const role = t.role === 'melody' ? 'AI' : 'User';
-      return `${role}: ${sanitize(t.content)}`;
+      const role = t.role === 'melody' ? 'Melody' : 'User';
+      return `[${role}]: ${sanitize(t.content)}`;
     })
     .join('\n');
 
-  return lines ? `<RecentChatHistory>\n${lines}\n</RecentChatHistory>` : '';
+  return lines ? `<ChatHistory>\n${lines}\n</ChatHistory>` : '';
 }
 
 function renderTargetBlock(targetInfo) {
@@ -79,14 +80,21 @@ function renderTargetBlock(targetInfo) {
 function renderTaskDirective(behavior = {}) {
   const directives = [];
   
-  if (behavior.targetLength) directives.push(`Length: ${behavior.targetLength}`);
-  if (Array.isArray(behavior.tone) && behavior.tone.length) directives.push(`Tone: ${behavior.tone.join(', ')}`);
-  if (behavior.emojiBudget) directives.push(`Max Emojis: ${behavior.emojiBudget}`);
+  if (behavior.targetLength) directives.push(`Target Length: ${behavior.targetLength}`);
+  if (behavior.mode) directives.push(`Operational Mode: ${behavior.mode}`);
+  if (Array.isArray(behavior.tone) && behavior.tone.length) directives.push(`Required Tone: ${behavior.tone.join(', ')}`);
+  if (behavior.emojiBudget !== undefined) directives.push(`Max Emojis: ${behavior.emojiBudget}`);
   if (behavior.preferReact) directives.push(`Action: Acknowledge politely`);
-  if (behavior.askFollowUp) directives.push(`Action: End with an engaging question`);
-  if (Array.isArray(behavior.forbidTraits) && behavior.forbidTraits.length) directives.push(`AVOID: ${behavior.forbidTraits.join(', ')}`);
+  if (behavior.askFollowUp) directives.push(`Action: End with an engaging follow-up question`);
+  if (Array.isArray(behavior.forbidTraits) && behavior.forbidTraits.length) directives.push(`STRICTLY AVOID: ${behavior.forbidTraits.join(', ')}`);
 
   return directives.length ? `<BehaviorDirectives>\n${directives.join('\n')}\n</BehaviorDirectives>` : '';
+}
+
+function renderGameContext(gameData) {
+  if (!gameData) return '';
+  const content = typeof gameData === 'string' ? gameData : JSON.stringify(gameData, null, 2);
+  return `<GameData>\n${content}\n</GameData>`;
 }
 
 function assemble({
@@ -95,16 +103,18 @@ function assemble({
   behaviorDirective,
   rankedMemories,
   workingMemory,
+  gameData,
   userMessage,
   targetInfo,
   speakerName
 }) {
-  // Assemble the blocks using clean XML structures that modern LLMs love
+  // Assemble the blocks using clean XML structures that modern LLMs parse perfectly
   const promptBlocks = [
     emotionalBrief ? `<EmotionalState>${sanitize(emotionalBrief)}</EmotionalState>` : '',
     renderRelationshipFraming(relationship),
     renderTargetBlock(targetInfo),
     renderTaskDirective(behaviorDirective),
+    renderGameContext(gameData),
     renderMemoryBlock(rankedMemories),
     renderWorkingMemory(workingMemory),
     `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`
