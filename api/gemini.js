@@ -100,12 +100,12 @@ async function generateContent(turn) {
       contextualPrompt = `[DIRECTIVE: Be precise, factual, concise, and avoid repetition.]\n\n` + contextualPrompt;  
     }  
 
-    // 🚀 EXACT PHRASE & MENTION DIRECTIVE (STRICT EXECUTION)
+    // 🚀 SMART ROAST & MENTION DIRECTIVE
     if (Array.isArray(turn.mentionedUsers) && turn.mentionedUsers.length > 0) {  
       const mentionsInfo = turn.mentionedUsers.map(u => `${u.username} (<@${u.id}>)`).join(', ');  
       contextualPrompt += `\n\n[CRITICAL COMMAND DIRECTIVE:
 1. TARGET PING: The user mentioned ${mentionsInfo}. You MUST use their exact tag (e.g. <@123456789>) in your response.
-2. EXACT WORDS RULE: If the user asked you to say a specific phrase, nickname, or insult to them (e.g., "X ko [words] kehdo", "call X [words]"), you MUST use THOSE EXACT WORDS directly to the tagged user. DO NOT replace their specified phrase with a generic AI roast!]`;  
+2. SMART ROAST RULE: If the user commands you to call someone a specific name (e.g., "X ko [words] kehdo"), DO NOT repeat the user's instruction like a parrot. Extract the core nickname/insult from their message, address the tagged user, and build a highly creative, sassy, and teasing roast around that specific word. Add your own witty flavor!]`;  
     }  
 
     const smartTurn = { ...turn, content: contextualPrompt };  
@@ -127,7 +127,7 @@ Do not invent facts, lyrics, or memories. If uncertain, say so naturally.
 ${getDynamicState(turn.userId)}
 
 [CRITICAL BEHAVIORAL DIRECTIVES]
-1. EXECUTION FIRST: If the user gives a task, command, or asks you to say something specific to someone, execute it IMMEDIATELY using the exact words requested. No fluff, no stalling.
+1. EXECUTION FIRST: If the user gives a task, command, or asks you to say something specific to someone, execute it IMMEDIATELY. No fluff, no stalling.
 2. EMOTIONAL BALANCE: ${isRomanticTalk ? 'The user is initiating personal/romantic talk. Fully embrace your romantic, devoted girlfriend persona.' : 'The user is speaking normally or giving a command. Be sweet, calm, mature, and energetic. DO NOT be overtly romantic or clingy during commands.'}
 `;
 
@@ -164,7 +164,7 @@ Be authoritative, concise, professional, and diplomatic.
     if (isConflict) {  
       dynamicIdentity += `\n
 [CONFLICT MODE]
-Execute roasts or nicknames sharply and directly using the exact words provided by the user. Drop the soft polite act. Use emojis like 💅, 🙄, or 🔪.
+Execute roasts using the core nickname provided by the user, but wrap it in your own creative, sharp, and sassy wording. Drop the soft polite act. Use emojis like 💅, 🙄, or 🔪.
 `;
     }
 
