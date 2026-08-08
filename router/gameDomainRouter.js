@@ -17,8 +17,11 @@ function route(text, recentContext = '') {
   let { intent, entities } = classify(text);
   entities.rawText = text; // Ensure raw text is available for fallback matchers
 
-  // 🧠 1. PRONOUN & FOLLOW-UP RESOLUTION
-  if (!entities.troopName && !entities.heroName && (!entities.heroNames || entities.heroNames.length === 0) && /\b(her|his|him|she|he|it|this|that|them)\b/i.test(text)) {
+  // 🧠 1. STRICT PRONOUN & FOLLOW-UP RESOLUTION
+  // Only check past context if the user explicitly uses follow-up pronouns or asks about stats/abilities
+  const hasFollowUpTrigger = /\b(uska|iske|woh|he|she|it|they|him|her|this|that|its|stats|ability|skill)\b/i.test(text);
+
+  if (hasFollowUpTrigger && !entities.troopName && !entities.heroName && (!entities.heroNames || entities.heroNames.length === 0)) {
       const pastEntities = resolveEntities(recentContext);
       if (pastEntities.troopName) entities.troopName = pastEntities.troopName;
       if (pastEntities.heroName) entities.heroName = pastEntities.heroName;
@@ -31,6 +34,12 @@ function route(text, recentContext = '') {
       } else if (intent === 'UNKNOWN') {
           intent = 'STRATEGY';
       }
+  } else if (!hasFollowUpTrigger) {
+      // 🚀 FIX: If it's a completely new sentence without follow-up words, clear out old entities entirely!
+      entities.troopName = null;
+      entities.heroName = null;
+      entities.troopNames = [];
+      entities.heroNames = [];
   }
 
   // 💰 2. GOLD / GEM ENGINE
@@ -65,7 +74,6 @@ function route(text, recentContext = '') {
   if (intent === 'FACT' || intent === 'UNKNOWN' || intent === 'QUESTION' || intent === 'STRATEGY' || intent === 'game-query') {
     
     // SMART LOGIC: Is it just a name? (e.g., "zaheer" or "show zaheer"). 
-    // If it is 2 words or less, we don't need AI explanation, just the card.
     const isSimpleLookup = text.split(' ').length <= 2 && intent !== 'QUESTION';
 
     // Single Hero Lookup
@@ -89,9 +97,9 @@ function route(text, recentContext = '') {
             if (hero.ability && hero.ability.description) embed.addFields({ name: `✨ Ability: ${hero.ability.name || 'Skill'}`, value: hero.ability.description });
             
             if (isSimpleLookup) {
-                return { resolved: true, embeds: [embed] }; // Stops here for simple lookups
+                return { resolved: true, embeds: [embed] };
             } else {
-                prebuiltEmbeds.push(embed); // Keeps the card, but continues to AI for explanation!
+                prebuiltEmbeds.push(embed);
             }
         }
     }
@@ -125,23 +133,27 @@ function route(text, recentContext = '') {
           }
           
           if (isSimpleLookup) {
-              return { resolved: true, embeds: [embed] }; // Stops here for simple lookups
+              return { resolved: true, embeds: [embed] };
           } else {
-              prebuiltEmbeds.push(embed); // Keeps the card, but continues to AI for explanation!
+              prebuiltEmbeds.push(embed);
           }
         }
     }
   }
 
   // ⚔️ 4. COMPARISON ENGINE (Dual Cards + AI Fallthrough)
-  // Hero vs Hero
-  if (entities.isComparison || intent === 'CALC' || (entities.heroNames && entities.heroNames.length >= 2)) {
+  // 🚀 FIX: Prevent comparison logic from triggering on 3+ heroes or general synergy queries
+  const isExplicitVs = /(?:.+?)\s+vs\s+(?:.+)/i.test(text);
+  const isExactlyTwoHeroes = entities.heroNames && entities.heroNames.length === 2;
+  const isSynergyQuery = /\b(best with|synergy|alongside|use with|combination|which hero)\b/i.test(text);
+
+  if ((isExplicitVs || isExactlyTwoHeroes) && !isSynergyQuery) {
     let nameA, nameB;
     
-    if (entities.heroNames && entities.heroNames.length >= 2) {
+    if (isExactlyTwoHeroes) {
         nameA = entities.heroNames[0];
         nameB = entities.heroNames[1];
-    } else {
+    } else if (isExplicitVs) {
         const vsMatch = text.match(/(.+?)\s+vs\s+(.+)/i);
         if (vsMatch) {
             nameA = vsMatch[1].trim();
@@ -190,7 +202,6 @@ function route(text, recentContext = '') {
   // We ALWAYS build context. If sufficient, we pass it to AI to generate the markdown analysis.
   const strategyData = build(intent, entities);
   
-  // If we have visual embeds AND a valid context, we let the AI handle the text explanation while returning the embeds!
   if (strategyData.sufficient || prebuiltEmbeds.length > 0) {
       return { 
         resolved: false, // Force it to fall through to Melody AI for text generation
