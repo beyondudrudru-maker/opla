@@ -5,6 +5,7 @@
  *   The central nervous system of the bot. Orchestrates the flow of data 
  *   between engines to build the prompt, while ensuring maximum CPU 
  *   efficiency, parallel database operations, and crash resistance.
+ *   🚀 UPGRADE: Integrated Game Data passing and Database Timeout protections.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -17,17 +18,28 @@ const promptAssembler = require('../promptBuilder/promptAssembler');
 const targetResolver = require('./targetResolver');
 
 const BOT_USER_ID = process.env.BOT_USER_ID;
+const DB_TIMEOUT_MS = 2500; // 🛡️ Max time to wait for memory fetches before moving on
+
+// 🛡️ Helper function to prevent database hangs from freezing the bot
+function withTimeout(promise, ms, fallbackValue) {
+  let timeoutHandle;
+  const timeoutPromise = new Promise((resolve) => {
+    timeoutHandle = setTimeout(() => resolve(fallbackValue), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutHandle));
+}
 
 async function planTurn({
   userId, displayName, roles = [], channelId, content,
   isGroupContext = false, mentions = { everyone: false, users: [] },
+  gameData = null // 🚀 NEW: Accepts game data context from the router
 }) {
   try {
       // 1. Execute fast, synchronous local tasks first
       const classification = intentClassifier.classify({ content });
       const targetInfo = targetResolver.resolve({ mentions, botUserId: BOT_USER_ID });
 
-      // 2. 🚀 UPGRADE: Fallback safety for State Engines
+      // 2. Fallback safety for State Engines
       const relationship = await relationshipEngine.resolve({ userId, displayName, roles }).catch(() => ({}));
       const emotionalState = await emotionEngine.updateState({
         userId,
@@ -36,10 +48,10 @@ async function planTurn({
         isModeration: classification.isModeration,
       }).catch(() => ({ current: 'neutral' })); // Default to neutral if engine fails
 
-      // 3. 🚀 UPGRADE: Bulletproof Parallel Supabase reads
+      // 3. 🚀 UPGRADE: Bulletproof Parallel Supabase reads with Strict Timeouts
       const [workingMemoryRaw, longTermCandidates] = await Promise.all([
-        memoryEngine.getWorkingMemory(channelId).catch(() => []),
-        memoryEngine.getLongTermCandidates(userId).catch(() => []),
+        withTimeout(memoryEngine.getWorkingMemory(channelId), DB_TIMEOUT_MS, []),
+        withTimeout(memoryEngine.getLongTermCandidates(userId), DB_TIMEOUT_MS, [])
       ]);
 
       const workingMemory = contextRanker.filterWorkingMemory({ turns: workingMemoryRaw, currentUserId: userId, isGroupContext });
@@ -61,12 +73,14 @@ async function planTurn({
         ? emotionEngine.toBrief(emotionalState, relationship) 
         : '';
 
+      // 4. Assemble the final prompt
       const prompt = promptAssembler.assemble({
         emotionalBrief,
         relationship,
         behaviorDirective,
         rankedMemories,
         workingMemory,
+        gameData, // 🚀 NEW: Pass the game context down to the assembler!
         userMessage: content,
         targetInfo,
         speakerName: displayName,
@@ -82,7 +96,7 @@ async function planTurn({
 
 async function finalizeTurn({ channelId, userId, content, responseText }) {
   try {
-      // 🚀 UPGRADE: Wrapped in try/catch to ensure saving chat doesn't crash the bot
+      // Wrapped in try/catch to ensure saving chat doesn't crash the bot
       await Promise.all([
         memoryEngine.recordTurn({ channelId, userId, role: 'user', content }),
         memoryEngine.recordTurn({ channelId, userId, role: 'melody', content: responseText })
