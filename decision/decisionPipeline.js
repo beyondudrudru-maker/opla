@@ -5,7 +5,7 @@
  *   The central nervous system of the bot. Orchestrates the flow of data 
  *   between engines to build the prompt, while ensuring maximum CPU 
  *   efficiency, parallel database operations, and crash resistance.
- *   🚀 UPGRADE: Integrated Game Data passing and Database Timeout protections.
+ *   🚀 UPGRADE: Integrated Game Data passing, Database Timeout protections, and Memory Isolation.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -48,16 +48,25 @@ async function planTurn({
         isModeration: classification.isModeration,
       }).catch(() => ({ current: 'neutral' })); // Default to neutral if engine fails
 
-      // 3. 🚀 UPGRADE: Bulletproof Parallel Supabase reads with Strict Timeouts
-      const [workingMemoryRaw, longTermCandidates] = await Promise.all([
-        withTimeout(memoryEngine.getWorkingMemory(channelId), DB_TIMEOUT_MS, []),
-        withTimeout(memoryEngine.getLongTermCandidates(userId), DB_TIMEOUT_MS, [])
-      ]);
+      // 🚀 THE FIX: If the user is just bantering or talking normally, 
+      // DO NOT pull heavy working memory or old game history into the context!
+      const isCasualChat = classification.intent === 'banter' || classification.intent === 'social';
 
-      const workingMemory = contextRanker.filterWorkingMemory({ turns: workingMemoryRaw, currentUserId: userId, isGroupContext });
-      
-      // Strictly limit to top 6 ranked memories so the prompt never bloats
-      const rankedMemories = contextRanker.rankMemories({ currentMessage: content, candidates: longTermCandidates }).slice(0, 6);
+      let workingMemory = [];
+      let rankedMemories = [];
+
+      // 3. 🚀 UPGRADE: Bulletproof Parallel Supabase reads with Strict Timeouts & Isolation
+      if (!isCasualChat) {
+          const [workingMemoryRaw, longTermCandidates] = await Promise.all([
+            withTimeout(memoryEngine.getWorkingMemory(channelId), DB_TIMEOUT_MS, []),
+            withTimeout(memoryEngine.getLongTermCandidates(userId), DB_TIMEOUT_MS, [])
+          ]);
+
+          workingMemory = contextRanker.filterWorkingMemory({ turns: workingMemoryRaw, currentUserId: userId, isGroupContext });
+          
+          // Strictly limit to top 6 ranked memories so the prompt never bloats
+          rankedMemories = contextRanker.rankMemories({ currentMessage: content, candidates: longTermCandidates }).slice(0, 6);
+      }
 
       const behaviorDirective = behaviorEngine.decide({
         userId,
