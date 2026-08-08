@@ -2,31 +2,34 @@
  * router/modelRouter.js
  *
  * PURPOSE
- *   Intelligent Multi-Provider Model Router — v5 (Registry + Capability Edition)
+ *   Intelligent Multi-Provider Model Router — v6 (Gemini-Primary Edition)
  *
- *   Providers: Gemini, Groq, OpenRouter, Cloudflare Workers AI.
- *   Instead of a fixed cascade, every request is classified, scored against
- *   a capability registry, and routed to the best currently-healthy model.
- *   Unhealthy/quota-exhausted/invalid models are cooled down per-failure-type
- *   and skipped without hammering dead providers.
+ *   Providers: Gemini (primary), Groq, OpenRouter, Cloudflare Workers AI.
+ *   Every request is classified into a task profile, scored against a
+ *   capability registry with a soft Gemini-primary bonus, and routed to the
+ *   best currently-healthy free model. Unhealthy/quota-exhausted/invalid
+ *   models are cooled down per-failure-type and skipped without hammering
+ *   dead providers. Optional periodic model discovery keeps the registry
+ *   honest without ever calling out to a provider on every Discord message.
  *
- * PUBLIC CONTRACT (unchanged — required by callers/gemini.js)
- *   const { result, modelUsed } = await modelRouter.generate({ ... });
+ * PUBLIC CONTRACT (unchanged — required by gemini.js)
+ *   const { result, modelUsed } = await modelRouter.generate({
+ *     classification, prompt, userMessage, systemInstruction,
+ *     geminiKeys, groqClient, hasGroq
+ *   });
  *   modelRouter.getRouterHealth()
  *
- * NOTES ON MODEL IDS (verified at time of writing, Aug 2026)
- *   - Gemini 2.0 models are fully shut down. Gemini 3.x Flash family is current:
- *     gemini-3.6-flash, gemini-3.5-flash, gemini-3.5-flash-lite, gemini-3.1-flash-lite.
- *   - temperature/top_p/top_k are DEPRECATED starting with gemini-3.6-flash and
- *     gemini-3.5-flash-lite — the API ignores or rejects them, so they are
- *     omitted for those two models specifically.
- *   - Groq deprecated llama-3.3-70b-versatile and llama-3.1-8b-instant
- *     (shutdown Aug 16, 2026). Router uses openai/gpt-oss-120b / gpt-oss-20b /
- *     qwen/qwen3.6-27b instead, with the old Llama IDs kept ONLY as a
- *     best-effort legacy rung in case a given account still has access.
- *   - OpenRouter's free-model roster rotates frequently. Router defaults to
- *     OpenRouter's own "openrouter/free" auto-router plus an optional
- *     configured allowlist, rather than hardcoding a long list that will rot.
+ * DESIGN NOTES
+ *   - Gemini is the soft-preferred provider for normal conversation, Hindi/
+ *     Hinglish, and creative writing. This is a scoring BONUS, not a hard
+ *     rule — a clearly stronger healthy specialist can still win.
+ *   - temperature/top_p/top_k are omitted for Gemini models whose metadata
+ *     says supportsSampling:false (current Gemini 3.6/3.5-Lite behavior).
+ *   - Groq's llama-3.3-70b-versatile / llama-3.1-8b-instant are deprecated
+ *     upstream and kept only as a low-priority legacy rung.
+ *   - Model discovery (Groq /models, OpenRouter /models) is OPTIONAL,
+ *     cached for MODEL_DISCOVERY_TTL_MS, and never blocks the hot path —
+ *     a discovery failure is silently ignored and the static registry wins.
  */
 
 'use strict';
@@ -36,7 +39,6 @@ const { OpenAI } = require('openai');
 
 let INTENTS;
 try {
-  // Optional — router works fine without the classifier module too.
   ({ INTENTS } = require('../classifier/intentClassifier'));
 } catch (_) {
   INTENTS = {};
@@ -45,157 +47,180 @@ try {
 // ============================================================
 // 0. ENV / SAFETY SWITCHES
 // ============================================================
-const DEBUG = String(process.env.MODEL_ROUTER_DEBUG || 'false').toLowerCase() === 'true';
-const FREE_ONLY_MODE = String(process.env.FREE_ONLY_MODE || 'true').toLowerCase() !== 'false';
-const OPENROUTER_FREE_ONLY = String(process.env.OPENROUTER_FREE_ONLY || 'true').toLowerCase() !== 'false';
+function envBool(name, def) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || raw === '') return def;
+  return String(raw).toLowerCase() !== 'false' && String(raw).toLowerCase() !== '0';
+}
 
-function dlog(...args) {
-  if (DEBUG) console.log('[ROUTER]', ...args);
-}
-function ilog(...args) {
-  console.log('[ROUTER]', ...args);
-}
-function wlog(...args) {
-  console.warn('[ROUTER]', ...args);
-}
+const DEBUG = envBool('MODEL_ROUTER_DEBUG', false);
+const FREE_ONLY_MODE = envBool('FREE_ONLY_MODE', true);
+const OPENROUTER_FREE_ONLY = envBool('OPENROUTER_FREE_ONLY', true);
+
+const ENABLE_GEMINI = envBool('ENABLE_GEMINI', true);
+const ENABLE_GROQ = envBool('ENABLE_GROQ', true);
+const ENABLE_OPENROUTER = envBool('ENABLE_OPENROUTER', true);
+const ENABLE_CLOUDFLARE = envBool('ENABLE_CLOUDFLARE', true);
+
+const MODEL_DISCOVERY_TTL_MS = Number(process.env.MODEL_ROUTER_HEALTH_INTERVAL_MS) > 0
+  ? Number(process.env.MODEL_ROUTER_HEALTH_INTERVAL_MS)
+  : 30 * 60 * 1000; // 30 min default
+
+// Soft provider-preference bonus applied on top of capability score.
+// Tunable without touching scoring logic elsewhere.
+const GEMINI_PRIMARY_BONUS = {
+  casual: 6,
+  shortFactual: 3,
+  creative: 6,
+  hinglish: 5,
+  reasoning: 2,
+  gameStrategy: 2,
+  coding: 0,   // capability-driven, no thumb on the scale
+  math: 0      // capability-driven, no thumb on the scale
+};
+
+function dlog(...args) { if (DEBUG) console.log('[ROUTER]', ...args); }
+function ilog(...args) { console.log('[ROUTER]', ...args); }
+function wlog(...args) { console.warn('[ROUTER]', ...args); }
 
 // ============================================================
 // 1. MODEL CAPABILITY REGISTRY
 // ============================================================
-// Scores are 0-10, hand-tuned heuristics — cheap to evaluate, not an ML model.
+// Scores 0-10 — routing heuristics, not objective benchmark claims.
 // costTier: 'free' | 'free-limited' | 'paid'
+// status: 'active' | 'discovered' | 'disabled' (mutated at runtime; never
+// persisted, reset on process restart, which is fine — cheap to re-derive).
 const MODEL_REGISTRY = {
   gemini: {
     'gemini-3.6-flash': {
       provider: 'gemini', model: 'gemini-3.6-flash',
-      quality: 9, speed: 7, reasoning: 9, coding: 9, casualChat: 7,
-      multilingual: 8, structuredOutput: 9, gameStrategy: 9, longContext: 9,
-      toolUse: 9, reliability: 8, costTier: 'free-limited',
-      supportsSampling: false, // deprecated params on this model
-      maxOutputTokens: 8192
+      quality: 9, speed: 7, reasoning: 9, coding: 9, math: 8, casualChat: 7,
+      creativeWriting: 8, multilingual: 8, hindi: 7, structuredOutput: 9,
+      gameStrategy: 9, longContext: 9, toolUse: 9, reliability: 8,
+      costTier: 'free-limited', supportsSampling: false, maxOutputTokens: 8192,
+      status: 'active'
     },
     'gemini-3.5-flash': {
       provider: 'gemini', model: 'gemini-3.5-flash',
-      quality: 8, speed: 7, reasoning: 8, coding: 8, casualChat: 8,
-      multilingual: 8, structuredOutput: 8, gameStrategy: 8, longContext: 9,
-      toolUse: 8, reliability: 8, costTier: 'free-limited',
-      supportsSampling: true,
-      maxOutputTokens: 8192
+      quality: 8, speed: 7, reasoning: 8, coding: 8, math: 7, casualChat: 8,
+      creativeWriting: 8, multilingual: 8, hindi: 7, structuredOutput: 8,
+      gameStrategy: 8, longContext: 9, toolUse: 8, reliability: 8,
+      costTier: 'free-limited', supportsSampling: true, maxOutputTokens: 8192,
+      status: 'active'
     },
     'gemini-3.5-flash-lite': {
       provider: 'gemini', model: 'gemini-3.5-flash-lite',
-      quality: 6, speed: 9, reasoning: 5, coding: 5, casualChat: 9,
-      multilingual: 7, structuredOutput: 6, gameStrategy: 5, longContext: 7,
-      toolUse: 5, reliability: 8, costTier: 'free-limited',
-      supportsSampling: false, // deprecated params on this model
-      maxOutputTokens: 4096
+      quality: 6, speed: 9, reasoning: 5, coding: 5, math: 4, casualChat: 9,
+      creativeWriting: 6, multilingual: 7, hindi: 6, structuredOutput: 6,
+      gameStrategy: 5, longContext: 7, toolUse: 5, reliability: 8,
+      costTier: 'free-limited', supportsSampling: false, maxOutputTokens: 4096,
+      status: 'active'
     },
     'gemini-3.1-flash-lite': {
       provider: 'gemini', model: 'gemini-3.1-flash-lite',
-      quality: 5, speed: 9, reasoning: 4, coding: 4, casualChat: 8,
-      multilingual: 6, structuredOutput: 5, gameStrategy: 4, longContext: 6,
-      toolUse: 4, reliability: 7, costTier: 'free-limited',
-      supportsSampling: true,
-      maxOutputTokens: 4096
+      quality: 5, speed: 9, reasoning: 4, coding: 4, math: 3, casualChat: 8,
+      creativeWriting: 5, multilingual: 6, hindi: 5, structuredOutput: 5,
+      gameStrategy: 4, longContext: 6, toolUse: 4, reliability: 7,
+      costTier: 'free-limited', supportsSampling: true, maxOutputTokens: 4096,
+      status: 'active'
     }
   },
 
   groq: {
     'openai/gpt-oss-120b': {
       provider: 'groq', model: 'openai/gpt-oss-120b',
-      quality: 9, speed: 8, reasoning: 9, coding: 9, casualChat: 6,
-      multilingual: 7, structuredOutput: 8, gameStrategy: 9, longContext: 7,
-      toolUse: 8, reliability: 8, costTier: 'free-limited',
-      maxOutputTokens: 4096
+      quality: 9, speed: 8, reasoning: 9, coding: 9, math: 8, casualChat: 6,
+      creativeWriting: 5, multilingual: 7, hindi: 5, structuredOutput: 8,
+      gameStrategy: 9, longContext: 7, toolUse: 8, reliability: 8,
+      costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
     },
     'openai/gpt-oss-20b': {
       provider: 'groq', model: 'openai/gpt-oss-20b',
-      quality: 7, speed: 9, reasoning: 7, coding: 7, casualChat: 7,
-      multilingual: 6, structuredOutput: 6, gameStrategy: 6, longContext: 6,
-      toolUse: 6, reliability: 8, costTier: 'free-limited',
-      maxOutputTokens: 4096
+      quality: 7, speed: 9, reasoning: 7, coding: 7, math: 6, casualChat: 7,
+      creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 6,
+      gameStrategy: 6, longContext: 6, toolUse: 6, reliability: 8,
+      costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
     },
     'qwen/qwen3.6-27b': {
       provider: 'groq', model: 'qwen/qwen3.6-27b',
-      quality: 7, speed: 8, reasoning: 7, coding: 7, casualChat: 7,
-      multilingual: 9, structuredOutput: 6, gameStrategy: 6, longContext: 6,
-      toolUse: 5, reliability: 6, costTier: 'free-limited', preview: true,
-      maxOutputTokens: 4096
+      quality: 7, speed: 8, reasoning: 7, coding: 7, math: 6, casualChat: 7,
+      creativeWriting: 6, multilingual: 9, hindi: 8, structuredOutput: 6,
+      gameStrategy: 6, longContext: 6, toolUse: 5, reliability: 6,
+      costTier: 'free-limited', preview: true, maxOutputTokens: 4096, status: 'active'
     },
     'groq/compound': {
       provider: 'groq', model: 'groq/compound',
-      quality: 8, speed: 6, reasoning: 8, coding: 6, casualChat: 5,
-      multilingual: 6, structuredOutput: 6, gameStrategy: 6, longContext: 6,
-      toolUse: 9, reliability: 6, costTier: 'free-limited',
-      maxOutputTokens: 4096
+      quality: 8, speed: 6, reasoning: 8, coding: 6, math: 6, casualChat: 5,
+      creativeWriting: 4, multilingual: 6, hindi: 4, structuredOutput: 6,
+      gameStrategy: 6, longContext: 6, toolUse: 9, reliability: 6,
+      costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
     },
     'groq/compound-mini': {
       provider: 'groq', model: 'groq/compound-mini',
-      quality: 6, speed: 8, reasoning: 6, coding: 5, casualChat: 6,
-      multilingual: 6, structuredOutput: 5, gameStrategy: 5, longContext: 5,
-      toolUse: 8, reliability: 6, costTier: 'free-limited',
-      maxOutputTokens: 4096
+      quality: 6, speed: 8, reasoning: 6, coding: 5, math: 5, casualChat: 6,
+      creativeWriting: 4, multilingual: 6, hindi: 4, structuredOutput: 5,
+      gameStrategy: 5, longContext: 5, toolUse: 8, reliability: 6,
+      costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
     },
-    // Legacy rung kept ONLY as a best-effort extra option for accounts that
-    // may still have residual access before the Aug 16 2026 shutdown.
-    // Router will simply mark these unhealthy (404) once truly gone.
+    // Legacy — deprecated upstream, kept only as best-effort extra rung.
     'llama-3.3-70b-versatile': {
       provider: 'groq', model: 'llama-3.3-70b-versatile',
-      quality: 7, speed: 7, reasoning: 6, coding: 6, casualChat: 7,
-      multilingual: 6, structuredOutput: 6, gameStrategy: 6, longContext: 6,
-      toolUse: 5, reliability: 3, costTier: 'free-limited', legacy: true,
-      maxOutputTokens: 2048
+      quality: 7, speed: 7, reasoning: 6, coding: 6, math: 5, casualChat: 7,
+      creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 6,
+      gameStrategy: 6, longContext: 6, toolUse: 5, reliability: 2,
+      costTier: 'free-limited', legacy: true, maxOutputTokens: 2048, status: 'active'
     },
     'llama-3.1-8b-instant': {
       provider: 'groq', model: 'llama-3.1-8b-instant',
-      quality: 5, speed: 9, reasoning: 4, coding: 4, casualChat: 6,
-      multilingual: 5, structuredOutput: 4, gameStrategy: 3, longContext: 4,
-      toolUse: 3, reliability: 3, costTier: 'free-limited', legacy: true,
-      maxOutputTokens: 1024
+      quality: 5, speed: 9, reasoning: 4, coding: 4, math: 3, casualChat: 6,
+      creativeWriting: 4, multilingual: 5, hindi: 3, structuredOutput: 4,
+      gameStrategy: 3, longContext: 4, toolUse: 3, reliability: 2,
+      costTier: 'free-limited', legacy: true, maxOutputTokens: 1024, status: 'active'
     }
   },
 
   openrouter: {
-    // OpenRouter's own auto-router — always routes within free models when
-    // the request is tagged free-only. Roster is rotated by OpenRouter itself.
     'openrouter/free': {
       provider: 'openrouter', model: 'openrouter/free',
-      quality: 6, speed: 6, reasoning: 6, coding: 6, casualChat: 6,
-      multilingual: 6, structuredOutput: 5, gameStrategy: 5, longContext: 6,
-      toolUse: 5, reliability: 5, costTier: 'free',
-      maxOutputTokens: 2048
+      quality: 6, speed: 6, reasoning: 6, coding: 6, math: 5, casualChat: 6,
+      creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 5,
+      gameStrategy: 5, longContext: 6, toolUse: 5, reliability: 5,
+      costTier: 'free', maxOutputTokens: 2048, status: 'active'
     },
-    // Reasonably-stable named free anchor, kept as a secondary option.
-    // Validated against costTier/allowlist rules before ever being used.
     'meta-llama/llama-3.3-70b-instruct:free': {
       provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free',
-      quality: 6, speed: 5, reasoning: 6, coding: 5, casualChat: 6,
-      multilingual: 6, structuredOutput: 5, gameStrategy: 5, longContext: 6,
-      toolUse: 4, reliability: 4, costTier: 'free',
-      maxOutputTokens: 1024
+      quality: 6, speed: 5, reasoning: 6, coding: 5, math: 4, casualChat: 6,
+      creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 5,
+      gameStrategy: 5, longContext: 6, toolUse: 4, reliability: 4,
+      costTier: 'free', maxOutputTokens: 1024, status: 'active'
     }
   },
 
   cloudflare: {
-    // Workers AI OpenAI-compatible free-tier text model. Only activated if
-    // CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN are both configured.
     '@cf/meta/llama-3.1-8b-instruct': {
       provider: 'cloudflare', model: '@cf/meta/llama-3.1-8b-instruct',
-      quality: 5, speed: 7, reasoning: 4, coding: 4, casualChat: 6,
-      multilingual: 5, structuredOutput: 4, gameStrategy: 3, longContext: 4,
-      toolUse: 2, reliability: 5, costTier: 'free',
-      maxOutputTokens: 1024
+      quality: 5, speed: 7, reasoning: 4, coding: 4, math: 3, casualChat: 6,
+      creativeWriting: 4, multilingual: 5, hindi: 3, structuredOutput: 4,
+      gameStrategy: 3, longContext: 4, toolUse: 2, reliability: 5,
+      costTier: 'free', maxOutputTokens: 1024, status: 'active'
     }
   }
 };
 
-function allModelEntries() {
+// A separate, bounded pool for models discovered at runtime that aren't in
+// the static registry. They get conservative default scores and start in
+// an 'unknown capability' tier — never auto-promoted to primary routing.
+const DISCOVERED_POOL_LIMIT = 20;
+const discoveredModels = new Map(); // key: `${provider}:${model}` -> entry
+
+function allRegistryEntries() {
   const out = [];
   for (const provider of Object.keys(MODEL_REGISTRY)) {
     for (const model of Object.keys(MODEL_REGISTRY[provider])) {
       out.push(MODEL_REGISTRY[provider][model]);
     }
   }
+  for (const entry of discoveredModels.values()) out.push(entry);
   return out;
 }
 
@@ -213,6 +238,7 @@ function getGeminiClient(apiKey) {
 let openRouterClient = null;
 let openRouterInitAttempted = false;
 function getOpenRouterClient() {
+  if (!ENABLE_OPENROUTER) return null;
   if (openRouterInitAttempted) return openRouterClient;
   openRouterInitAttempted = true;
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -234,6 +260,7 @@ function getOpenRouterClient() {
 let cloudflareInitAttempted = false;
 let cloudflareConfig = null;
 function getCloudflareConfig() {
+  if (!ENABLE_CLOUDFLARE) return null;
   if (cloudflareInitAttempted) return cloudflareConfig;
   cloudflareInitAttempted = true;
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -254,16 +281,16 @@ function getCloudflareConfig() {
 // 3. FAILURE CLASSIFICATION
 // ============================================================
 const FAILURE = {
-  AUTH: 'auth',
-  INVALID_MODEL: 'invalid_model',
-  QUOTA_EXHAUSTED: 'quota_exhausted',
-  RATE_LIMIT: 'rate_limit',
-  OVERLOADED: 'overloaded',
-  TIMEOUT: 'timeout',
-  NETWORK: 'network',
-  UNSUPPORTED_FEATURE: 'unsupported_feature',
-  OUTAGE: 'outage',
-  UNKNOWN: 'unknown'
+  AUTH: 'AUTH',
+  INVALID_MODEL: 'INVALID_MODEL',
+  QUOTA_EXHAUSTED: 'QUOTA_EXHAUSTED',
+  RATE_LIMIT: 'RATE_LIMIT',
+  OVERLOADED: 'OVERLOADED',
+  TIMEOUT: 'TIMEOUT',
+  NETWORK: 'NETWORK',
+  UNSUPPORTED_FEATURE: 'UNSUPPORTED_FEATURE',
+  OUTAGE: 'OUTAGE',
+  UNKNOWN: 'UNKNOWN'
 };
 
 function extractStatus(error) {
@@ -282,43 +309,34 @@ function classifyFailure(error) {
   if (status === 401 || status === 403 || /invalid api key|unauthorized|forbidden/.test(msg)) {
     return FAILURE.AUTH;
   }
-  if (status === 404 || /model not found|not found|does not exist|unknown model/.test(msg)) {
+  if (status === 404 || /model not found|not found|does not exist|unknown model|decommissioned/.test(msg)) {
     return FAILURE.INVALID_MODEL;
   }
   if (status === 400 && /(unsupported|not supported|capability|does not support)/.test(msg)) {
     return FAILURE.UNSUPPORTED_FEATURE;
   }
   if (status === 429 || /rate.?limit/.test(msg)) {
-    // Distinguish quota exhaustion (daily/monthly) from short rate limiting where possible.
     if (/quota|daily limit|billing|exceeded your current/.test(msg)) return FAILURE.QUOTA_EXHAUSTED;
     return FAILURE.RATE_LIMIT;
   }
   if (status === 503 || /overloaded|service unavailable/.test(msg)) {
     return FAILURE.OVERLOADED;
   }
-  if (status && status >= 500) {
-    return FAILURE.OUTAGE;
-  }
-  if (/timeout|timed out|etimedout/.test(msg)) {
-    return FAILURE.TIMEOUT;
-  }
-  if (/network|econnreset|enotfound|econnrefused|fetch failed/.test(msg)) {
-    return FAILURE.NETWORK;
-  }
+  if (status && status >= 500) return FAILURE.OUTAGE;
+  if (/timeout|timed out|etimedout/.test(msg)) return FAILURE.TIMEOUT;
+  if (/network|econnreset|enotfound|econnrefused|fetch failed/.test(msg)) return FAILURE.NETWORK;
   return FAILURE.UNKNOWN;
 }
 
-// Cooldown policy per failure type (ms). Long cooldowns disable a model for
-// a while without permanently forgetting it — a later health cycle can retry.
 const COOLDOWN_MS = {
-  [FAILURE.AUTH]: 15 * 60 * 1000,          // 15 min — likely needs human fix
-  [FAILURE.INVALID_MODEL]: 30 * 60 * 1000, // 30 min — model probably retired
-  [FAILURE.QUOTA_EXHAUSTED]: 10 * 60 * 1000,
-  [FAILURE.RATE_LIMIT]: 60 * 1000,          // default; Retry-After overrides
-  [FAILURE.OVERLOADED]: 8 * 1000,           // short exponential, base value
+  [FAILURE.AUTH]: 30 * 60 * 1000,           // long disable until config fixed
+  [FAILURE.INVALID_MODEL]: 45 * 60 * 1000,  // long — model likely retired; eligible for later re-probe
+  [FAILURE.QUOTA_EXHAUSTED]: 15 * 60 * 1000, // overridden by estimated reset time if known
+  [FAILURE.RATE_LIMIT]: 60 * 1000,           // default; Retry-After overrides
+  [FAILURE.OVERLOADED]: 8 * 1000,            // short exponential base
   [FAILURE.TIMEOUT]: 5 * 1000,
   [FAILURE.NETWORK]: 5 * 1000,
-  [FAILURE.UNSUPPORTED_FEATURE]: 60 * 60 * 1000, // essentially "don't use this way again"
+  [FAILURE.UNSUPPORTED_FEATURE]: 60 * 60 * 1000,
   [FAILURE.OUTAGE]: 20 * 1000,
   [FAILURE.UNKNOWN]: 10 * 1000
 };
@@ -336,14 +354,69 @@ function extractRetryAfterMs(error) {
 }
 
 // ============================================================
-// 4. CIRCUIT BREAKER (per provider+model+credential, concurrency-safe)
+// 4. QUOTA HEADER TRACKING (best-effort, never fabricated)
+// ============================================================
+function parseQuotaHeaders(headers) {
+  if (!headers) return null;
+  const get = (k) => (typeof headers.get === 'function' ? headers.get(k) : headers[k]);
+  const remainingRequests = get('x-ratelimit-remaining-requests');
+  const limitRequests = get('x-ratelimit-limit-requests');
+  const remainingTokens = get('x-ratelimit-remaining-tokens');
+  const limitTokens = get('x-ratelimit-limit-tokens');
+  const resetRequests = get('x-ratelimit-reset-requests');
+  const resetTokens = get('x-ratelimit-reset-tokens');
+
+  if (!remainingRequests && !remainingTokens) return null;
+
+  return {
+    remainingRequests: remainingRequests != null ? Number(remainingRequests) : null,
+    limitRequests: limitRequests != null ? Number(limitRequests) : null,
+    remainingTokens: remainingTokens != null ? Number(remainingTokens) : null,
+    limitTokens: limitTokens != null ? Number(limitTokens) : null,
+    resetRequests: resetRequests || null,
+    resetTokens: resetTokens || null,
+    observedAt: Date.now()
+  };
+}
+
+// ============================================================
+// 5. CIRCUIT BREAKER (per provider+model+credential, concurrency-safe)
 // ============================================================
 const CIRCUIT_STATE = { CLOSED: 'CLOSED', OPEN: 'OPEN', HALF_OPEN: 'HALF_OPEN' };
 const breakers = new Map();
-const BREAKER_MAP_LIMIT = 200; // bounded — avoid unbounded growth on Render free tier
+const BREAKER_MAP_LIMIT = 200; // bounded for low-RAM environment
 
-function breakerId(provider, modelName, credentialFingerprint) {
-  return `${provider}::${modelName}::${credentialFingerprint || 'default'}`;
+function fingerprint(credential) {
+  if (!credential) return 'default';
+  const s = String(credential);
+  return s.length <= 6 ? '***' : `***${s.slice(-4)}`;
+}
+
+function breakerId(provider, modelName, credential) {
+  return `${provider}::${modelName}::${fingerprint(credential)}`;
+}
+
+function newBreakerState() {
+  return {
+    state: CIRCUIT_STATE.CLOSED,
+    openedAt: 0,
+    cooldownMs: 0,
+    trippedBy: null,
+    failureType: null,
+    probeInFlight: false,
+    successCount: 0,
+    failureCount: 0,
+    rateLimitCount: 0,
+    quotaFailures: 0,
+    requestCount: 0,
+    lastUsed: 0,
+    lastFailure: 0,
+    lastSuccess: 0,
+    avgLatencyMs: 0,
+    disabled: false,
+    disabledReason: null,
+    quota: null
+  };
 }
 
 function getBreaker(id) {
@@ -352,24 +425,7 @@ function getBreaker(id) {
       const oldestKey = breakers.keys().next().value;
       breakers.delete(oldestKey);
     }
-    breakers.set(id, {
-      state: CIRCUIT_STATE.CLOSED,
-      openedAt: 0,
-      cooldownMs: 0,
-      trippedBy: null,
-      failureType: null,
-      probeInFlight: false,
-      successCount: 0,
-      failureCount: 0,
-      rateLimitCount: 0,
-      requestCount: 0,
-      lastUsed: 0,
-      lastFailure: 0,
-      lastSuccess: 0,
-      avgLatencyMs: 0,
-      disabled: false,
-      disabledReason: null
-    });
+    breakers.set(id, newBreakerState());
   }
   return breakers.get(id);
 }
@@ -400,10 +456,14 @@ function tripBreaker(id, error) {
   const retryAfterMs = extractRetryAfterMs(error);
   let cooldown = COOLDOWN_MS[failureType] || COOLDOWN_MS[FAILURE.UNKNOWN];
 
-  // Exponential backoff with jitter for transient categories on repeated failures.
   if (failureType === FAILURE.OVERLOADED || failureType === FAILURE.TIMEOUT || failureType === FAILURE.OUTAGE) {
     const streak = Math.min(b.failureCount, 5);
     cooldown = cooldown * Math.pow(2, streak) + Math.random() * 250;
+  }
+
+  if (failureType === FAILURE.QUOTA_EXHAUSTED && b.quota && b.quota.resetRequests) {
+    const resetMs = parseResetToMs(b.quota.resetRequests);
+    if (resetMs) cooldown = resetMs;
   }
   if (retryAfterMs) cooldown = retryAfterMs;
 
@@ -415,18 +475,34 @@ function tripBreaker(id, error) {
   b.probeInFlight = false;
   b.failureCount += 1;
   b.lastFailure = Date.now();
-  if (failureType === FAILURE.RATE_LIMIT || failureType === FAILURE.QUOTA_EXHAUSTED) b.rateLimitCount += 1;
+  if (failureType === FAILURE.RATE_LIMIT) b.rateLimitCount += 1;
+  if (failureType === FAILURE.QUOTA_EXHAUSTED) b.quotaFailures += 1;
 
   if (failureType === FAILURE.AUTH) {
     b.disabled = true;
     b.disabledReason = 'auth_failure';
     wlog(`${id} DISABLED (auth failure) — check credential.`);
+  } else if (failureType === FAILURE.INVALID_MODEL) {
+    wlog(`${id} breaker OPEN [INVALID_MODEL] — cooling ${Math.round(cooldown / 60000)}min, eligible for re-probe after.`);
   } else {
     wlog(`${id} breaker OPEN [${failureType}] cooldown=${Math.round(cooldown)}ms`);
   }
 }
 
-function recordSuccess(id, latencyMs) {
+// Parses "reset" header values that Groq/OpenAI-style APIs send, typically
+// like "1s", "6m30s", or a raw seconds count. Returns ms or null.
+function parseResetToMs(raw) {
+  if (!raw) return null;
+  if (/^\d+(\.\d+)?$/.test(raw)) return Number(raw) * 1000;
+  const m = String(raw).match(/(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?/i);
+  if (!m) return null;
+  const minutes = Number(m[1] || 0);
+  const seconds = Number(m[2] || 0);
+  const total = minutes * 60 + seconds;
+  return total > 0 ? total * 1000 : null;
+}
+
+function recordSuccess(id, latencyMs, quota) {
   const b = getBreaker(id);
   if (b.state !== CIRCUIT_STATE.CLOSED) {
     ilog(`${id} breaker CLOSED — recovered`);
@@ -442,6 +518,7 @@ function recordSuccess(id, latencyMs) {
   b.lastUsed = Date.now();
   b.lastSuccess = Date.now();
   b.avgLatencyMs = b.avgLatencyMs === 0 ? latencyMs : Math.round(b.avgLatencyMs * 0.7 + latencyMs * 0.3);
+  if (quota) b.quota = quota;
 }
 
 function releaseProbe(id) {
@@ -455,8 +532,23 @@ function isHardLimitError(error) {
     || t === FAILURE.INVALID_MODEL || t === FAILURE.AUTH || t === FAILURE.UNSUPPORTED_FEATURE;
 }
 
+// Quota risk penalty derived from last observed headers (0 if unknown).
+function quotaRiskPenalty(id) {
+  const b = breakers.get(id);
+  if (!b || !b.quota) return 0;
+  const { remainingRequests, limitRequests, remainingTokens, limitTokens } = b.quota;
+  let riskiest = 1;
+  if (limitRequests && remainingRequests != null) riskiest = Math.min(riskiest, remainingRequests / limitRequests);
+  if (limitTokens && remainingTokens != null) riskiest = Math.min(riskiest, remainingTokens / limitTokens);
+  if (riskiest >= 1) return 0;
+  if (riskiest <= 0.05) return 8;
+  if (riskiest <= 0.2) return 4;
+  if (riskiest <= 0.5) return 1;
+  return 0;
+}
+
 // ============================================================
-// 5. ROUND-ROBIN KEY SELECTOR (Gemini multi-key support)
+// 6. ROUND-ROBIN KEY SELECTOR (Gemini multi-key support)
 // ============================================================
 const rrPointers = new Map();
 function nextKeyOrder(poolName, keys) {
@@ -472,28 +564,30 @@ function nextKeyOrder(poolName, keys) {
 }
 
 // ============================================================
-// 6. REQUEST CLASSIFICATION -> TASK PROFILE
+// 7. REQUEST CLASSIFICATION -> TASK PROFILE
 // ============================================================
 const GAME_INTENTS = new Set(['FACT', 'STRATEGY', 'CALC', 'GOLD', 'GEM', 'game-query']);
 const CODE_REGEX = /```|code|script|debug|function|python|javascript|java\b|c\+\+|sql|json|regex|api|stack ?trace|error:|exception/i;
-const MATH_REGEX = /\b(calculate|equation|solve|integral|derivative|algebra|geometry|probability|matrix)\b/i;
+const MATH_REGEX = /\b(calculate|equation|solve|integral|derivative|algebra|geometry|probability|matrix)|[0-9]\s*[+\-*/^]\s*[0-9]|=\s*0\b/i;
 const REASONING_REGEX = /deep analysis|quantum|architecture|complex breakdown|thesis|geopolitics|explain in detail|analyze/i;
 const CREATIVE_REGEX = /\b(poem|story|essay|lyrics|write a|creative|stotram|mantra)\b/i;
-const HINDI_REGEX = /[\u0900-\u097F]|\b(kya|hai|nahi|kaise|kyu|bhai|yaar|acha|theek)\b/i;
+const HINDI_DEVANAGARI_REGEX = /[\u0900-\u097F]/;
+const HINGLISH_REGEX = /\b(kya|hai|nahi|kaise|kyu|bhai|yaar|acha|theek|kar|raha|rahi|tum|aap|mera|tera)\b/i;
 const SHORT_CASUAL_REGEX = /^(hey|hi|hello|lol|lmao|haha|hola|yo|sup|good morning|good night|gm|gn|bruh|ok|okay|hmm)\W*$/i;
 
 function classifyRequest({ classification, prompt, userMessage }) {
   const intent = classification?.intent || 'social';
   const text = String(userMessage || prompt || '');
-  const lower = text.toLowerCase();
+  const trimmed = text.trim();
 
   const isGame = GAME_INTENTS.has(intent) || /\b(stats|hp|damage|hero|troop|game|clash)\b/i.test(text) || /\[GAME DATA\]/i.test(text);
   const isCode = CODE_REGEX.test(text);
   const isMath = MATH_REGEX.test(text);
   const isReasoningHeavy = intent === (INTENTS && INTENTS.HEAVY_TASK) || REASONING_REGEX.test(text);
   const isCreative = CREATIVE_REGEX.test(text);
-  const isHindi = HINDI_REGEX.test(text);
-  const isShortCasual = SHORT_CASUAL_REGEX.test(text.trim()) || text.trim().length <= 6;
+  const isDevanagari = HINDI_DEVANAGARI_REGEX.test(text);
+  const isHinglish = !isDevanagari && HINGLISH_REGEX.test(text);
+  const isShortCasual = SHORT_CASUAL_REGEX.test(trimmed) || trimmed.length <= 6;
   const isLong = text.length > 2000;
 
   let category = 'casual';
@@ -502,25 +596,40 @@ function classifyRequest({ classification, prompt, userMessage }) {
   else if (isMath) category = 'math';
   else if (isReasoningHeavy || isLong) category = 'reasoning';
   else if (isCreative) category = 'creative';
+  else if (isDevanagari || isHinglish) category = 'hinglish';
   else if (isShortCasual) category = 'shortFactual';
   else category = 'casual';
 
-  return { category, isHindi, isLong, intent };
+  return { category, isHindi: isDevanagari || isHinglish, isLong, intent };
 }
 
 // Weight vector per category — which registry fields matter, and how much.
 const CATEGORY_WEIGHTS = {
-  casual: { casualChat: 3, speed: 2, quality: 1, multilingual: 1, reliability: 1 },
+  casual: { casualChat: 3, speed: 2, quality: 1, reliability: 2 },
   shortFactual: { speed: 3, reliability: 2, casualChat: 1, quality: 1 },
   coding: { coding: 3, reasoning: 2, quality: 2, reliability: 1 },
-  math: { reasoning: 3, coding: 1, quality: 2, reliability: 1 },
+  math: { math: 3, reasoning: 2, quality: 1, reliability: 1 },
   reasoning: { reasoning: 3, longContext: 2, quality: 2, reliability: 1 },
   gameStrategy: { gameStrategy: 3, reasoning: 2, structuredOutput: 1, reliability: 1 },
-  creative: { quality: 2, casualChat: 1, longContext: 1, reliability: 1, multilingual: 1 }
+  creative: { creativeWriting: 3, quality: 2, longContext: 1, reliability: 1 },
+  hinglish: { hindi: 3, multilingual: 2, casualChat: 2, reliability: 1 }
+};
+
+// Dynamic max output tokens by category — avoids wasting free-tier tokens
+// on casual chat while still allowing room for genuinely long answers.
+const MAX_TOKENS_BY_CATEGORY = {
+  shortFactual: 384,
+  casual: 768,
+  hinglish: 768,
+  creative: 1536,
+  gameStrategy: 1536,
+  coding: 3072,
+  math: 2048,
+  reasoning: 4096
 };
 
 function scoreModel(entry, category, opts = {}) {
-  if (!entry) return -Infinity;
+  if (!entry || entry.status === 'disabled') return -Infinity;
   const weights = CATEGORY_WEIGHTS[category] || CATEGORY_WEIGHTS.casual;
   let score = 0;
   for (const [field, weight] of Object.entries(weights)) {
@@ -528,18 +637,22 @@ function scoreModel(entry, category, opts = {}) {
   }
   score += entry.reliability || 0;
 
-  if (opts.isHindi) score += (entry.multilingual || 0) * 0.5;
   if (opts.isLong) score += (entry.longContext || 0) * 0.5;
 
-  if (entry.costTier === 'paid') score -= 1000; // never surface paid unless explicitly allowed elsewhere
-  if (entry.legacy) score -= 5; // deprioritize soon-to-be-shutdown models
-  if (entry.preview) score -= 1; // preview models slightly deprioritized for reliability
+  if (entry.provider === 'gemini') {
+    score += GEMINI_PRIMARY_BONUS[category] || 0;
+  }
+
+  if (entry.costTier === 'paid') score -= 1000;
+  if (entry.legacy) score -= 6;
+  if (entry.preview) score -= 1;
+  if (entry.status === 'discovered') score -= 3;
 
   return score;
 }
 
 // ============================================================
-// 7. TOKEN COMPRESSION (Emergency Tier)
+// 8. TOKEN COMPRESSION (Emergency Tier)
 // ============================================================
 const EMERGENCY_MEMORY_CHAR_CAP = 300;
 function compressForEmergency(prompt) {
@@ -556,7 +669,7 @@ function compressForEmergency(prompt) {
 }
 
 // ============================================================
-// 8. RETRY HELPERS
+// 9. RETRY HELPERS
 // ============================================================
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function backoffDelay(attempt) {
@@ -592,13 +705,13 @@ function getDynamicTemp(intent) {
 }
 
 // ============================================================
-// 9. API EXECUTORS (one per provider, normalized output)
+// 10. API EXECUTORS (normalized output + quota extraction)
 // ============================================================
-async function execGemini({ apiKey, modelName, prompt, systemInstruction, temp }) {
+async function execGemini({ apiKey, modelName, prompt, systemInstruction, temp, maxTokens }) {
   const entry = MODEL_REGISTRY.gemini[modelName];
   const genAI = getGeminiClient(apiKey);
 
-  const generationConfig = {};
+  const generationConfig = { maxOutputTokens: maxTokens };
   if (entry && entry.supportsSampling && typeof temp === 'number') {
     generationConfig.temperature = temp;
   }
@@ -609,24 +722,44 @@ async function execGemini({ apiKey, modelName, prompt, systemInstruction, temp }
     tools: [
       { googleSearchRetrieval: { dynamicRetrievalConfig: { mode: 'MODE_DYNAMIC', dynamicThreshold: 0.2 } } }
     ],
-    ...(Object.keys(generationConfig).length ? { generationConfig } : {})
+    generationConfig
   });
 
   const response = await model.generateContent(prompt);
-  return response.response.text();
+  // Gemini SDK doesn't expose raw rate-limit headers through this call path.
+  return { text: response.response.text(), quota: null };
 }
 
 async function execOpenAICompatible(client, { modelName, prompt, systemInstruction, maxTokens, temp }) {
-  const completion = await client.chat.completions.create({
-    model: modelName,
-    messages: [
-      { role: 'system', content: systemInstruction },
-      { role: 'user', content: prompt }
-    ],
-    temperature: temp,
-    max_tokens: maxTokens
-  });
-  return completion.choices[0].message.content;
+  let data, headers = null;
+  try {
+    const withResp = await client.chat.completions.create({
+      model: modelName,
+      messages: [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: prompt }
+      ],
+      temperature: temp,
+      max_tokens: maxTokens
+    }).withResponse();
+    data = withResp.data;
+    headers = withResp.response ? withResp.response.headers : null;
+  } catch (e) {
+    // .withResponse() unsupported on this SDK path/version — plain call fallback.
+    if (e && e.__isRouterFallbackMarker) throw e;
+    data = await client.chat.completions.create({
+      model: modelName,
+      messages: [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: prompt }
+      ],
+      temperature: temp,
+      max_tokens: maxTokens
+    });
+  }
+
+  const text = data.choices?.[0]?.message?.content || '';
+  return { text, quota: parseQuotaHeaders(headers) };
 }
 
 async function execCloudflare({ modelName, prompt, systemInstruction, maxTokens, temp }) {
@@ -659,31 +792,30 @@ async function execCloudflare({ modelName, prompt, systemInstruction, maxTokens,
       throw err;
     }
     const data = await res.json();
-    return data.choices?.[0]?.message?.content || '';
+    return { text: data.choices?.[0]?.message?.content || '', quota: parseQuotaHeaders(res.headers) };
   } finally {
     clearTimeout(timeout);
   }
 }
 
 // ============================================================
-// 10. UNIFIED MODEL RUNNER (per candidate, breaker-guarded)
+// 11. UNIFIED MODEL RUNNER (per candidate, breaker-guarded)
 // ============================================================
 async function runCandidate(candidate, ctx) {
   const { provider, model: modelName } = candidate;
   const { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqClient, hasGroq, openRouterFreeOnly } = ctx;
 
   if (provider === 'gemini') {
-    if (!geminiKeys || geminiKeys.length === 0) return null;
+    if (!ENABLE_GEMINI || !geminiKeys || geminiKeys.length === 0) return null;
     const order = nextKeyOrder(`gemini:${modelName}`, geminiKeys);
     for (const { key, index } of order) {
-      const fp = String(key).slice(-6);
-      const id = breakerId('gemini', modelName, fp);
+      const id = breakerId('gemini', modelName, key);
       if (isBreakerOpen(id)) continue;
 
       const start = Date.now();
       try {
-        const text = await withRetry(() => execGemini({ apiKey: key, modelName, prompt, systemInstruction, temp }));
-        recordSuccess(id, Date.now() - start);
+        const { text } = await withRetry(() => execGemini({ apiKey: key, modelName, prompt, systemInstruction, temp, maxTokens }));
+        recordSuccess(id, Date.now() - start, null);
         return { result: text, modelUsed: `${modelName} (gemini, key ${index + 1})`, provider: 'gemini', metadata: { latencyMs: Date.now() - start } };
       } catch (error) {
         const type = classifyFailure(error);
@@ -695,14 +827,14 @@ async function runCandidate(candidate, ctx) {
   }
 
   if (provider === 'groq') {
-    if (!hasGroq || !groqClient) return null;
-    const id = breakerId('groq', modelName, 'default');
+    if (!ENABLE_GROQ || !hasGroq || !groqClient) return null;
+    const id = breakerId('groq', modelName, process.env.opla || process.env.GROQ_API_KEY || process.env.OPLA);
     if (isBreakerOpen(id)) return null;
     const start = Date.now();
     try {
-      const text = await withRetry(() => execOpenAICompatible(groqClient, { modelName, prompt, systemInstruction, maxTokens, temp }));
-      recordSuccess(id, Date.now() - start);
-      return { result: text, modelUsed: `${modelName} (groq)`, provider: 'groq', metadata: { latencyMs: Date.now() - start } };
+      const { text, quota } = await withRetry(() => execOpenAICompatible(groqClient, { modelName, prompt, systemInstruction, maxTokens, temp }));
+      recordSuccess(id, Date.now() - start, quota);
+      return { result: text, modelUsed: `${modelName} (groq)`, provider: 'groq', metadata: { latencyMs: Date.now() - start, quota } };
     } catch (error) {
       const type = classifyFailure(error);
       wlog(`groq/${modelName} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
@@ -714,18 +846,18 @@ async function runCandidate(candidate, ctx) {
   if (provider === 'openrouter') {
     const client = getOpenRouterClient();
     if (!client) return null;
-    const entry = MODEL_REGISTRY.openrouter[modelName];
+    const entry = MODEL_REGISTRY.openrouter[modelName] || discoveredModels.get(`openrouter:${modelName}`);
     if (openRouterFreeOnly && entry && entry.costTier !== 'free') {
       dlog(`skipping openrouter/${modelName} — not free and OPENROUTER_FREE_ONLY is set`);
       return null;
     }
-    const id = breakerId('openrouter', modelName, 'default');
+    const id = breakerId('openrouter', modelName, process.env.OPENROUTER_API_KEY);
     if (isBreakerOpen(id)) return null;
     const start = Date.now();
     try {
-      const text = await withRetry(() => execOpenAICompatible(client, { modelName, prompt, systemInstruction, maxTokens, temp }));
-      recordSuccess(id, Date.now() - start);
-      return { result: text, modelUsed: `${modelName} (openrouter)`, provider: 'openrouter', metadata: { latencyMs: Date.now() - start } };
+      const { text, quota } = await withRetry(() => execOpenAICompatible(client, { modelName, prompt, systemInstruction, maxTokens, temp }));
+      recordSuccess(id, Date.now() - start, quota);
+      return { result: text, modelUsed: `${modelName} (openrouter)`, provider: 'openrouter', metadata: { latencyMs: Date.now() - start, quota } };
     } catch (error) {
       const type = classifyFailure(error);
       wlog(`openrouter/${modelName} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
@@ -737,13 +869,13 @@ async function runCandidate(candidate, ctx) {
   if (provider === 'cloudflare') {
     const cfg = getCloudflareConfig();
     if (!cfg) return null;
-    const id = breakerId('cloudflare', modelName, 'default');
+    const id = breakerId('cloudflare', modelName, cfg.apiToken);
     if (isBreakerOpen(id)) return null;
     const start = Date.now();
     try {
-      const text = await withRetry(() => execCloudflare({ modelName, prompt, systemInstruction, maxTokens, temp }));
-      recordSuccess(id, Date.now() - start);
-      return { result: text, modelUsed: `${modelName} (cloudflare)`, provider: 'cloudflare', metadata: { latencyMs: Date.now() - start } };
+      const { text, quota } = await withRetry(() => execCloudflare({ modelName, prompt, systemInstruction, maxTokens, temp }));
+      recordSuccess(id, Date.now() - start, quota);
+      return { result: text, modelUsed: `${modelName} (cloudflare)`, provider: 'cloudflare', metadata: { latencyMs: Date.now() - start, quota } };
     } catch (error) {
       const type = classifyFailure(error);
       wlog(`cloudflare/${modelName} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
@@ -756,37 +888,47 @@ async function runCandidate(candidate, ctx) {
 }
 
 // ============================================================
-// 11. CANDIDATE RANKING
+// 12. CANDIDATE RANKING
 // ============================================================
-function isProviderLikelyDown(provider, credentialCount = 1) {
-  // Heuristic: if every known breaker id for a provider is currently OPEN
-  // (not half-open) and disabled/cooldown-heavy, treat provider as down so
-  // we don't waste time cycling through all its models.
+function isProviderLikelyDown(provider) {
   let sawAny = false;
   let allOpen = true;
   for (const [id, b] of breakers.entries()) {
     if (!id.startsWith(`${provider}::`)) continue;
     sawAny = true;
-    if (b.state !== CIRCUIT_STATE.OPEN && !b.disabled) {
-      allOpen = false;
-    }
+    if (b.state !== CIRCUIT_STATE.OPEN && !b.disabled) allOpen = false;
   }
   return sawAny && allOpen;
 }
 
-function buildCandidates({ category, isHindi, isLong, geminiKeys, hasGroq, openRouterFreeOnly, cloudflareEnabled }) {
+function buildCandidates({ category, isLong, geminiKeys, hasGroq, openRouterFreeOnly, cloudflareEnabled }) {
   const candidates = [];
 
-  for (const entry of allModelEntries()) {
-    if (entry.provider === 'gemini' && (!geminiKeys || geminiKeys.length === 0)) continue;
-    if (entry.provider === 'groq' && !hasGroq) continue;
-    if (entry.provider === 'openrouter' && !getOpenRouterClient()) continue;
-    if (entry.provider === 'cloudflare' && !cloudflareEnabled) continue;
-    if (entry.costTier === 'paid') continue; // FREE_ONLY_MODE / no-paid-accidents guard
-    if (isLong && (entry.longContext || 0) < 5) continue; // drop models too weak for long context
+  for (const entry of allRegistryEntries()) {
+    if (entry.provider === 'gemini' && (!ENABLE_GEMINI || !geminiKeys || geminiKeys.length === 0)) continue;
+    if (entry.provider === 'groq' && (!ENABLE_GROQ || !hasGroq)) continue;
+    if (entry.provider === 'openrouter' && (!ENABLE_OPENROUTER || !getOpenRouterClient())) continue;
+    if (entry.provider === 'cloudflare' && (!ENABLE_CLOUDFLARE || !cloudflareEnabled)) continue;
+    if (entry.costTier === 'paid') continue;
+    if (isLong && (entry.longContext || 0) < 5) continue;
 
-    const score = scoreModel(entry, category, { isHindi, isLong });
-    candidates.push({ ...entry, score });
+    const score = scoreModel(entry, category, { isLong });
+    if (score === -Infinity) continue;
+
+    // Fold in live quota risk using the most-likely credential fingerprint;
+    // for Gemini this is approximate since keys round-robin, so we skip it
+    // there and rely on per-key breakers instead.
+    let riskAdjusted = score;
+    if (entry.provider !== 'gemini') {
+      const cred = entry.provider === 'groq'
+        ? (process.env.opla || process.env.GROQ_API_KEY || process.env.OPLA)
+        : entry.provider === 'openrouter'
+          ? process.env.OPENROUTER_API_KEY
+          : (getCloudflareConfig() || {}).apiToken;
+      riskAdjusted -= quotaRiskPenalty(breakerId(entry.provider, entry.model, cred));
+    }
+
+    candidates.push({ ...entry, score: riskAdjusted });
   }
 
   candidates.sort((a, b) => b.score - a.score);
@@ -794,31 +936,102 @@ function buildCandidates({ category, isHindi, isLong, geminiKeys, hasGroq, openR
 }
 
 // ============================================================
-// 12. MAIN GENERATOR
+// 13. OPTIONAL MODEL DISCOVERY (cached, never on hot path)
+// ============================================================
+let lastDiscoveryAt = 0;
+let discoveryInFlight = false;
+
+async function maybeRunDiscovery({ groqClient, hasGroq }) {
+  const now = Date.now();
+  if (discoveryInFlight) return;
+  if (now - lastDiscoveryAt < MODEL_DISCOVERY_TTL_MS) return;
+  discoveryInFlight = true;
+  lastDiscoveryAt = now;
+
+  try {
+    if (ENABLE_GROQ && hasGroq && groqClient) {
+      await discoverGroqModels(groqClient).catch((e) => dlog('groq discovery failed (non-fatal):', e.message));
+    }
+    const orClient = getOpenRouterClient();
+    if (orClient) {
+      await discoverOpenRouterModels(orClient).catch((e) => dlog('openrouter discovery failed (non-fatal):', e.message));
+    }
+  } finally {
+    discoveryInFlight = false;
+  }
+}
+
+function upsertDiscovered(provider, modelId, defaults) {
+  if (MODEL_REGISTRY[provider] && MODEL_REGISTRY[provider][modelId]) {
+    MODEL_REGISTRY[provider][modelId].status = 'active';
+    return;
+  }
+  const key = `${provider}:${modelId}`;
+  if (discoveredModels.has(key)) return;
+  if (discoveredModels.size >= DISCOVERED_POOL_LIMIT) return;
+
+  discoveredModels.set(key, {
+    provider, model: modelId,
+    quality: 4, speed: 5, reasoning: 4, coding: 4, math: 3, casualChat: 4,
+    creativeWriting: 3, multilingual: 4, hindi: 3, structuredOutput: 3,
+    gameStrategy: 3, longContext: 3, toolUse: 3, reliability: 3,
+    costTier: defaults.costTier || 'free-limited',
+    maxOutputTokens: 1024,
+    status: 'discovered'
+  });
+  dlog(`discovered new ${provider} model: ${modelId} (unknown-capability pool)`);
+}
+
+async function discoverGroqModels(groqClient) {
+  const list = await groqClient.models.list();
+  const ids = (list?.data || []).map((m) => m.id).filter(Boolean);
+  for (const id of ids) {
+    if (/whisper|tts|guard/i.test(id)) continue;
+    upsertDiscovered('groq', id, { costTier: 'free-limited' });
+  }
+}
+
+async function discoverOpenRouterModels(orClient) {
+  const list = await orClient.models.list();
+  const items = list?.data || [];
+  for (const item of items) {
+    const id = item.id;
+    if (!id) continue;
+    const isFree = /:free$/i.test(id) || (item.pricing && Number(item.pricing.prompt) === 0);
+    if (!isFree) continue;
+    upsertDiscovered('openrouter', id, { costTier: 'free' });
+  }
+}
+
+// ============================================================
+// 14. MAIN GENERATOR
 // ============================================================
 async function generate({ classification, prompt, userMessage, systemInstruction, geminiKeys = [], groqClient, hasGroq }) {
-  const { category, isHindi, isLong, intent } = classifyRequest({ classification, prompt, userMessage });
+  const { category, isLong, intent } = classifyRequest({ classification, prompt, userMessage });
   const temp = getDynamicTemp(intent);
   const cloudflareEnabled = !!getCloudflareConfig();
   const openRouterFreeOnly = FREE_ONLY_MODE || OPENROUTER_FREE_ONLY;
+  const maxTokens = MAX_TOKENS_BY_CATEGORY[category] || 768;
 
-  let candidates = buildCandidates({
-    category, isHindi, isLong, geminiKeys, hasGroq, openRouterFreeOnly, cloudflareEnabled
+  // Fire-and-forget cache refresh; never awaited beyond the cheap
+  // TTL/in-flight checks above, so it never adds latency to a request.
+  maybeRunDiscovery({ groqClient, hasGroq }).catch(() => {});
+
+  const candidates = buildCandidates({
+    category, isLong, geminiKeys, hasGroq, openRouterFreeOnly, cloudflareEnabled
   });
 
   if (candidates.length === 0) {
     throw new Error('No providers configured/available for routing.');
   }
 
-  dlog(`intent=${category} candidates=${candidates.map(c => `${c.provider}/${c.model}`).join(', ')}`);
+  dlog(`intent=${category} maxTokens=${maxTokens} candidates=${candidates.map(c => `${c.provider}/${c.model}(${c.score.toFixed(1)})`).join(', ')}`);
 
-  const ctx = { prompt, systemInstruction, temp, maxTokens: 1024, geminiKeys, groqClient, hasGroq, openRouterFreeOnly };
+  const ctx = { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqClient, hasGroq, openRouterFreeOnly };
   let lastError = null;
   let lastProviderTried = null;
 
   for (const candidate of candidates) {
-    // Skip cycling through more models of a provider that looks fully down —
-    // move to the next distinct provider instead, unless it's the only one left.
     if (lastProviderTried === candidate.provider) {
       const stillHasOtherProviders = candidates.some(c => c.provider !== candidate.provider);
       if (stillHasOtherProviders && isProviderLikelyDown(candidate.provider)) {
@@ -830,7 +1043,7 @@ async function generate({ classification, prompt, userMessage, systemInstruction
     lastProviderTried = candidate.provider;
 
     if (outcome && outcome.result) {
-      ilog(`selected=${candidate.model} provider=${candidate.provider} intent=${category} latency=${outcome.metadata?.latencyMs || '?'}ms`);
+      ilog(`intent=${category} selected=${candidate.model} provider=${candidate.provider} latency=${outcome.metadata?.latencyMs || '?'}ms`);
       return { result: outcome.result, modelUsed: outcome.modelUsed, provider: outcome.provider, metadata: outcome.metadata };
     }
   }
@@ -840,11 +1053,12 @@ async function generate({ classification, prompt, userMessage, systemInstruction
   // ==========================================
   ilog('primary candidates exhausted — attempting emergency fallback');
   const compressedPrompt = compressForEmergency(prompt);
-  const emergencyCtx = { ...ctx, prompt: compressedPrompt, maxTokens: 400 };
+  const emergencyCtx = { ...ctx, prompt: compressedPrompt, maxTokens: 384 };
 
   const emergencyOrder = [
-    hasGroq ? { provider: 'groq', model: 'openai/gpt-oss-20b' } : null,
-    hasGroq ? { provider: 'groq', model: 'llama-3.1-8b-instant' } : null,
+    (ENABLE_GEMINI && geminiKeys.length) ? { provider: 'gemini', model: 'gemini-3.5-flash-lite' } : null,
+    (ENABLE_GROQ && hasGroq) ? { provider: 'groq', model: 'openai/gpt-oss-20b' } : null,
+    (ENABLE_GROQ && hasGroq) ? { provider: 'groq', model: 'llama-3.1-8b-instant' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'openrouter/free' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free' } : null,
     cloudflareEnabled ? { provider: 'cloudflare', model: '@cf/meta/llama-3.1-8b-instruct' } : null
@@ -863,43 +1077,60 @@ async function generate({ classification, prompt, userMessage, systemInstruction
 }
 
 // ============================================================
-// 13. OBSERVABILITY
+// 15. OBSERVABILITY
 // ============================================================
 function getRouterHealth() {
   const snapshot = [];
   const now = Date.now();
   for (const [id, b] of breakers.entries()) {
+    const [provider, model, credFingerprint] = id.split('::');
     const cooldownRemaining = b.state === CIRCUIT_STATE.OPEN
       ? Math.max(0, b.cooldownMs - (now - b.openedAt))
       : 0;
     snapshot.push({
-      id,
+      provider,
+      model,
+      credentialFingerprint: credFingerprint,
       state: b.disabled ? 'DISABLED' : b.state,
       failureType: b.failureType,
-      trippedBy: b.trippedBy,
       cooldownRemainingMs: cooldownRemaining,
       probeInFlight: b.probeInFlight,
       successCount: b.successCount,
       failureCount: b.failureCount,
       rateLimitCount: b.rateLimitCount,
+      quotaFailures: b.quotaFailures,
       requestCount: b.requestCount,
-      avgLatencyMs: b.avgLatencyMs,
+      averageLatencyMs: b.avgLatencyMs,
+      lastUsed: b.lastUsed || null,
       lastSuccess: b.lastSuccess || null,
       lastFailure: b.lastFailure || null,
-      disabledReason: b.disabledReason || null
+      disabledReason: b.disabledReason || null,
+      quota: b.quota ? {
+        remainingRequests: b.quota.remainingRequests,
+        limitRequests: b.quota.limitRequests,
+        remainingTokens: b.quota.remainingTokens,
+        limitTokens: b.quota.limitTokens,
+        observedAt: b.quota.observedAt
+      } : null
     });
   }
   return {
     breakers: snapshot,
+    discoveredModels: Array.from(discoveredModels.values()).map(m => ({ provider: m.provider, model: m.model, costTier: m.costTier, status: m.status })),
+    lastDiscoveryAt: lastDiscoveryAt || null,
     rrPointers: Object.fromEntries(rrPointers.entries()),
-    providersEnabled: {
-      gemini: null, // depends on geminiKeys passed per-request; not known statically
-      groq: null,   // depends on hasGroq passed per-request
+    flags: {
+      freeOnlyMode: FREE_ONLY_MODE,
+      openRouterFreeOnly: OPENROUTER_FREE_ONLY,
+      enableGemini: ENABLE_GEMINI,
+      enableGroq: ENABLE_GROQ,
+      enableOpenRouter: ENABLE_OPENROUTER,
+      enableCloudflare: ENABLE_CLOUDFLARE
+    },
+    providersConfigured: {
       openrouter: !!getOpenRouterClient(),
       cloudflare: !!getCloudflareConfig()
-    },
-    freeOnlyMode: FREE_ONLY_MODE,
-    openRouterFreeOnly: OPENROUTER_FREE_ONLY
+    }
   };
 }
 
