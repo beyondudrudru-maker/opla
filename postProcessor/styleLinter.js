@@ -4,13 +4,13 @@
  * PURPOSE
  *   Cleans and formats the raw AI text before it is sent to Discord.
  *   Enforces emoji limits, prevents repetitive AI loops, and ensures perfect grammar.
- *   🚀 UPGRADE: Bulletproof whitespace, grammar rescue, and expanded crutch filtering.
+ *   🚀 UPGRADE: Fixed regex to PRESERVE new lines for perfect Discord formatting.
  */
 
 const RECENT_REPLY_LIMIT = 8;
 const MAX_TRACKED_CHANNELS = 100; // 🛡️ Memory leak protection limit
 
-// 🚀 UPGRADE: Expanded list of LLM conversational crutches
+// Expanded list of LLM conversational crutches
 const BANNED_OPENERS = /^(oh[,.]?|well[,.]?|hmm[,.]?|umm[,.]?|honestly[,.]?|anyway[,.]?|so[,.]?|ah[,.]?|alright[,.]?|look[,.]?|basically[,.]?|actually[,.]?|okay[,.]?)\s+/i;
 const recentRepliesByChannel = new Map();
 
@@ -41,7 +41,7 @@ function recordReply(channelId, text) {
 }
 
 /**
- * 🚀 UPGRADE: Isolates the exact opener word safely, ignoring punctuation variations.
+ * Isolates the exact opener word safely, ignoring punctuation variations.
  */
 function openerRepeated(channelId, text) {
   const match = text.match(BANNED_OPENERS);
@@ -56,7 +56,7 @@ function openerRepeated(channelId, text) {
 }
 
 /**
- * 🚀 UPGRADE: Strips crutches and fixes capitalization safely, even if wrapped in Markdown.
+ * Strips crutches and fixes capitalization safely, even if wrapped in Markdown.
  */
 function stripBannedOpenerIfRepeated(channelId, text) {
   if (openerRepeated(channelId, text)) {
@@ -73,7 +73,9 @@ function stripBannedOpenerIfRepeated(channelId, text) {
 }
 
 /**
- * 🚀 UPGRADE: Advanced Regex handles complex emojis and cleans up leftover whitespace/punctuation gaps.
+ * 🚀 THE FIX IS HERE: 
+ * Advanced Regex handles complex emojis and cleans up leftover horizontal whitespace 
+ * while strictly preserving vertical line breaks (\n).
  */
 function enforceEmojiBudget(text, budget) {
   const emojiRegex = /[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}\u{200D}\u{FE0F}]+/gu;
@@ -86,15 +88,15 @@ function enforceEmojiBudget(text, budget) {
   
   // Clean up structural weirdness left by removed emojis
   processedText = processedText
-    .replace(/\s+/g, ' ')               // Collapse multiple spaces into one
-    .replace(/\s+([.,!?])/g, '$1')      // Fix spaces before punctuation (e.g., "Hello ," -> "Hello,")
+    .replace(/ {2,}/g, ' ')               // 🔥 FIX: Only collapse horizontal spaces, NOT new lines!
+    .replace(/ +([.,!?])/g, '$1')         // Fix spaces before punctuation (e.g., "Hello ," -> "Hello,")
     .trim();
     
   return processedText;
 }
 
 /**
- * 🚀 UPGRADE: Structural Cleanup (Quotes, Giant Gaps)
+ * Structural Cleanup (Quotes, Giant Gaps)
  */
 function structuralCleanup(text) {
     let cleanText = text;
