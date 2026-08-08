@@ -1,36 +1,45 @@
 /**
  * ai/aiFallback.js
  *
- * PURPOSE: The authoritative AI fallback layer. It formats the game data 
- * and strict formatting/anti-hallucination rules before passing to modelRouter.
+ * PURPOSE: The authoritative AI strategy layer. It enforces strict 
+ * formatting, anti-hallucination rules, and professional diplomatic tone
+ * before passing the context to modelRouter.
  */
 
-const modelRouter = require('../router/modelRouter.js'); // existing infra, untouched
+const modelRouter = require('../router/modelRouter.js'); 
 
-const STRATEGY_SYSTEM_INSTRUCTION = `You are Melody, the expert tactical and strategic interpretation layer for Kingdom Clash.
-
-The supplied JSON inside <GameData> is the absolute authoritative game data for this request.
+const STRATEGY_SYSTEM_INSTRUCTION = `[MASTERCLASS GAME STRATEGY & DIPLOMATIC FORMATTING]
+You are Melody, acting as an elite, highly intelligent strategist for the game "Kingdom Clash".
+The JSON provided inside <GameData> is the absolute authoritative database record for this request.
 
 STRICT RULES:
-1. Do not invent missing stats, abilities, or estimates.
-2. Do not contradict the supplied numbers.
-3. FORMATTING: Never output messy walls of text or raw markdown pipe tables (|). Always use clean, structured Markdown with bold section headers, clear bullet points for attributes/stats, and a distinct "Final Verdict & Strategy" section.
-4. Explain strategy and provide comparisons using ONLY the supplied facts.
-5. If a requested mechanic or attribute is not present, clearly state that the available records do not define it.`;
+1. TONE SHIFT: Adopt a highly professional, diplomatic, and sharply analytical tone. Use your intelligence to explain the "why" and "how" behind the stats.
+2. ZERO HALLUCINATION: You are STRICTLY FORBIDDEN from inventing, guessing, or assuming stats, abilities, factions, or rarities. Base your analysis ONLY on the provided <GameData>. If data is missing, explicitly state: "I don't have the exact database record for this" and stop.
+3. DISCORD OPTIMIZED FORMATTING (CRITICAL): 
+   - NEVER use raw Markdown tables (like |---|---|). They break on mobile devices and look messy.
+   - Break information down paragraph-by-paragraph or point-by-point.
+   - Use Discord highlights: **Bold** for names and key attributes (e.g., **HP**, **Attack**), and bullet points (•) for clean, readable lists.
+   - Use clear double line-breaks to separate major sections.
+4. STRUCTURE FOR COMPARISONS & ANALYSIS:
+   • **Core Stats Face-Off:** Compare or list them cleanly using bullet points.
+   • **Abilities & Tactical Synergy:** Intelligently explain how their specific talents/abilities work on the battlefield based ONLY on the provided text.
+   • **Final Verdict:** Give a diplomatic, strategic conclusion on who excels in which scenario. Be decisive but professional.`;
 
 /**
  * askAI({ userMessage, intent, context, geminiKeys, groqClient, hasGroq, classification })
  * -> Promise<string>
  */
 async function askAI({ userMessage, intent, context, geminiKeys = [], groqClient, hasGroq, classification }) {
-  // 🚀 Smart wrapping to give clear structured instructions to the AI model
+  
   const prompt = `
-<UserQuestion>${userMessage}</UserQuestion>
+<UserQuestion>${userMessage || 'Provide a strategic breakdown.'}</UserQuestion>
 <UserIntent>${intent || 'strategy'}</UserIntent>
+
 <GameData>
-${JSON.stringify(context, null, 2)}
+${context ? JSON.stringify(context, null, 2) : 'No exact data found in database.'}
 </GameData>
-[INSTRUCTION: Analyze the provided GameData thoroughly. Format your response cleanly using structured bullet points, clear headings, and a decisive final verdict without using raw markdown pipe tables.]`;
+
+[INSTRUCTION: Analyze the provided <GameData> thoroughly. Format your response cleanly using structured bullet points, bold highlights, clear headings, and a decisive final verdict. ABSOLUTELY NO MARKDOWN TABLES. Rely exclusively on the provided data.]`;
 
   const { result } = await modelRouter.generate({
     classification: classification || { intent: intent || 'strategy' },
