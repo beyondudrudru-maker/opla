@@ -114,7 +114,7 @@ async function generateContent(turn) {
     }
 
     if (userIntent === 'command' || userIntent === 'moderation') {  
-      dynamicIdentity += `\n[ADMIN] Authoritative, concise, professional. No pet names.`;
+      dynamicIdentity += `\n[ADMIN] Authoritative, concise, professional.`;
     }
 
     const isConflict = CONFLICT_REGEX.test(turn.content);  
