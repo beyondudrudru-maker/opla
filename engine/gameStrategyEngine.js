@@ -46,11 +46,15 @@ function normalize(str) {
  * (array filter). This mirrors the same normalize/match strategy
  * gameQueryEngine.js uses internally, applied to the same gameLibrary.heroes
  * array, so results stay 1:1 consistent with the rest of the pipeline.
- * (Flagged in the summary at the end as a suggested addition to
- * gameQueryEngine.js so this duplication can be removed later.)
  */
 function _localFindHero(name) {
   if (!name) return null;
+  // Try to use the new exact entity matcher from query engine if available
+  if (queryEngine.findEntityByName) {
+    const entity = queryEngine.findEntityByName(name);
+    if (entity && entity.type === 'hero') return entity.data;
+  }
+
   const n = normalize(name);
   let hit = gameLibrary.heroes.find(h => normalize(h.name) === n || normalize(h.id) === n);
   if (!hit) {
@@ -98,7 +102,7 @@ function parseRangeString(raw) {
     return { fixed: true, min: parsed.value, max: parsed.value, unit: parsed.unit, raw };
   }
 
-  const parts = raw.split(/\s[-–—]\s/); // hyphen / en dash / em dash, space-padded (as used throughout gameKnowledge.js)
+  const parts = raw.split(/\s[-–—]\s/); // hyphen / en dash / em dash, space-padded
   if (parts.length !== 2) return null;
 
   const a = parseValueWithUnit(parts[0]);
@@ -127,9 +131,7 @@ const KNOWN_TROOP_CATEGORIES = [...new Set(gameLibrary.troops.flatMap(t => t.cat
 
 /**
  * Resolves a loosely-worded category (e.g. "mage", singular, mis-cased) to the
- * exact category label stored in gameKnowledge.js (e.g. "Mages"). Exact match
- * first, then substring match either direction. Returns null if nothing matches
- * — callers must treat that as "unknown category", never guess one.
+ * exact category label stored in gameKnowledge.js (e.g. "Mages").
  */
 function _resolveCategory(input) {
   if (!input) return null;
@@ -145,7 +147,7 @@ function classifyTalentEffectKey(key) {
   if (k.includes('hp')) return 'hp';
   if (k.includes('damage dealt')) {
     if (/^increased|^increase/.test(k)) return 'attackBuff';
-    if (/^decreased|^decrease/.test(k)) return 'enemyDamageDebuff'; // reduces the ATTACKER's damage, not the troop's own damage stat
+    if (/^decreased|^decrease/.test(k)) return 'enemyDamageDebuff'; // reduces the ATTACKER's damage
     return 'damageRelated';
   }
   if (k.includes('return damage')) return 'thorns';
@@ -155,17 +157,7 @@ function classifyTalentEffectKey(key) {
 }
 
 /**
- * Detects per-level growth spikes for a troop (shared by compareTroopLevels
- * and analyzeTroopProgression).
- *
- * Percent growth is naturally high in early levels (small base) and decays
- * as level rises — that decay is normal, not "unusual". So a step only
- * counts as a spike when growth ACCELERATES versus the immediately
- * preceding step (breaks the decay trend) by a meaningful margin: at least
- * 1.5x the previous step's % AND at least +15 percentage points higher.
- * This is relative to the troop's OWN trend, never a cross-troop or
- * "biggest number wins" comparison, and correctly isolates real tier-break
- * jumps (e.g. a troop's lvl8->9 stat jump) from ordinary early decay.
+ * Detects per-level growth spikes for a troop.
  */
 function _detectSpikes(troopName) {
   const troop = queryEngine.getTroop(troopName);
@@ -430,6 +422,41 @@ function analyzeTroopProgression(name) {
 }
 
 // ---------------------------------------------------------------
+// 3.5 ENTITY COMPARISON ENGINE (Fixes "X vs Y" queries)
+// ---------------------------------------------------------------
+
+function compareEntities(nameA, nameB) {
+  if (!queryEngine.findEntityByName) return { error: `queryEngine.findEntityByName is not available. Please ensure gameQueryEngine.js is updated.` };
+  
+const entityA = queryEngine.findEntityByName(nameA);
+  const entityB = queryEngine.findEntityByName(nameB);
+
+  if (!entityA) return { error: `Entity "${nameA}" not found in gameKnowledge.js database.` };
+  if (!entityB) return { error: `Entity "${nameB}" not found in gameKnowledge.js database.` };
+
+  return {
+    entityA: {
+      type: entityA.type,
+      name: entityA.data.name,
+      faction: entityA.data.faction || (entityA.data.categories ? entityA.data.categories.join(', ') : 'Unknown'),
+      rarity: entityA.data.rarity,
+      stats: entityA.type === 'hero' ? entityA.data.stats : { hp: entityA.data.levels.hp[0], damage: entityA.data.levels.damage[0], defense: entityA.data.levels.defense[0] },
+      talent: entityA.data.talent || null,
+      ability: entityA.data.ability || null
+    },
+    entityB: {
+      type: entityB.type,
+      name: entityB.data.name,
+      faction: entityB.data.faction || (entityB.data.categories ? entityB.data.categories.join(', ') : 'Unknown'),
+      rarity: entityB.data.rarity,
+      stats: entityB.type === 'hero' ? entityB.data.stats : { hp: entityB.data.levels.hp[0], damage: entityB.data.levels.damage[0], defense: entityB.data.levels.defense[0] },
+      talent: entityB.data.talent || null,
+      ability: entityB.data.ability || null
+    }
+  };
+}
+
+// ---------------------------------------------------------------
 // 4. HERO BUFF ANALYSIS
 // ---------------------------------------------------------------
 
@@ -478,7 +505,6 @@ function findBestHeroesForTroop(troopName, options = {}) {
     candidates: candidates.slice(0, limit)
   };
 }
-
 // ---------------------------------------------------------------
 // 5. ACTUAL HERO BUFF APPLICATION
 // ---------------------------------------------------------------
@@ -636,7 +662,6 @@ function analyzeTroopWithHeroes({ troopName, troopLevel, heroes = [], heroLevels
     recommendation
   };
 }
-
 // ---------------------------------------------------------------
 // 7. COLLECTION / POWER BONUS  (kept strictly separate from talent buffs)
 // ---------------------------------------------------------------
@@ -691,7 +716,7 @@ function answerStrategyQuery(query) {
   let type = null, params = {};
 
   if (query && typeof query === 'object' && query.type) {
-    // Preferred usage: structured input from the bot's intent layer — unambiguous, no regex guessing.
+    // Preferred usage: structured input from the bot's intent layer
     type = query.type;
     params = query.params || {};
   } else if (typeof query === 'string') {
@@ -712,6 +737,9 @@ function answerStrategyQuery(query) {
       type = 'simulateFlatBuff'; params = { troopName: m[1].trim(), level: parseInt(m[2], 10), buffPercent: parseInt(m[3], 10), statType: m[4].toLowerCase() };
     } else if ((m = qLower.match(/highest\s+damage\s+at\s+level\s*(\d+)/))) {
       type = 'highestDamageAtLevel'; params = { level: parseInt(m[1], 10) };
+    } else if ((m = q.match(/(.+?)\s+vs\s+(.+)/i))) {
+      // 🚀 NEW: Entity Comparison Matcher (e.g. "anavin vs trishtan")
+      type = 'compareEntities'; params = { nameA: m[1].trim(), nameB: m[2].trim() };
     } else {
       type = 'unrecognized';
     }
@@ -720,6 +748,23 @@ function answerStrategyQuery(query) {
   }
 
   switch (type) {
+    case 'compareEntities': {
+      const res = compareEntities(params.nameA, params.nameB);
+      if (res.error) {
+        return { queryType: 'compareEntities', data: null, calculations: null, candidates: [], ranking: [], recommendation: null, confidence: 'low', missingInformation: [res.error] };
+      }
+      return {
+        queryType: 'compareEntities',
+        data: res,
+        calculations: { methodology: 'Direct 1:1 entity extraction from gameKnowledge.js via gameQueryEngine.findEntityByName' },
+        candidates: [res.entityA.name, res.entityB.name],
+        ranking: [],
+        recommendation: `Comparing ${res.entityA.name} and ${res.entityB.name}.`,
+        confidence: 'high',
+        missingInformation: []
+      };
+    }
+
     case 'bestTank': {
       const level = params.level || 10;
       const candidates = _rankTankCandidates(level, params.limit || 5);
@@ -752,8 +797,7 @@ function answerStrategyQuery(query) {
         missingInformation: pool.length ? [] : [resolvedCategory ? `Category resolved to "${resolvedCategory}" but no troops matched.` : `"${params.category}" doesn't match any known troop category in gameKnowledge.js (known categories: ${KNOWN_TROOP_CATEGORIES.join(', ')}).`]
       };
     }
-
-    case 'upgradeWorthIt': {
+      case 'upgradeWorthIt': {
       const cmp = compareTroopLevels(params.troopName, params.levelLow, params.levelHigh);
       if (cmp.error) {
         return { queryType: 'upgradeWorthIt', data: null, calculations: null, candidates: [], ranking: [], recommendation: null, confidence: 'low', missingInformation: [cmp.error] };
@@ -835,8 +879,8 @@ function answerStrategyQuery(query) {
         queryType: 'unrecognized', data: null, calculations: null, candidates: [], ranking: [], recommendation: null, confidence: 'low',
         missingInformation: [
           `Could not match "${typeof query === 'string' ? query : JSON.stringify(query)}" to a supported query pattern.`,
-          'Supported patterns: best tank / best <category> troop [at level N] / "is X Lv.A worth upgrading from Lv.B" / which hero increases <category> hp|attack|defense / which hero is best for <troop> / how good is <troop> Lv.N with a N% hp|damage buff / what troop gives highest damage at level N.',
-          'For reliable routing (recommended for production use), pass a structured { type, params } object instead of a free-text string — see the file header comment for the type list.'
+          'Supported patterns: best tank / best <category> troop [at level N] / "is X Lv.A worth upgrading from Lv.B" / which hero increases <category> hp|attack|defense / which hero is best for <troop> / how good is <troop> Lv.N with a N% hp|damage buff / what troop gives highest damage at level N / X vs Y.',
+          'For reliable routing (recommended for production use), pass a structured { type, params } object instead of a free-text string.'
         ]
       };
   }
@@ -854,5 +898,6 @@ module.exports = {
   calculateHeroTalentEffect,
   analyzeTroopWithHeroes,
   calculateBattlePower,
-  answerStrategyQuery
+  answerStrategyQuery,
+  compareEntities
 };
