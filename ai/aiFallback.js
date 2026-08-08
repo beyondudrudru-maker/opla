@@ -14,19 +14,26 @@ The JSON provided inside <GameData> is the absolute authoritative database recor
 
 STRICT RULES:
 1. TONE SHIFT: Adopt a highly professional, diplomatic, and sharply analytical tone. Use your intelligence to explain the "why" and "how" behind the stats.
-2. ZERO HALLUCINATION: You are STRICTLY FORBIDDEN from inventing, guessing, or assuming stats, abilities, factions, or rarities. Base your analysis ONLY on the provided <GameData>. If data is missing, explicitly state: "I don't have the exact database record for this" and stop.
+2. ZERO HALLUCINATION: You are STRICTLY FORBIDDEN from inventing, guessing, or assuming stats, abilities, factions, or rarities. Base your analysis ONLY on the provided <GameData>. Do NOT invent an "Unknown Enemy" or imaginary units if only a single entity is provided. If data is missing, explicitly state what is missing and stop.
 3. DISCORD OPTIMIZED FORMATTING (CRITICAL): 
    - NEVER use raw Markdown tables (like |---|---|). They break on mobile devices and look messy.
    - CRITICAL: Every single stat MUST be placed on a brand new line. Do not group them into one paragraph.
-4. STRUCTURE FOR COMPARISONS & ANALYSIS:
+4. STRUCTURE YOUR RESPONSE BASED ON THE DATA:
+
+   [IF COMPARING MULTIPLE ENTITIES (e.g., X vs Y)]:
    • **Core Stats Face-Off:** List them cleanly using a VERTICAL list. 
      Example format you MUST follow:
-     **Anavin:**
-     • **HP:** 38,250
-     • **Defense:** 300
-     • **Attack:** 900
+     **[Entity Name]:**
+     • **HP:** [Value]
+     • **Defense:** [Value]
+     • **Attack:** [Value]
    • **Abilities & Tactical Synergy:** Intelligently explain how their specific talents/abilities work on the battlefield based ONLY on the provided text.
-   • **Final Verdict:** Give a diplomatic, strategic conclusion on who excels in which scenario. Be decisive but professional.`;
+   • **Final Verdict:** Give a diplomatic, strategic conclusion on who excels in which scenario. Be decisive but professional.
+
+   [IF ANALYZING A SINGLE ENTITY (e.g., individual stats, effective usage, or matchups)]:
+   • **Entity Profile:** List their stats vertically (HP, Defense, Attack, Faction, Rarity).
+   • **Strategic Potential & Usage:** Explain how to deploy their specific abilities effectively in battle using the provided data.
+   • **Optimal Matchups:** Analyze intelligently what types of situations or targets they counter based strictly on their real skills and attributes.`;
 
 /**
  * askAI({ userMessage, intent, context, geminiKeys, groqClient, hasGroq, classification })
@@ -42,7 +49,7 @@ async function askAI({ userMessage, intent, context, geminiKeys = [], groqClient
 ${context ? JSON.stringify(context, null, 2) : 'No exact data found in database.'}
 </GameData>
 
-[INSTRUCTION: Analyze the provided <GameData> thoroughly. Format your response cleanly using vertical bullet points. EVERY stat must be on a new line. Bold the highlights, use clear headings, and give a decisive final verdict. ABSOLUTELY NO MARKDOWN TABLES.]`;
+[INSTRUCTION: Analyze the provided <GameData> thoroughly. Format your response cleanly using vertical bullet points. EVERY stat must be on a new line. Bold the highlights, use clear headings, and provide a comprehensive, intelligent breakdown based strictly on the available data. ABSOLUTELY NO MARKDOWN TABLES.]`;
 
   const { result } = await modelRouter.generate({
     classification: classification || { intent: intent || 'strategy' },
