@@ -59,8 +59,15 @@ function route(text, recentContext = '') {
     return { resolved: true, embeds: [embed] };
   }
 
-  // 📝 3. FACT ENGINE (Single Card Generation)
-  if (intent === 'FACT' || intent === 'UNKNOWN') {
+  let prebuiltEmbeds = [];
+
+  // 📝 3. FACT & SINGLE ENTITY ENGINE (Smart Split for AI Context)
+  if (intent === 'FACT' || intent === 'UNKNOWN' || intent === 'QUESTION' || intent === 'STRATEGY' || intent === 'game-query') {
+    
+    // SMART LOGIC: Is it just a name? (e.g., "zaheer" or "show zaheer"). 
+    // If it is 2 words or less, we don't need AI explanation, just the card.
+    const isSimpleLookup = text.split(' ').length <= 2 && intent !== 'QUESTION';
+
     // Single Hero Lookup
     if ((entities.heroName || (entities.heroNames && entities.heroNames.length === 1)) && (!entities.troopName && (!entities.troopNames || entities.troopNames.length === 0))) {
         const heroQuery = entities.heroName || entities.heroNames[0];
@@ -81,7 +88,11 @@ function route(text, recentContext = '') {
             if (hero.talent) embed.addFields({ name: `🌟 Talent: ${hero.talent.name}`, value: hero.talent.description });
             if (hero.ability && hero.ability.description) embed.addFields({ name: `✨ Ability: ${hero.ability.name || 'Skill'}`, value: hero.ability.description });
             
-            return { resolved: true, embeds: [embed] }; // Single fact needs no AI, just the card
+            if (isSimpleLookup) {
+                return { resolved: true, embeds: [embed] }; // Stops here for simple lookups
+            } else {
+                prebuiltEmbeds.push(embed); // Keeps the card, but continues to AI for explanation!
+            }
         }
     }
 
@@ -112,14 +123,17 @@ function route(text, recentContext = '') {
               }
               embed.addFields({ name: `✨ Ability: ${ability.name}`, value: abText });
           }
-          return { resolved: true, embeds: [embed] }; // Single fact needs no AI, just the card
+          
+          if (isSimpleLookup) {
+              return { resolved: true, embeds: [embed] }; // Stops here for simple lookups
+          } else {
+              prebuiltEmbeds.push(embed); // Keeps the card, but continues to AI for explanation!
+          }
         }
     }
   }
 
   // ⚔️ 4. COMPARISON ENGINE (Dual Cards + AI Fallthrough)
-  let prebuiltEmbeds = [];
-  
   // Hero vs Hero
   if (entities.isComparison || intent === 'CALC' || (entities.heroNames && entities.heroNames.length >= 2)) {
     let nameA, nameB;
