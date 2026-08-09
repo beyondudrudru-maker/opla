@@ -1,9 +1,9 @@
 /**
  * behavior/behaviorEngine.js
- * 
+ *
  * PURPOSE: Dynamically computes response parameters (length, tone, emojis, mode)
  * based on user intent, emotional state, and relationship context.
- * 🚀 UPGRADE: Smarter intent handling, context-aware command execution, and zero code reduction.
+ * 🚀 UPGRADE: Smarter intent handling, context-aware command execution, and robust fallback handling.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -11,10 +11,10 @@ const { CREATOR_ID } = require('../persona/identityCore');
 
 const INFORMATIONAL_INTENTS = new Set([INTENTS.QUESTION, INTENTS.HEAVY_TASK, INTENTS.COMMAND]);
 
-// 🚀 GAME-SPECIFIC INTENTS (Expanded to catch fallback router queries)
+// Game-specific intents for specialized rule routing
 const GAME_INTENTS = new Set(['FACT', 'STRATEGY', 'CALC', 'GOLD', 'GEM', 'game-query', 'UNKNOWN']);
 
-// 🚀 CONFLICT PATTERN (To detect roasts, sassy commands, or targeted insults)
+// Conflict pattern to detect roasts, sassy commands, or targeted insults
 const CONFLICT_PATTERN = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser|pagal|roast)\b/i;
 
 function decideLength(intent, userMessageLength) {
@@ -37,8 +37,8 @@ function decideEmojiBudget(emotionalState, isCreatorPath, isInformational, isGam
 
 function decideMode(intent, isModeration, isConflict) {
   if (isModeration) return 'moderation';
-  if (isConflict) return 'combat_execution'; // 🚀 Switches off romance, turns on sass/execution
-  if (GAME_INTENTS.has(intent)) return 'strategic_expert'; // 🚀 Triggers diplomatic analysis mode
+  if (isConflict) return 'combat_execution'; // Switches off romance, turns on sass/execution
+  if (GAME_INTENTS.has(intent)) return 'strategic_expert'; // Triggers diplomatic analysis mode
   if (INFORMATIONAL_INTENTS.has(intent)) return 'professional';
   return 'conversational';
 }
@@ -46,14 +46,14 @@ function decideMode(intent, isModeration, isConflict) {
 function decideTone(intent, isModeration, isCreatorPath, isConflict) {
   if (isModeration) return ['Calm', 'Firm', 'Protective'];
 
-  // 🚀 COMMAND/CONFLICT OVERRIDE: Drop romance, execute roast
+  // Command/Conflict override: drop romance, execute roast
   if (isConflict) {
     return isCreatorPath 
       ? ['Fierce', 'Merciless', 'Loyal', 'Sassy'] 
       : ['Fierce', 'Sassy', 'Defensive'];
   }
 
-  // 🚀 STRICT GAME TONE OVERRIDES
+  // Strict game tone overrides
   if (GAME_INTENTS.has(intent)) {
     return ['Professional', 'Diplomatic', 'Strategic', 'Decisive'];
   }
@@ -65,51 +65,64 @@ function decideTone(intent, isModeration, isCreatorPath, isConflict) {
   }
 
   return isCreatorPath
-    ? ['Loving', 'Devoted', 'Sweet'] // 🚀 Deep boyfriend/girlfriend romance logic maps here for casual chat
+    ? ['Loving', 'Devoted', 'Sweet'] // Deep boyfriend/girlfriend romance logic maps here for casual chat
     : ['Kind', 'Warm', 'Pro'];
 }
 
-function decide({ userId, emotionalState = {}, intent, relationship, userMessageLength = 50, isModeration = false, content = '' }) {
-  const isCreatorPath = userId === CREATOR_ID;
-  const isInformational = INFORMATIONAL_INTENTS.has(intent);
-  const isGameQuery = GAME_INTENTS.has(intent);
-  
-  // Dynamically flag conflicts or explicit commands to prevent accidental romantic loops
-  const isConflict = CONFLICT_PATTERN.test(content) || intent === INTENTS.COMMAND;
+function decide({ userId, emotionalState = {}, intent, relationship, userMessageLength = 50, isModeration = false, content = '' } = {}) {
+  try {
+    const isCreatorPath = userId === CREATOR_ID;
+    const isInformational = INFORMATIONAL_INTENTS.has(intent);
+    const isGameQuery = GAME_INTENTS.has(intent);
+    
+    // Dynamically flag conflicts or explicit commands to prevent accidental romantic loops
+    const isConflict = CONFLICT_PATTERN.test(content) || intent === INTENTS.COMMAND;
 
-  let forbidTraits = ['Ego', 'Robotic', 'MetaLogic'];
-  
-  if (isModeration) {
-      forbidTraits.push('Sass');
-  }
-  
-  if (isInformational) {
-      forbidTraits.push('Hallucination', 'GuessingLyrics', 'FusingWorks');
-  }
+    let forbidTraits = ['Ego', 'Robotic', 'MetaLogic'];
+    
+    if (isModeration) {
+        forbidTraits.push('Sass');
+    }
+    
+    if (isInformational) {
+        forbidTraits.push('Hallucination', 'GuessingLyrics', 'FusingWorks');
+    }
 
-  // 🚀 BLOCK FAKE STATS AND MESSY FORMATTING IN GAME MODE
-  if (isGameQuery) {
-      forbidTraits.push('MarkdownTables', 'StatHallucination', 'AssumingData', 'Fluff');
-  }
+    // Block fake stats and messy formatting in game mode
+    if (isGameQuery) {
+        forbidTraits.push('MarkdownTables', 'StatHallucination', 'AssumingData', 'Fluff');
+    }
 
-  // 🚀 BLOCK ROMANCE DURING ROASTS/COMMANDS
-  if (isConflict && isCreatorPath) {
-      forbidTraits.push('Romance', 'Flirting', 'Softness');
-  }
+    // Block romance during roasts/commands
+    if (isConflict && isCreatorPath) {
+        forbidTraits.push('Romance', 'Flirting', 'Softness');
+    }
 
-  return {
-    targetLength: decideLength(intent, userMessageLength),
-    tone: decideTone(intent, isModeration, isCreatorPath, isConflict),
-    emojiBudget: decideEmojiBudget(emotionalState, isCreatorPath && !isModeration, isInformational, isGameQuery, isConflict),
-    mode: decideMode(intent, isModeration, isConflict),
-    // Disable random reactions and follow-up questions when doing analytical game reporting or roasting
-    preferReact: !isCreatorPath && (intent === INTENTS.BANTER || intent === INTENTS.SOCIAL) && !isGameQuery && !isConflict,
-    askFollowUp: !isGameQuery && !isConflict && (intent === INTENTS.EMOTIONAL_DISCLOSURE || (emotionalState.curiosity && emotionalState.curiosity > 55)),
-    forbidTraits: forbidTraits,
-  };
+    return {
+      targetLength: decideLength(intent, userMessageLength),
+      tone: decideTone(intent, isModeration, isCreatorPath, isConflict),
+      emojiBudget: decideEmojiBudget(emotionalState, isCreatorPath && !isModeration, isInformational, isGameQuery, isConflict),
+      mode: decideMode(intent, isModeration, isConflict),
+      // Disable random reactions and follow-up questions when doing analytical game reporting or roasting
+      preferReact: !isCreatorPath && (intent === INTENTS.BANTER || intent === INTENTS.SOCIAL) && !isGameQuery && !isConflict,
+      askFollowUp: !isGameQuery && !isConflict && (intent === INTENTS.EMOTIONAL_DISCLOSURE || (emotionalState.curiosity && emotionalState.curiosity > 55)),
+      forbidTraits: forbidTraits,
+    };
+  } catch (error) {
+    console.error('⚠️ [BEHAVIOR ENGINE ERROR] Fallback decision applied:', error.message);
+    return {
+      targetLength: 'medium',
+      tone: ['Kind', 'Warm'],
+      emojiBudget: 1,
+      mode: 'conversational',
+      preferReact: false,
+      askFollowUp: false,
+      forbidTraits: ['Ego', 'Robotic'],
+    };
+  }
 }
 
-// ⚡ TOKEN-COMPRESSED OUTPUT
+// Token-compressed output
 function toBrief(decision) {
   if (!decision) return '[BEHAVIOR|UNKNOWN]';
   return `[BEHAVIOR|LEN:${decision.targetLength}|MODE:${decision.mode}|TONE:${decision.tone.join(',')}|EMOJI:${decision.emojiBudget}|REACT:${decision.preferReact ? 'Y':'N'}|ASK:${decision.askFollowUp ? 'Y':'N'}|NO:${decision.forbidTraits.join(',')}]`;
