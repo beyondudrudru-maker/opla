@@ -70,11 +70,12 @@ function route(text, recentContext = '') {
 
   let prebuiltEmbeds = [];
 
-  // 📝 3. FACT & SINGLE ENTITY ENGINE (Smart Split for AI Context)
+  // 📝 3. FACT & SINGLE ENTITY ENGINE
+  // 🚀 FIX: Removed the isSimpleLookup word-count gate. Any time exactly one hero or
+  // troop is identified (and the other type is absent), we resolve immediately with
+  // the stat embed — regardless of sentence length or phrasing. A resolved entity
+  // lookup should never be deferred to the AI pipeline.
   if (intent === 'FACT' || intent === 'UNKNOWN' || intent === 'QUESTION' || intent === 'STRATEGY' || intent === 'game-query') {
-    
-    // SMART LOGIC: Is it just a name? (e.g., "zaheer" or "show zaheer"). 
-    const isSimpleLookup = text.split(' ').length <= 2 && intent !== 'QUESTION';
 
     // Single Hero Lookup
     if ((entities.heroName || (entities.heroNames && entities.heroNames.length === 1)) && (!entities.troopName && (!entities.troopNames || entities.troopNames.length === 0))) {
@@ -95,12 +96,8 @@ function route(text, recentContext = '') {
                 );
             if (hero.talent) embed.addFields({ name: `🌟 Talent: ${hero.talent.name}`, value: hero.talent.description });
             if (hero.ability && hero.ability.description) embed.addFields({ name: `✨ Ability: ${hero.ability.name || 'Skill'}`, value: hero.ability.description });
-            
-            if (isSimpleLookup) {
-                return { resolved: true, embeds: [embed] };
-            } else {
-                prebuiltEmbeds.push(embed);
-            }
+
+            return { resolved: true, embeds: [embed] };
         }
     }
 
@@ -131,12 +128,8 @@ function route(text, recentContext = '') {
               }
               embed.addFields({ name: `✨ Ability: ${ability.name}`, value: abText });
           }
-          
-          if (isSimpleLookup) {
-              return { resolved: true, embeds: [embed] };
-          } else {
-              prebuiltEmbeds.push(embed);
-          }
+
+          return { resolved: true, embeds: [embed] };
         }
     }
   }
