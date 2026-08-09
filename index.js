@@ -1,4 +1,4 @@
-require('dotenv').config();
+Require('dotenv').config();
 const { 
     Client, 
     GatewayIntentBits, 
@@ -380,31 +380,28 @@ client.on(Events.MessageCreate, async (message) => {
             };
 
             // 🚀 HYBRID OUTPUT: Attach Prebuilt Embeds (if any from router) to the AI response
-    // 🚀 HYBRID OUTPUT: Attach Prebuilt Embeds (if any from router) to the AI response
-    const replyPayload = { 
-        content: finalReply, 
-        allowedMentions: mentionOptions 
-    };
-    
-    if (gameResult.embeds && gameResult.embeds.length > 0) {
-        replyPayload.embeds = gameResult.embeds;
-    }
+            const replyPayload = { 
+                content: finalReply, 
+                allowedMentions: mentionOptions 
+            };
             
-
-if (finalReply.length > 1950) {
-    const chunks = finalReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
-    for (let i = 0; i < chunks.length; i++) {
-        if (i === 0) {
-            await message.reply({ ...replyPayload, content: chunks[i] });
-        } else {
-            await new Promise(resolve => setTimeout(resolve, 600)); 
-            await message.channel.send({ content: chunks[i], allowedMentions: { parse: mentionOptions.parse } });
-        }
-    }
-} else {
-    await message.reply(replyPayload);
-}
-            
+            if (gameResult.embeds && gameResult.embeds.length > 0) {
+                replyPayload.embeds = gameResult.embeds;
+            }
+                    
+            if (finalReply.length > 1950) {
+                const chunks = finalReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
+                for (let i = 0; i < chunks.length; i++) {
+                    if (i === 0) {
+                        await message.reply({ ...replyPayload, content: chunks[i] });
+                    } else {
+                        await new Promise(resolve => setTimeout(resolve, 600)); 
+                        await message.channel.send({ content: chunks[i], allowedMentions: { parse: mentionOptions.parse } });
+                    }
+                }
+            } else {
+                await message.reply(replyPayload);
+            }
 
             // Log AI reply to RAM safely
             try {
@@ -594,9 +591,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 });
 
-
-
-
 // ==========================================
 // 8. HALL OF FAME LISTENER (Starboard)
 // ==========================================
@@ -661,5 +655,19 @@ process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception thrown:', err);
 });
 
-// 9. LOGIN
-client.login(process.env.DISCORD_TOKEN);
+// ==========================================
+// 9. DISCORD WEBSOCKET ERROR HANDLERS
+// ==========================================
+client.on('error', (error) => {
+    console.error('⚠️ [DISCORD CLIENT ERROR]:', error);
+});
+
+client.on('disconnect', () => {
+    console.warn('⚠️ [DISCORD DISCONNECTED]: The WebSocket disconnected.');
+});
+
+// LOGIN WITH DIAGNOSTICS
+client.login(process.env.DISCORD_TOKEN).catch(error => {
+    console.error('❌ [CRITICAL] Failed to log into Discord. Please check your DISCORD_TOKEN in Render Environment Variables!');
+    console.error('❌ [DETAILS]:', error);
+});
