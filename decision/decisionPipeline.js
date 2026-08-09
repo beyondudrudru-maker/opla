@@ -6,8 +6,8 @@
  *   between engines to build the prompt, while ensuring maximum CPU
  *   efficiency, parallel database operations, and crash resistance.
  *   🚀 UPGRADE: Integrated Game Data passing, Database Timeout protections,
- *   Memory Isolation, and a Game Fast-Lane that skips memory/emotion/behavior
- *   machinery entirely for game turns (not just banter/social).
+ *   Memory Isolation, and a Smart Game Fast-Lane that filters out casual 
+ *   regional greetings to prevent false triggers from stale memory.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -23,14 +23,22 @@ const BOT_USER_ID = process.env.BOT_USER_ID;
 const DB_TIMEOUT_MS = 2500; // 🛡️ Max time to wait for memory fetches before moving on
 
 // ============================================================
-// 🚀 EMBEDDED GAME TURN DETECTOR (Self-Contained Single Source of Truth)
+// 🚀 SMART EMBEDDED GAME TURN DETECTOR (With Casual Exclusions)
 // ============================================================
 const GAME_KEYWORD_FALLBACK = /\b(stats|hp|damage|hero|troop|game|clash|synergy|best with|use with)\b/i;
+const CASUAL_GREETINGS_REGEX = /\b(khabar|khana|kha liya|kya haal|hello|hi|hey|sup|wassup|gm|gn|kaise ho|batao)\b/i;
 
 function isGameTurn({ content = '', gameData = null, intent = null } = {}) {
-  if (gameData) return true;
+  // 🧠 High-IQ Check: If the message is a casual greeting/talk and lacks explicit game keywords, 
+  // reject fast-lane entry so stale memory or background data doesn't corrupt social chats.
+  const hasGameKeywords = GAME_KEYWORD_FALLBACK.test(content);
+  if (CASUAL_GREETINGS_REGEX.test(content) && !hasGameKeywords) {
+    return false;
+  }
+
+  if (gameData && hasGameKeywords) return true;
   if (intent === intentClassifier.INTENTS.GAME) return true;
-  return GAME_KEYWORD_FALLBACK.test(content);
+  return hasGameKeywords;
 }
 
 // 🛡️ Helper function to prevent database hangs from freezing the bot
@@ -147,4 +155,4 @@ async function finalizeTurn({ channelId, userId, content, responseText }) {
   }
 }
 
-module.exports = { planTurn, finalizeTurn, isGameTurn };
+module.exports = { planTrust: planTurn, planTurn, finalizeTurn, isGameTurn };
