@@ -1,3 +1,4 @@
+// api/gemini.js
 require('dotenv').config();
 const { OpenAI } = require('openai');
 
@@ -202,7 +203,7 @@ Playfully laugh off AI questions as a 20yo human girl. Warmly change the subject
     let rawText = result || '';
 
     // 🛡️ THE FIX: Strip out <think> blocks completely so Reasoning Models don't leak their internal logic!
-    rawText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    rawText = rawText.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
 
     // Clean up internal state tags
     rawText = rawText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
