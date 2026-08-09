@@ -4,7 +4,10 @@
  * PURPOSE
  *   Final lightweight prompt composer.
  *   Acts purely as a "dumb" assembler snapping pre-rendered blocks together.
- *   🚀 UPGRADE: Advanced XML escaping, Game Data injection, and stricter behavioral mapping.
+ *   🚀 UPGRADE: Advanced XML escaping, Game Data injection, stricter behavioral
+ *   mapping, and a `leanMode` path for the Game Fast-Lane (drops memory/history/
+ *   emotional/target blocks entirely so game queries get a minimal, high-signal
+ *   prompt with zero persona bleed).
  */
 
 // 🛡️ SECURITY & STABILITY: Escapes XML tags while preserving newlines and spacing.
@@ -82,7 +85,7 @@ function renderTargetBlock(targetInfo) {
 
 function renderTaskDirective(behavior = {}) {
   const directives = [];
-  
+
   if (behavior.targetLength) directives.push(`Target Length: ${behavior.targetLength}`);
   if (behavior.mode) directives.push(`Operational Mode: ${behavior.mode}`);
   if (Array.isArray(behavior.tone) && behavior.tone.length) directives.push(`Required Tone: ${behavior.tone.join(', ')}`);
@@ -100,7 +103,25 @@ function renderGameContext(gameData) {
   return `<GameData>\n${content}\n</GameData>`;
 }
 
+/**
+ * 🚀 GAME FAST-LANE: minimal assembly path.
+ * Only relationship framing (cheap, no memory lookups) + the deterministic
+ * game data + the current message. No LongTermMemory, no ChatHistory, no
+ * EmotionalState, no AudienceTarget, no BehaviorDirectives — those are the
+ * blocks that dilute model attention and cause troop/hero name mixups.
+ */
+function assembleLean({ relationship, gameData, userMessage, speakerName }) {
+  const blocks = [
+    renderRelationshipFraming(relationship || {}),
+    renderGameContext(gameData),
+    `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`,
+  ];
+
+  return blocks.filter(Boolean).join('\n');
+}
+
 function assemble({
+  leanMode,
   emotionalBrief,
   relationship,
   behaviorDirective,
@@ -111,6 +132,10 @@ function assemble({
   targetInfo,
   speakerName
 }) {
+  if (leanMode) {
+    return assembleLean({ relationship, gameData, userMessage, speakerName });
+  }
+
   // Assemble the blocks using clean XML structures that modern LLMs parse perfectly
   const promptBlocks = [
     emotionalBrief ? `<EmotionalState>${sanitize(emotionalBrief)}</EmotionalState>` : '',
