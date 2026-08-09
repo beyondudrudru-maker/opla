@@ -7,11 +7,14 @@
  *   🚀 UPGRADE: Advanced XML escaping, Game Data injection, and stricter behavioral mapping.
  */
 
-// 🛡️ SECURITY & STABILITY: Escapes XML tags instead of stripping them.
-// This prevents prompt injection while ensuring code snippets (like HTML or < brackets) aren't destroyed!
+// 🛡️ SECURITY & STABILITY: Escapes XML tags while preserving newlines and spacing.
+// This prevents prompt injection while ensuring code snippets or text formatting aren't destroyed!
 function sanitize(text) {
   if (typeof text !== 'string') return '';
-  return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function renderRelationshipFraming(relationship = {}) {
