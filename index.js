@@ -1,4 +1,4 @@
-Require('dotenv').config();
+require('dotenv').config(); // 👈 Fixed the lowercase 'r' here!
 const { 
     Client, 
     GatewayIntentBits, 
@@ -438,7 +438,7 @@ client.on(Events.MessageCreate, async (message) => {
                 .select('message_content')
                 .eq('channel_id', message.channel.id)
                 .order('created_at', { ascending: false })
-                .limit(2);
+          .limit(2);
 
             const triggers = ['boss', 'tough', 'hard', 'score', 'stuck', 'impossible'];
             const isDifficultyConvo = history && history.length >= 2 &&
