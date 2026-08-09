@@ -52,15 +52,30 @@ const goldCooldown = new Set();
 const gemCooldown = new Set();
 const adminCooldown = new Set();
 
-client.once(Events.ClientReady, (readyClient) => {
+// ==========================================
+// 4. CLIENT READY & STARTUP MESSAGE
+// ==========================================
+client.once(Events.ClientReady, async (readyClient) => {
     console.log('----------------------------------------');
     console.log(`🌸 System Online: ${readyClient.user.tag} is awake.`);
     console.log(`👁️  Engines Active: Contextual Support, AI, Banter, Smart Data & Hall of Fame.`);
     console.log('----------------------------------------');
     client.user.setActivity('over the !NF!N!TY family 💅', { type: 3 });
+
+    // 🚀 Send "I am alive" message to the specific channel
+    try {
+        const startupChannelId = '1524748262765101176';
+        const channel = await client.channels.fetch(startupChannelId);
+        if (channel) {
+            await channel.send('✨ I am alive and back online! 🌸');
+            console.log(`✅ Startup message sent to channel ${startupChannelId}`);
+        }
+    } catch (err) {
+        console.error('⚠️ Could not send startup message (Check channel ID or permissions):', err.message);
+    }
 });
 
-// 4. MEMORY CLEANUP (Runs every hour)
+// 5. MEMORY CLEANUP (Runs every hour)
 setInterval(async () => {
     const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
     try {
@@ -421,6 +436,15 @@ client.on(Events.MessageCreate, async (message) => {
             try { 
                 await message.reply('My cognitive processors are cooling down, I am very busy right now! 🌸'); 
             } catch (e) {
+                console.warn('⚠️ Failed to log AI reply to Supabase:', dbErr.message);
+            }
+
+        } catch (error) {
+            console.error('❌ AI Error:', error.message);
+            // 🛡️ LAYER 1 FORTIFIED: Safe error fallback that will not crash if permissions are missing
+            try { 
+                await message.reply('My cognitive processors are cooling down, I am very busy right now! 🌸'); 
+            } catch (e) {
                 console.warn('⚠️ Could not send error fallback message (likely missing permissions).');
             }
         }
@@ -666,6 +690,11 @@ client.on('disconnect', () => {
     console.warn('⚠️ [DISCORD DISCONNECTED]: The WebSocket disconnected.');
 });
 
+// 🚀 ADDED DEBUG LOGGING TO SEE EXACTLY WHERE THE BOT IS STUCK
+client.on('debug', (info) => {
+    console.log('[DISCORD DEBUG]', info);
+});
+
 // ==========================================
 // 10. BULLETPROOF LOGIN DIAGNOSTICS
 // ==========================================
@@ -691,4 +720,4 @@ try {
 
 } catch (syncError) {
     console.error('❌ [CRITICAL ERROR] A synchronous crash occurred during login:', syncError);
-                }
+                    }
