@@ -1,4 +1,4 @@
-require('dotenv').config(); // 👈 Fixed the lowercase 'r' here!
+require('dotenv').config();
 const { 
     Client, 
     GatewayIntentBits, 
@@ -438,7 +438,7 @@ client.on(Events.MessageCreate, async (message) => {
                 .select('message_content')
                 .eq('channel_id', message.channel.id)
                 .order('created_at', { ascending: false })
-          .limit(2);
+                .limit(2);
 
             const triggers = ['boss', 'tough', 'hard', 'score', 'stuck', 'impossible'];
             const isDifficultyConvo = history && history.length >= 2 &&
@@ -666,8 +666,29 @@ client.on('disconnect', () => {
     console.warn('⚠️ [DISCORD DISCONNECTED]: The WebSocket disconnected.');
 });
 
-// LOGIN WITH DIAGNOSTICS
-client.login(process.env.DISCORD_TOKEN).catch(error => {
-    console.error('❌ [CRITICAL] Failed to log into Discord. Please check your DISCORD_TOKEN in Render Environment Variables!');
-    console.error('❌ [DETAILS]:', error);
-});
+// ==========================================
+// 10. BULLETPROOF LOGIN DIAGNOSTICS
+// ==========================================
+try {
+    console.log("🛠️ [DIAGNOSTICS] Checking Environment Variables...");
+    
+    if (!process.env.DISCORD_TOKEN || process.env.DISCORD_TOKEN.trim() === '') {
+        console.error("❌ [CRITICAL ERROR] The DISCORD_TOKEN is missing or completely empty in Render!");
+    } else {
+        console.log(`✅ [DIAGNOSTICS] Token found! Length: ${process.env.DISCORD_TOKEN.length} characters.`);
+    }
+
+    console.log("🛠️ [DIAGNOSTICS] Attempting to connect to Discord WebSocket...");
+    
+    client.login(process.env.DISCORD_TOKEN)
+        .then(() => {
+            console.log("✅ [DIAGNOSTICS] Login Promise resolved successfully! Waiting for ready event...");
+        })
+        .catch(error => {
+            console.error('❌ [CRITICAL ERROR] Discord rejected the login request!');
+            console.error('❌ [DETAILS]:', error);
+        });
+
+} catch (syncError) {
+    console.error('❌ [CRITICAL ERROR] A synchronous crash occurred during login:', syncError);
+                }
