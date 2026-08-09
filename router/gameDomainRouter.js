@@ -18,7 +18,15 @@ function route(text, recentContext = '') {
   entities.rawText = text; // Ensure raw text is available for fallback matchers
 
   // 🧠 1. STRICT PRONOUN & FOLLOW-UP RESOLUTION
-  // Only check past context if the user explicitly uses follow-up pronouns or asks about stats/abilities
+  // Only pull entities from recentContext when the user explicitly uses a follow-up
+  // pronoun/trigger word AND the current message itself named no entity.
+  // NOTE: `entities` here comes straight from classify(text) on THIS message — it is
+  // never stale, since resolveEntities() builds a fresh object every call. There is no
+  // cross-turn carryover to guard against outside this branch, so no else-clause is
+  // needed. (A previous "clear entities when no follow-up trigger" else-branch was
+  // wiping out correctly-resolved entities on every plain single-word/short lookup —
+  // e.g. "tristan" or "anavin" alone — because those messages contain no pronoun.
+  // That block has been removed.)
   const hasFollowUpTrigger = /\b(uska|iske|woh|he|she|it|they|him|her|this|that|its|stats|ability|skill)\b/i.test(text);
 
   if (hasFollowUpTrigger && !entities.troopName && !entities.heroName && (!entities.heroNames || entities.heroNames.length === 0)) {
@@ -34,12 +42,6 @@ function route(text, recentContext = '') {
       } else if (intent === 'UNKNOWN') {
           intent = 'STRATEGY';
       }
-  } else if (!hasFollowUpTrigger) {
-      // 🚀 FIX: If it's a completely new sentence without follow-up words, clear out old entities entirely!
-      entities.troopName = null;
-      entities.heroName = null;
-      entities.troopNames = [];
-      entities.heroNames = [];
   }
 
   // 💰 2. GOLD / GEM ENGINE
