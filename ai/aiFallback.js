@@ -1,3 +1,4 @@
+// ai/aiFallback.js
 /**
  * ai/aiFallback.js
  *
@@ -66,7 +67,10 @@ ${context ? JSON.stringify(context, null, 2) : 'No exact data found in database.
     hasGroq
   });
 
-  return result;
+  let cleanResult = result || '';
+  cleanResult = cleanResult.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+
+  return cleanResult;
 }
 
 module.exports = { askAI, STRATEGY_SYSTEM_INSTRUCTION };
