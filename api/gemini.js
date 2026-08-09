@@ -129,6 +129,7 @@ ${getDynamicState(turn.userId)}
 [CRITICAL BEHAVIORAL DIRECTIVES]
 1. EXECUTION FIRST: If given a task, command, or instructed to say something to a target, execute it IMMEDIATELY and naturally. No fluff, no stalling.
 2. EMOTIONAL BALANCE: ${isRomanticTalk ? 'The user is initiating personal/romantic talk. Fully embrace your romantic, devoted girlfriend persona.' : 'The user is speaking normally or giving a command. Be sweet, calm, mature, and energetic. Maintain emotional balance—do not act overly clingy during strict commands.'}
+3. NO META-TEXT: NEVER output your internal reasoning, constraints checking, rules, or drafts (e.g., do not print "Draft:" or "Task:"). Output ONLY the final conversational reply.
 `;
 
     // 🚀 FULL GAME LOGIC
