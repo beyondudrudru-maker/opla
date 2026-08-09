@@ -18,10 +18,20 @@ const contextRanker = require('../contextRanker/contextRanker');
 const behaviorEngine = require('../behavior/behaviorEngine');
 const promptAssembler = require('../promptBuilder/promptAssembler');
 const targetResolver = require('./targetResolver');
-const { isGameTurn } = require('../shared/isGameTurn');
 
 const BOT_USER_ID = process.env.BOT_USER_ID;
 const DB_TIMEOUT_MS = 2500; // 🛡️ Max time to wait for memory fetches before moving on
+
+// ============================================================
+// 🚀 EMBEDDED GAME TURN DETECTOR (Self-Contained Single Source of Truth)
+// ============================================================
+const GAME_KEYWORD_FALLBACK = /\b(stats|hp|damage|hero|troop|game|clash|synergy|best with|use with)\b/i;
+
+function isGameTurn({ content = '', gameData = null, intent = null } = {}) {
+  if (gameData) return true;
+  if (intent === intentClassifier.INTENTS.GAME) return true;
+  return GAME_KEYWORD_FALLBACK.test(content);
+}
 
 // 🛡️ Helper function to prevent database hangs from freezing the bot
 function withTimeout(promise, ms, fallbackValue) {
@@ -35,7 +45,7 @@ function withTimeout(promise, ms, fallbackValue) {
 async function planTurn({
   userId, displayName, roles = [], channelId, content,
   isGroupContext = false, mentions = { everyone: false, users: [] },
-  gameData = null // 🚀 Accepts game data context from the router (see shared/isGameTurn.js)
+  gameData = null // 🚀 Accepts game data context from the router
 }) {
   try {
       // 1. Execute fast, synchronous local tasks first
@@ -43,9 +53,6 @@ async function planTurn({
       const targetInfo = targetResolver.resolve({ mentions, botUserId: BOT_USER_ID });
 
       // 🚀 GAME FAST-LANE: relationship framing is still cheap/useful for tone
-      // (e.g. Admin tier), so it's kept for both paths — same as before. Everything
-      // downstream of it (memory fetches, emotion tracking, behavior directives,
-      // and full prompt assembly) is skipped for game turns.
       const relationship = await relationshipEngine.resolve({ userId, displayName, roles }).catch(() => ({}));
 
       const gameTurn = isGameTurn({ content, gameData, intent: classification.intent });
@@ -70,18 +77,15 @@ async function planTurn({
         };
       }
 
-      // --- FULL PATH (unchanged from before, minus the isCasualChat check below,
-      // which now only needs to handle the non-game banter/social case) ---
+      // --- FULL PATH (Social / Banter / General Tasks) ---
 
       const emotionalState = await emotionEngine.updateState({
         userId,
         intent: classification.intent,
         relationship,
         isModeration: classification.isModeration,
-      }).catch(() => ({ current: 'neutral' })); // Default to neutral if engine fails
+      }).catch(() => ({ current: 'neutral' }));
 
-      // If the user is just bantering or talking normally, don't pull heavy
-      // working memory or old history into the context.
       const isCasualChat = classification.intent === 'banter' || classification.intent === 'social';
 
       let workingMemory = [];
@@ -95,8 +99,6 @@ async function planTurn({
           ]);
 
           workingMemory = contextRanker.filterWorkingMemory({ turns: workingMemoryRaw, currentUserId: userId, isGroupContext });
-
-          // Strictly limit to top 6 ranked memories so the prompt never bloats
           rankedMemories = contextRanker.rankMemories({ currentMessage: content, candidates: longTermCandidates }).slice(0, 6);
       }
 
@@ -109,7 +111,6 @@ async function planTurn({
         isModeration: classification.isModeration,
       });
 
-      // Pre-render the emotion brief so the assembler stays "dumb"
       const emotionalBrief = (typeof emotionEngine.toBrief === 'function')
         ? emotionEngine.toBrief(emotionalState, relationship)
         : '';
@@ -121,7 +122,7 @@ async function planTurn({
         behaviorDirective,
         rankedMemories,
         workingMemory,
-        gameData, // still passed through for non-game turns that happen to carry it
+        gameData,
         userMessage: content,
         targetInfo,
         speakerName: displayName,
@@ -131,13 +132,12 @@ async function planTurn({
 
   } catch (error) {
       console.error('❌ [PIPELINE ERROR] Critical failure in planTurn:', error);
-      throw error; // Bubble up to main event file so it can send a graceful error message to Discord
+      throw error;
   }
 }
 
 async function finalizeTurn({ channelId, userId, content, responseText }) {
   try {
-      // Wrapped in try/catch to ensure saving chat doesn't crash the bot
       await Promise.all([
         memoryEngine.recordTurn({ channelId, userId, role: 'user', content }),
         memoryEngine.recordTurn({ channelId, userId, role: 'melody', content: responseText })
@@ -147,4 +147,4 @@ async function finalizeTurn({ channelId, userId, content, responseText }) {
   }
 }
 
-module.exports = { planTurn, finalizeTurn };
+module.exports = { planTurn, finalizeTurn, isGameTurn };
