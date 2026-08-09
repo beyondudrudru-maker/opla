@@ -8,8 +8,11 @@ const queryEngine = require('../engine/gameQueryEngine.js');
 function build(intent, entities) {
   const { troopName, troopNames, heroNames, levels, heroName, category, isComparison, rawText } = entities;
 
-  // 🚀 1. Hero Comparison (2 Heroes)
-  if (heroNames && heroNames.length >= 2) {
+  // 🚀 0. SAFETY GUARD: Check if comparison is a false positive (e.g., single entity mentioned with descriptive text)
+  const isActuallyComparing = isComparison || (rawText && /\b(vs|versus|compared to|better than)\b/i.test(rawText));
+
+  // 🚀 1. Hero Comparison (2 Heroes strictly when explicitly comparing)
+  if (isActuallyComparing && heroNames && heroNames.length >= 2) {
     const cmp = strategyEngine.compareEntities(heroNames[0], heroNames[1]);
     if (cmp.error) return { context: null, sufficient: false, error: cmp.error };
     
@@ -23,8 +26,8 @@ function build(intent, entities) {
     };
   }
 
-  // 🚀 2. Single Hero Lookup
-  if ((isComparison && heroNames && heroNames.length === 1) || (heroNames && heroNames.length === 1 && !troopName && (!troopNames || troopNames.length === 0))) {
+  // 🚀 2. Single Hero Lookup (Ensures single entity focus even if list has 1 item)
+  if (heroNames && heroNames.length === 1 && !troopName && (!troopNames || troopNames.length === 0)) {
     const h1 = queryEngine.findEntityByName(heroNames[0]);
     if (!h1 || h1.type !== 'hero') return { context: null, sufficient: false, error: `Hero ${heroNames[0]} not found in database.` };
     
@@ -38,8 +41,8 @@ function build(intent, entities) {
     };
   }
 
-  // 🚀 3. Troop Comparison (2 Troops with Level Scaling)
-  if (troopNames && troopNames.length >= 2) {
+  // 🚀 3. Troop Comparison (2 Troops with Level Scaling strictly when comparing)
+  if (isActuallyComparing && troopNames && troopNames.length >= 2) {
     const lvl1 = (levels && levels[0]) ? levels[0] : 10;
     const lvl2 = (levels && levels[1]) ? levels[1] : lvl1;
     
@@ -58,9 +61,9 @@ function build(intent, entities) {
     };
   }
 
-  // 🚀 4. Mixed Comparison Fallback (Hero vs Troop or generic vs)
-  if (isComparison && rawText) {
-      const match = rawText.match(/(.+?)\s+vs\s+(.+)/i);
+  // 🚀 4. Mixed Comparison Fallback (Explicit vs keyword check)
+  if (isActuallyComparing && rawText) {
+      const match = rawText.match(/(.+?)\s+(?:vs|versus)\s+(.+)/i);
       if (match) {
           const cmp = strategyEngine.compareEntities(match[1].trim(), match[2].trim());
           if (!cmp.error) {
