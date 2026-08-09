@@ -4,7 +4,7 @@
  * PURPOSE
  *   Cleans and formats the raw AI text before it is sent to Discord.
  *   Enforces emoji limits, prevents repetitive AI loops, and ensures perfect grammar.
- *   🚀 UPGRADE: Fixed regex to PRESERVE new lines for perfect Discord formatting.
+ *   🚀 UPGRADE: Deep reasoning stripper added to catch rogue model drafts.
  */
 
 const RECENT_REPLY_LIMIT = 8;
@@ -73,7 +73,6 @@ function stripBannedOpenerIfRepeated(channelId, text) {
 }
 
 /**
- * 🚀 THE FIX IS HERE: 
  * Advanced Regex handles complex emojis and cleans up leftover horizontal whitespace 
  * while strictly preserving vertical line breaks (\n).
  */
@@ -88,7 +87,7 @@ function enforceEmojiBudget(text, budget) {
   
   // Clean up structural weirdness left by removed emojis
   processedText = processedText
-    .replace(/ {2,}/g, ' ')               // 🔥 FIX: Only collapse horizontal spaces, NOT new lines!
+    .replace(/ {2,}/g, ' ')               // Only collapse horizontal spaces, NOT new lines!
     .replace(/ +([.,!?])/g, '$1')         // Fix spaces before punctuation (e.g., "Hello ," -> "Hello,")
     .trim();
     
@@ -96,11 +95,35 @@ function enforceEmojiBudget(text, budget) {
 }
 
 /**
- * Structural Cleanup (Quotes, Giant Gaps)
+ * 🚀 UPGRADE: Removes internal AI thinking, drafts, and numbering
+ */
+function stripReasoning(text) {
+    let cleanText = text;
+    
+    // If the model leaked its "Draft:" section, grab ONLY what comes after "Draft:"
+    const draftMatch = cleanText.match(/\bDraft:\s*([\s\S]*)$/i);
+    if (draftMatch) {
+        cleanText = draftMatch[1];
+    }
+    
+    // Just in case it uses "Final Response:" or similar wording
+    const responseMatch = cleanText.match(/\b(?:Final )?Response:\s*([\s\S]*)$/i);
+    if (responseMatch) {
+        cleanText = responseMatch[1];
+    }
+
+    return cleanText.trim();
+}
+
+/**
+ * Structural Cleanup (Quotes, Giant Gaps, Reasoning)
  */
 function structuralCleanup(text) {
     let cleanText = text;
     
+    // 🚀 Step 1: Strip out rogue AI reasoning first!
+    cleanText = stripReasoning(cleanText);
+
     // Remove surrounding quotes if the AI accidentally wrapped its entire response in them
     if (cleanText.startsWith('"') && cleanText.endsWith('"')) {
         cleanText = cleanText.substring(1, cleanText.length - 1).trim();
@@ -121,7 +144,7 @@ function process({ channelId, responseText, emojiBudget = 1 }) {
           return { text: '', wasTrimmed: false };
       }
 
-      // 1. Fix massive gaps and stray quotes
+      // 1. Fix massive gaps, rogue thinking blocks, and stray quotes
       let text = structuralCleanup(responseText);
       
       // 2. Prevent AI repetition loops
