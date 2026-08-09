@@ -71,11 +71,17 @@ function route(text, recentContext = '') {
   let prebuiltEmbeds = [];
 
   // 📝 3. FACT & SINGLE ENTITY ENGINE
-  // 🚀 FIX: Removed the isSimpleLookup word-count gate. Any time exactly one hero or
-  // troop is identified (and the other type is absent), we resolve immediately with
-  // the stat embed — regardless of sentence length or phrasing. A resolved entity
-  // lookup should never be deferred to the AI pipeline.
+  // Plain lookups (FACT/UNKNOWN/QUESTION/game-query) resolve instantly with just the
+  // card — no sentence-length gate, no AI needed.
+  // 🚀 FIX: STRATEGY-intent messages ("should I upgrade X", "how good is X") still
+  // need Melody's AI to reason over the data, so for those we attach the card to
+  // prebuiltEmbeds and let execution continue into Section 5, where strategyContextBuilder
+  // builds real context from the SAME resolved entity and hands it to the AI. Short-circuiting
+  // here for STRATEGY intent was skipping the AI pipeline entirely, leaving users with a bare
+  // stat card and no explanation.
   if (intent === 'FACT' || intent === 'UNKNOWN' || intent === 'QUESTION' || intent === 'STRATEGY' || intent === 'game-query') {
+
+    const isStrategyIntent = intent === 'STRATEGY';
 
     // Single Hero Lookup
     if ((entities.heroName || (entities.heroNames && entities.heroNames.length === 1)) && (!entities.troopName && (!entities.troopNames || entities.troopNames.length === 0))) {
@@ -97,7 +103,11 @@ function route(text, recentContext = '') {
             if (hero.talent) embed.addFields({ name: `🌟 Talent: ${hero.talent.name}`, value: hero.talent.description });
             if (hero.ability && hero.ability.description) embed.addFields({ name: `✨ Ability: ${hero.ability.name || 'Skill'}`, value: hero.ability.description });
 
-            return { resolved: true, embeds: [embed] };
+            if (isStrategyIntent) {
+                prebuiltEmbeds.push(embed);
+            } else {
+                return { resolved: true, embeds: [embed] };
+            }
         }
     }
 
@@ -129,7 +139,11 @@ function route(text, recentContext = '') {
               embed.addFields({ name: `✨ Ability: ${ability.name}`, value: abText });
           }
 
-          return { resolved: true, embeds: [embed] };
+          if (isStrategyIntent) {
+              prebuiltEmbeds.push(embed);
+          } else {
+              return { resolved: true, embeds: [embed] };
+          }
         }
     }
   }
