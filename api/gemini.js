@@ -5,7 +5,7 @@ const { buildIdentityCore } = require('../persona/identityCore');
 const decisionPipeline = require('../decision/decisionPipeline');
 const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
-const promptAssembler = require('../promptBuilder/promptAssembler');
+const { isGameTurn } = require('../shared/isGameTurn');
 
 // ============================================================
 // CONFIG / CONSTANTS (Compiled ONCE for CPU Efficiency)
@@ -26,10 +26,6 @@ const COMPLEX_TASK_REGEX = /explain|detail|history|analyze|code|script|story|ess
 const CONFLICT_REGEX = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser|pagal|roast)\b/i;
 const IDENTITY_REGEX = /\b(ai|bot|robot|gpt|npc)\b/i;
 const ROMANCE_REGEX = /\b(love|kiss|hug|cuddle|us|we|you and me|my girlfriend|babe|baby|sweetheart|miss you|romantic|bhalo basi)\b/i;
-
-// 🚀 Fast lookup for game-related intents (drives the Game Fast-Lane branch below)
-const GAME_INTENTS = new Set(['FACT', 'STRATEGY', 'CALC', 'GOLD', 'GEM', 'game-query']);
-const GAME_KEYWORD_FALLBACK = /\b(stats|hp|damage|hero|troop|game|clash|synergy|best with|use with)\b/i;
 
 // ============================================================
 // LIGHTWEIGHT DYNAMIC STATE (30-Min Mood Lock)
@@ -84,8 +80,6 @@ function getDynamicState(userId) {
 
 // ============================================================
 // 🚀 GAME FAST-LANE: lean, data-locked tactical system prompt.
-// Deliberately has ZERO persona/romance/memory content — this is what
-// prevents attention dilution and troop/hero name hallucination.
 // ============================================================
 
 function buildGameFastLaneIdentity() {
@@ -97,7 +91,7 @@ function buildGameFastLaneIdentity() {
 3. Never mix stats between two different troops/heroes even if their names are similar.
 
 [TONE]
-Professional, diplomatic, sharply analytical. No roleplay, no flirting, no emotional language, no emojis beyond light structural use (💅/⚔️/🛡️ style icons are fine, not filler).
+Professional, diplomatic, sharply analytical. No roleplay, no flirting, no emotional language, no emojis beyond light structural use (⚔️/🛡️ style icons are fine, not filler).
 
 [DISCORD-OPTIMIZED FORMATTING]
 - NEVER use raw Markdown tables.
@@ -145,32 +139,13 @@ async function generateContent(turn) {
     const plan = await decisionPipeline.planTurn(smartTurn);
     const userIntent = plan.classification?.intent || 'social';
 
-    // 🚀 GAME FAST-LANE DECISION POINT
-    // Decided purely off the (already-computed, zero extra cost) classifier intent
-    // plus a keyword fallback for edge phrasing the classifier might miss.
-    const isGameFastLane = GAME_INTENTS.has(userIntent) || GAME_KEYWORD_FALLBACK.test(turn.content);
+    const gameTurn = isGameTurn({ content: turn.content, gameData: turn.gameData, intent: userIntent });
 
     let safeSystemInstruction;
-    let promptForModel;
 
-    if (isGameFastLane) {
-      // --- LEAN PATH: no buildIdentityCore, no romance/mood/memory blocks. ---
+    if (gameTurn) {
       safeSystemInstruction = buildGameFastLaneIdentity();
-
-      // turn.gameContext is expected to be populated upstream by gameDomainRouter.route()
-      // (its `context` field, when resolved === false and context is non-null). If your
-      // message handler doesn't currently attach this, wire it as:
-      //   const routed = gameDomainRouter.route(turn.content, recentContext);
-      //   if (!routed.resolved) turn.gameContext = routed.context;
-      promptForModel = promptAssembler.assemble({
-        leanMode: true,
-        relationship: plan.relationship,
-        gameData: turn.gameContext || null,
-        userMessage: contextualPrompt,
-        speakerName: turn.username
-      });
     } else {
-      // --- FULL PATH: existing persona, memory, romance, everything unchanged. ---
       let dynamicIdentity = buildIdentityCore(turn.userId);
 
       const isRomanticTalk = ROMANCE_REGEX.test(turn.content);
@@ -190,7 +165,7 @@ ${getDynamicState(turn.userId)}
 3. NO META-TEXT: NEVER output your internal reasoning, constraints checking, rules, or drafts (e.g., do not print "Draft:" or "Task:"). Output ONLY the final conversational reply.
 `;
 
-      if (userIntent === 'command' || userIntent === 'moderation') {
+      if (userIntent === 'command' || userIntent === 'moderation-trigger') {
         dynamicIdentity += `\n
 [ADMIN MODE]
 Be authoritative, concise, professional, and diplomatic.
@@ -213,12 +188,11 @@ Playfully laugh off AI questions as a 20yo human girl. Warmly change the subject
       }
 
       safeSystemInstruction = dynamicIdentity.replace(/\n{3,}/g, '\n\n').trim();
-      promptForModel = plan.prompt || contextualPrompt;
     }
 
     const { result, modelUsed } = await modelRouter.generate({
       classification: plan.classification,
-      prompt: promptForModel,
+      prompt: plan.prompt || contextualPrompt,
       systemInstruction: safeSystemInstruction,
       geminiKeys,
       groqClient,
@@ -258,7 +232,7 @@ Playfully laugh off AI questions as a 20yo human girl. Warmly change the subject
         intent: userIntent,
         tier: plan.relationship?.tier || 'standard',
         behaviorDirective: plan.behaviorDirective,
-        fastLane: isGameFastLane
+        fastLane: gameTurn
       }
     };
 
