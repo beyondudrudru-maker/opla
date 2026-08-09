@@ -5,7 +5,7 @@ const { buildIdentityCore } = require('../persona/identityCore');
 const decisionPipeline = require('../decision/decisionPipeline');
 const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
-const { isGameTurn } = require('../shared/isGameTurn');
+const { isGameTurn } = require('../decision/decisionPipeline');
 
 // ============================================================
 // CONFIG / CONSTANTS (Compiled ONCE for CPU Efficiency)
