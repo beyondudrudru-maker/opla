@@ -5,6 +5,7 @@ const { buildIdentityCore } = require('../persona/identityCore');
 const decisionPipeline = require('../decision/decisionPipeline');
 const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
+const promptAssembler = require('../promptBuilder/promptAssembler');
 
 // ============================================================
 // CONFIG / CONSTANTS (Compiled ONCE for CPU Efficiency)
@@ -26,8 +27,9 @@ const CONFLICT_REGEX = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser|pag
 const IDENTITY_REGEX = /\b(ai|bot|robot|gpt|npc)\b/i;
 const ROMANCE_REGEX = /\b(love|kiss|hug|cuddle|us|we|you and me|my girlfriend|babe|baby|sweetheart|miss you|romantic|bhalo basi)\b/i;
 
-// 🚀 UPGRADE: Fast lookup for game-related intents
+// 🚀 Fast lookup for game-related intents (drives the Game Fast-Lane branch below)
 const GAME_INTENTS = new Set(['FACT', 'STRATEGY', 'CALC', 'GOLD', 'GEM', 'game-query']);
+const GAME_KEYWORD_FALLBACK = /\b(stats|hp|damage|hero|troop|game|clash|synergy|best with|use with)\b/i;
 
 // ============================================================
 // LIGHTWEIGHT DYNAMIC STATE (30-Min Mood Lock)
@@ -81,6 +83,37 @@ function getDynamicState(userId) {
 }
 
 // ============================================================
+// 🚀 GAME FAST-LANE: lean, data-locked tactical system prompt.
+// Deliberately has ZERO persona/romance/memory content — this is what
+// prevents attention dilution and troop/hero name hallucination.
+// ============================================================
+
+function buildGameFastLaneIdentity() {
+  return `You are a precision strategy data engine for the game "Kingdom Clash".
+
+[DATA LOCK — NON-NEGOTIABLE]
+1. Use ONLY the exact names, numbers, and text inside <GameData>. Never invent, estimate, round creatively, or blend in stats from general knowledge or memory.
+2. If the entity the user is asking about is not present in <GameData>, say plainly that you don't have data on it. Do not guess.
+3. Never mix stats between two different troops/heroes even if their names are similar.
+
+[TONE]
+Professional, diplomatic, sharply analytical. No roleplay, no flirting, no emotional language, no emojis beyond light structural use (💅/⚔️/🛡️ style icons are fine, not filler).
+
+[DISCORD-OPTIMIZED FORMATTING]
+- NEVER use raw Markdown tables.
+- Every stat on its own line, vertically.
+- **Bold** names and key attributes.
+
+[RESPONSE STRUCTURE — pick based on the user's actual question]
+- Synergy / best combination question: Direct Answer -> Synergy Analysis -> Final Recommendation.
+- Strict two-entity comparison (X vs Y): Core Stats Face-Off -> Abilities & Synergy -> Final Verdict.
+- Single-entity analysis: Profile -> Strategic Potential -> Best Matchups.
+
+[NO META-TEXT]
+Never output internal reasoning, constraint-checking, or drafts. Output ONLY the final answer.`;
+}
+
+// ============================================================
 // MAIN GENERATOR
 // ============================================================
 
@@ -96,28 +129,53 @@ async function generateContent(turn) {
   try {
     let contextualPrompt = turn.content;
 
-    if (COMPLEX_TASK_REGEX.test(turn.content) || turn.content.length > 100) {  
-      contextualPrompt = `[DIRECTIVE: Be precise, factual, concise, and avoid repetition.]\n\n` + contextualPrompt;  
-    }  
+    if (COMPLEX_TASK_REGEX.test(turn.content) || turn.content.length > 100) {
+      contextualPrompt = `[DIRECTIVE: Be precise, factual, concise, and avoid repetition.]\n\n` + contextualPrompt;
+    }
 
     // 🚀 HIGH-IQ COMMAND & MENTION DIRECTIVE
-    if (Array.isArray(turn.mentionedUsers) && turn.mentionedUsers.length > 0) {  
-      const mentionsInfo = turn.mentionedUsers.map(u => `${u.username} (<@${u.id}>)`).join(', ');  
+    if (Array.isArray(turn.mentionedUsers) && turn.mentionedUsers.length > 0) {
+      const mentionsInfo = turn.mentionedUsers.map(u => `${u.username} (<@${u.id}>)`).join(', ');
       contextualPrompt += `\n\n[CRITICAL COMMAND DIRECTIVE:
 1. TARGET PING: The user mentioned ${mentionsInfo}. You MUST use their exact tag (e.g. <@123456789>) in your response.
-2. COVERT EXECUTION RULE: If commanded to roast, nickname, or call someone a specific word (e.g., "X ko [words] kehdo"), extract that exact phrase. NEVER expose that you were told to say it (do not say "You asked me to call you..."). Just confidently and smoothly deliver the nickname/roast with your own sharp, creative, and sassy wit!]`;  
-    }  
+2. COVERT EXECUTION RULE: If commanded to roast, nickname, or call someone a specific word (e.g., "X ko [words] kehdo"), extract that exact phrase. NEVER expose that you were told to say it (do not say "You asked me to call you..."). Just confidently and smoothly deliver the nickname/roast with your own sharp, creative, and sassy wit!]`;
+    }
 
-    const smartTurn = { ...turn, content: contextualPrompt };  
-    const plan = await decisionPipeline.planTurn(smartTurn);  
-    const userIntent = plan.classification?.intent || 'social';  
+    const smartTurn = { ...turn, content: contextualPrompt };
+    const plan = await decisionPipeline.planTurn(smartTurn);
+    const userIntent = plan.classification?.intent || 'social';
 
-    let dynamicIdentity = buildIdentityCore(turn.userId);  
+    // 🚀 GAME FAST-LANE DECISION POINT
+    // Decided purely off the (already-computed, zero extra cost) classifier intent
+    // plus a keyword fallback for edge phrasing the classifier might miss.
+    const isGameFastLane = GAME_INTENTS.has(userIntent) || GAME_KEYWORD_FALLBACK.test(turn.content);
 
-    const isRomanticTalk = ROMANCE_REGEX.test(turn.content);
+    let safeSystemInstruction;
+    let promptForModel;
 
-    // 🚀 ADVANCED ADAPTABILITY & PERSONA RULES
-    dynamicIdentity += `\n
+    if (isGameFastLane) {
+      // --- LEAN PATH: no buildIdentityCore, no romance/mood/memory blocks. ---
+      safeSystemInstruction = buildGameFastLaneIdentity();
+
+      // turn.gameContext is expected to be populated upstream by gameDomainRouter.route()
+      // (its `context` field, when resolved === false and context is non-null). If your
+      // message handler doesn't currently attach this, wire it as:
+      //   const routed = gameDomainRouter.route(turn.content, recentContext);
+      //   if (!routed.resolved) turn.gameContext = routed.context;
+      promptForModel = promptAssembler.assemble({
+        leanMode: true,
+        relationship: plan.relationship,
+        gameData: turn.gameContext || null,
+        userMessage: contextualPrompt,
+        speakerName: turn.username
+      });
+    } else {
+      // --- FULL PATH: existing persona, memory, romance, everything unchanged. ---
+      let dynamicIdentity = buildIdentityCore(turn.userId);
+
+      const isRomanticTalk = ROMANCE_REGEX.test(turn.content);
+
+      dynamicIdentity += `\n
 [Persona & Adaptability Rules]
 You are Melody, a 20-year-old human girl. You possess high Emotional Intelligence (EQ), sharp wit, and common sense.
 NEVER state that you are an AI, a digital assistant, or a language model.
@@ -132,88 +190,77 @@ ${getDynamicState(turn.userId)}
 3. NO META-TEXT: NEVER output your internal reasoning, constraints checking, rules, or drafts (e.g., do not print "Draft:" or "Task:"). Output ONLY the final conversational reply.
 `;
 
-    // 🚀 FULL GAME LOGIC
-    const isGameContext = GAME_INTENTS.has(userIntent) || /\b(stats|hp|damage|hero|troop|game|clash|synergy|best with|use with)\b/i.test(turn.content);
-    
-    if (isGameContext) {
-      dynamicIdentity += `\n
-[MASTERCLASS GAME STRATEGY & DIPLOMATIC FORMATTING]
-You are an elite, highly intelligent strategist for the game "Kingdom Clash". When you see [GAME DATA] in the prompt, you MUST obey these strict rules:
-
-1. TONE SHIFT: Temporarily drop your casual persona. Adopt a highly professional, diplomatic, and sharply analytical tone.
-2. ZERO HALLUCINATION: Base your analysis ONLY on the provided exact data. Do NOT invent stats.
-3. DISCORD OPTIMIZED FORMATTING: 
-   - NEVER use raw Markdown tables.
-   - CRITICAL RULE: Every single stat MUST be placed on a brand new line vertically.
-   - Use Discord highlights: **Bold** for names and key attributes.
-4. STRUCTURE YOUR RESPONSE BASED ON THE USER'S ACTUAL QUESTION:
-
-   [IF THE USER ASKS ABOUT SYNERGY OR BEST COMBINATIONS]: Direct Answer -> Synergy Analysis -> Final Recommendation.
-   [IF COMPARING STRICTLY TWO ENTITIES (X vs Y)]: Core Stats Face-Off -> Abilities & Synergy -> Final Verdict.
-   [IF ANALYZING A SINGLE ENTITY]: Profile -> Strategic Potential -> Best Matchups.
-`;
-    }
-
-    if (userIntent === 'command' || userIntent === 'moderation') {  
-      dynamicIdentity += `\n
+      if (userIntent === 'command' || userIntent === 'moderation') {
+        dynamicIdentity += `\n
 [ADMIN MODE]
 Be authoritative, concise, professional, and diplomatic.
 `;
-    }
+      }
 
-    const isConflict = CONFLICT_REGEX.test(turn.content);  
-    if (isConflict) {  
-      dynamicIdentity += `\n
+      const isConflict = CONFLICT_REGEX.test(turn.content);
+      if (isConflict) {
+        dynamicIdentity += `\n
 [CONFLICT MODE]
 Execute roasts using the core nickname provided by the user, but wrap it in your own creative, sharp, and sassy wording. Drop the soft polite act. Use emojis like 💅, 🙄, or 🔪.
 `;
-    }
+      }
 
-    if (IDENTITY_REGEX.test(turn.content) && !isConflict) {  
-      dynamicIdentity += `\n
+      if (IDENTITY_REGEX.test(turn.content) && !isConflict) {
+        dynamicIdentity += `\n
 [IDENTITY DEFENSE]
 Playfully laugh off AI questions as a 20yo human girl. Warmly change the subject.
 `;
+      }
+
+      safeSystemInstruction = dynamicIdentity.replace(/\n{3,}/g, '\n\n').trim();
+      promptForModel = plan.prompt || contextualPrompt;
     }
 
-    const safeSystemInstruction = dynamicIdentity.replace(/\n{3,}/g, '\n\n').trim();
+    const { result, modelUsed } = await modelRouter.generate({
+      classification: plan.classification,
+      prompt: promptForModel,
+      systemInstruction: safeSystemInstruction,
+      geminiKeys,
+      groqClient,
+      hasGroq: !!groqKey
+    });
 
-    const { result, modelUsed } = await modelRouter.generate({  
-      classification: plan.classification,  
-      prompt: plan.prompt || contextualPrompt,  
-      systemInstruction: safeSystemInstruction,  
-      geminiKeys,  
-      groqClient,  
-      hasGroq: !!groqKey  
-    });  
+    let rawText = result || '';
 
-    let rawText = result || '';  
-    
     // 🛡️ THE FIX: Strip out <think> blocks completely so Reasoning Models don't leak their internal logic!
     rawText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-    
+
     // Clean up internal state tags
-    rawText = rawText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();  
-    if (rawText.endsWith(']')) rawText = rawText.slice(0, -1).trim();  
+    rawText = rawText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
+    if (rawText.endsWith(']')) rawText = rawText.slice(0, -1).trim();
 
-    const { text } = styleLinter.process({  
-      channelId: turn.channelId,  
-      responseText: rawText,  
-      emojiBudget: plan.behaviorDirective?.emojiBudget || 'medium'  
-    });  
+    const { text } = styleLinter.process({
+      channelId: turn.channelId,
+      responseText: rawText,
+      emojiBudget: plan.behaviorDirective?.emojiBudget || 'medium'
+    });
 
-    try {  
-      await decisionPipeline.finalizeTurn({  
-        channelId: turn.channelId,  
-        userId: turn.userId,  
-        content: turn.content,  
-        responseText: text  
-      });  
-    } catch (dbError) {  
-      console.error('⚠️ [DB] finalizeTurn:', dbError.message);  
-    }  
+    try {
+      await decisionPipeline.finalizeTurn({
+        channelId: turn.channelId,
+        userId: turn.userId,
+        content: turn.content,
+        responseText: text
+      });
+    } catch (dbError) {
+      console.error('⚠️ [DB] finalizeTurn:', dbError.message);
+    }
 
-    return { text, modelUsed, debug: { intent: userIntent, tier: plan.relationship?.tier || 'standard', behaviorDirective: plan.behaviorDirective } };
+    return {
+      text,
+      modelUsed,
+      debug: {
+        intent: userIntent,
+        tier: plan.relationship?.tier || 'standard',
+        behaviorDirective: plan.behaviorDirective,
+        fastLane: isGameFastLane
+      }
+    };
 
   } catch (error) {
     console.error('❌ generateContent:', error);
