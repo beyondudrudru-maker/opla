@@ -1,0 +1,36 @@
+/**
+ * shared/isGameTurn.js
+ *
+ * PURPOSE
+ *   Single source of truth for "is this a game-domain turn." Used by both
+ *   decisionPipeline.js (to decide whether to skip memory/emotion machinery)
+ *   and gemini.js (to decide whether to use the lean tactical persona).
+ *   Keeping this in one place means the two can never disagree — a mismatch
+ *   there would mean one file builds a lean data-only prompt while the other
+ *   builds a full romantic-persona system instruction, which breaks output.
+ */
+
+const { INTENTS } = require('../classifier/intentClassifier');
+
+// Fallback net for phrasing the generic classifier might miss but is
+// obviously game-related. Deliberately the same list gemini.js already used.
+const GAME_KEYWORD_FALLBACK = /\b(stats|hp|damage|hero|troop|game|clash|synergy|best with|use with)\b/i;
+
+/**
+ * @param {object} params
+ * @param {string} params.content - raw user message text
+ * @param {*} params.gameData - resolved context from gameDomainRouter, if any
+ * @param {string} params.intent - classification.intent from intentClassifier
+ */
+function isGameTurn({ content = '', gameData = null, intent = null } = {}) {
+  // Strongest signal: gameDomainRouter already resolved deterministic context upstream.
+  if (gameData) return true;
+
+  // Second signal: the generic local classifier tagged it as a game query.
+  if (intent === INTENTS.GAME) return true;
+
+  // Fallback: keyword net for phrasing the classifier might have missed.
+  return GAME_KEYWORD_FALLBACK.test(content);
+}
+
+module.exports = { isGameTurn, GAME_KEYWORD_FALLBACK };
