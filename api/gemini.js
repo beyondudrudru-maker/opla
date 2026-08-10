@@ -84,12 +84,6 @@ function getDynamicState(userId) {
 // ============================================================
 // 🔒 SHARED ANTI-LEAK BLOCK: injected into EVERY system prompt.
 // ============================================================
-// This is deliberately blunt and repetitive. Reasoning models
-// (Qwen etc.) leak Chain-of-Thought when instructions are soft
-// or abstract. Concrete "this is what leakage looks like, never
-// do this" examples close that gap far better than a single
-// polite "don't show your reasoning" line.
-// ============================================================
 
 const CRITICAL_OUTPUT_RULES = `
 [CRITICAL OUTPUT RULES — ABSOLUTE, NON-NEGOTIABLE]
@@ -119,47 +113,32 @@ function buildGameFastLaneIdentity() {
 [TONE]
 Professional, diplomatic, sharply analytical. No roleplay, no flirting, no emotional language, no emojis beyond light structural use (⚔️/🛡️ style icons are fine, not filler).
 
-[DISCORD-OPTIMIZED FORMATTING]
+[DISCORD-OPTIMIZED FORMATTING (CRITICAL FOR READABILITY)]
 - NEVER use raw Markdown tables.
-- Every stat on its own line, vertically.
+- YOU MUST use bullet points (•) for detailed breakdowns, stats, and synergy analysis (e.g., • Talent: ..., • Buff type: ...).
+- Every stat, interaction, or analysis point MUST be on its own line, vertically, starting with a bullet point.
 - **Bold** names and key attributes.
 
 [RESPONSE STRUCTURE — pick based on the user's actual question]
-- Synergy / best combination question: Direct Recommendation -> Synergy Analysis -> Final Verdict.
-- Strict two-entity comparison (X vs Y): Core Stats Face-Off -> Abilities & Synergy -> Final Verdict.
-- Mixed Queries (Comparison + Recommendation): Core Stats Face-Off -> Synergy Recommendation from <GameData>.
-- Single-entity analysis: Profile -> Strategic Potential -> Best Matchups.
+- Synergy / best combination question: Direct Recommendation -> Synergy Analysis (Point-wise) -> Final Verdict.
+- Strict two-entity comparison (X vs Y): Core Stats Face-Off -> Abilities & Synergy (Point-wise) -> Final Verdict.
+- Mixed Queries (Comparison + Recommendation): Core Stats Face-Off -> Synergy Recommendation from <GameData> (Point-wise).
+- Single-entity analysis: Profile -> Strategic Potential (Point-wise) -> Best Matchups.
 
 ${CRITICAL_OUTPUT_RULES}`;
 }
 
 // ============================================================
-// 🛡️ POST-PROCESSING FAILSAFE: Leaked Chain-of-Thought scrubber
-// ============================================================
-// Catches self-evaluation / internal-monologue text that reasoning
-// models (e.g. Qwen on Groq) sometimes emit as plain prose instead
-// of wrapping it in <think> tags. Operates in two passes:
-//   1. Line-level: drops whole lines that are clearly a self-check,
-//      checklist bullet, or plan/draft label.
-//   2. Inline: strips parenthetical "thinking out loud" asides that
-//      sit inside an otherwise-fine line, without deleting the line.
+// 🛡️ PRE-COMPILED POST-PROCESSING FAILSAFE REGEXES
 // ============================================================
 
-// Lines that are ENTIRELY a leaked reasoning artifact — drop the whole line.
 const LEAK_LINE_PATTERNS = [
-  // Bullet line whose text before a colon mentions a self-check concept, e.g.
-  // "- Check constraints: Short? Yes. Emojis? Used 2." / "- Length: good."
-  // / "- Tone check: matches persona"
   /^\s*[-*•]\s*(?:[A-Za-z][A-Za-z \/]{0,40}?\s+)?\b(check|verify|confirm|constraint|constraints|length|tone|persona|emoji|emojis|word\s*count|format|formatting)\b[A-Za-z \/]{0,20}?\s*:/i,
-  // "Draft:", "Plan:", "Step 1:", "Final answer:", "Reasoning:"
   /^\s*(draft|plan|step\s*\d+|final\s*answer|reasoning|thought|thinking|internal\s*note)\s*[:\-]/i,
-  // "Let's adjust to match persona..." / "Let me think..." as a standalone line (with or without a leading bullet)
   /^\s*[-*•]?\s*(let'?s|let\s*me)\s+(adjust|think|check|make sure|see|reconsider|revise|verify)\b/i,
-  // A line that is nothing but a parenthetical aside, e.g. "(Wait, needs to be shorter per directives)"
   /^\s*\(.*\b(wait|hmm|per\s*directives?|as\s*instructed|matching\s*persona|need(s)?\s*to\s*be|should\s*(be|say|adjust))\b.*\)\s*$/i,
 ];
 
-// Inline parenthetical thinking-asides that appear mid-line — strip just the aside.
 const INLINE_LEAK_ASIDE = /\((?:[^()]*\b(?:wait|hmm|per\s*directives?|as\s*instructed|matching\s*persona|adjust(?:ing)?\s*to|need(?:s)?\s*to\s*be\s*shorter|check(?:ing)?\s*constraints?)\b[^()]*)\)/gi;
 
 function stripLeakedReasoning(text) {
@@ -169,14 +148,10 @@ function stripLeakedReasoning(text) {
     .split('\n')
     .filter(line => !LEAK_LINE_PATTERNS.some(pattern => pattern.test(line)))
     .map(line => line.replace(INLINE_LEAK_ASIDE, '').trim())
-    // Drop lines that became empty after stripping an inline aside
     .filter(line => line.length > 0);
 
   let cleaned = cleanedLines.join('\n').trim();
-
-  // If the scrub was too aggressive and wiped everything, fall back to the
-  // original text rather than returning an empty message to the user.
-  if (cleaned === '') return text.trim();
+  if (cleaned === '') return ''; // Return empty to trigger auto-retry
 
   return cleaned;
 }
@@ -254,42 +229,50 @@ ${CRITICAL_OUTPUT_RULES}
       safeSystemInstruction = dynamicIdentity.replace(/\n{3,}/g, '\n\n').trim();
     }
 
-    // Pass the arrays of keys to the router
-    const { result, modelUsed } = await modelRouter.generate({
-      classification: plan.classification,
-      prompt: plan.prompt || contextualPrompt,
-      systemInstruction: safeSystemInstruction,
-      geminiKeys,
-      groqKeys, 
-      hasGroq: groqKeys.length > 0
-    });
+    // 🛡️ AUTO-HEALING RETRY LOOP (Max 2 Attempts)
+    let rawText = '';
+    let finalModelUsed = 'fallback';
+    let currentPrompt = plan.prompt || contextualPrompt;
+    const MAX_RETRIES = 2;
 
-    let rawText = result || '';
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const { result, modelUsed } = await modelRouter.generate({
+        classification: plan.classification,
+        prompt: currentPrompt,
+        systemInstruction: safeSystemInstruction,
+        geminiKeys,
+        groqKeys, 
+        hasGroq: groqKeys.length > 0
+      });
 
-    // 🛡️ LAYER 1: Tag-based think block removal (unchanged behavior).
-    let cleanedText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      finalModelUsed = modelUsed;
+      let cleanedText = (result || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-    // Fallback: if stripping the block emptied the text (whole answer was
-    // inside <think>), or the closing tag is missing, just strip the tags
-    // themselves and keep whatever text remains.
-    if (cleanedText === '' || cleanedText.includes('<think>')) {
-        cleanedText = rawText.replace(/<\/?think>/gi, '').trim();
+      if (cleanedText === '' || cleanedText.includes('<think>')) {
+          cleanedText = (result || '').replace(/<\/?think>/gi, '').trim();
+      }
+      cleanedText = cleanedText.replace(/<\/?(?:reasoning|reflection|plan|analysis|scratchpad)>/gi, '').trim();
+
+      let scrubbedText = stripLeakedReasoning(cleanedText);
+      scrubbedText = scrubbedText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
+      if (scrubbedText.endsWith(']')) scrubbedText = scrubbedText.slice(0, -1).trim();
+
+      if (scrubbedText !== '') {
+        rawText = scrubbedText;
+        break; // Success! Break the loop.
+      } else if (attempt < MAX_RETRIES) {
+        // Retry logic injection
+        console.warn(`[RETRY] Attempt ${attempt} failed due to CoT leak or empty output. Retrying...`);
+        currentPrompt += `\n\n[SYSTEM WARNING: Your previous output was completely rejected because you leaked internal reasoning or checklists. Provide ONLY the final user-facing response. Use bullet points (•) for detailed breakdowns!]`;
+      }
     }
-    // Also catch other common pseudo-reasoning tags some models use instead of <think>.
-    cleanedText = cleanedText.replace(/<\/?(?:reasoning|reflection|plan|analysis|scratchpad)>/gi, '').trim();
 
-    rawText = cleanedText || rawText;
-
-    // 🛡️ LAYER 2: Prose-style Chain-of-Thought scrubber.
-    // Reasoning models that leak CoT without XML tags tend to do it in one
-    // of a few recognizable shapes: self-check bullet lines, "Draft/Plan:"
-    // labels, or parenthetical internal asides. We strip these line-by-line
-    // so a single leaked line doesn't take out surrounding valid dialogue.
-    rawText = stripLeakedReasoning(rawText);
-
-    // Clean up internal state tags
-    rawText = rawText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
-    if (rawText.endsWith(']')) rawText = rawText.slice(0, -1).trim();
+    // Ultimate Failsafe if it STILL fails after retries
+    if (rawText === '') {
+      rawText = gameTurn 
+        ? "My data processors hit a snag analyzing that. Could you ask me again?" 
+        : "Give me a quick second, my thoughts got a bit tangled up! Let's try that again. 🌸";
+    }
 
     const { text } = styleLinter.process({
       channelId: turn.channelId,
@@ -297,20 +280,17 @@ ${CRITICAL_OUTPUT_RULES}
       emojiBudget: plan.behaviorDirective?.emojiBudget || 'medium'
     });
 
-    try {
-      await decisionPipeline.finalizeTurn({
-        channelId: turn.channelId,
-        userId: turn.userId,
-        content: turn.content,
-        responseText: text
-      });
-    } catch (dbError) {
-      console.error('⚠️ [DB] finalizeTurn:', dbError.message);
-    }
+    // ⚡ ZERO-LATENCY BACKGROUND DB SAVE (Fire and Forget)
+    decisionPipeline.finalizeTurn({
+      channelId: turn.channelId,
+      userId: turn.userId,
+      content: turn.content,
+      responseText: text
+    }).catch(dbError => console.error('⚠️ [DB] Background finalizeTurn error:', dbError.message));
 
     return {
       text,
-      modelUsed,
+      modelUsed: finalModelUsed,
       debug: {
         intent: userIntent,
         tier: plan.relationship?.tier || 'standard',
@@ -320,8 +300,12 @@ ${CRITICAL_OUTPUT_RULES}
     };
 
   } catch (error) {
-    console.error('❌ generateContent:', error);
-    return { text: "Give me a quick second, my thoughts got a bit tangled up! Try asking me again in a moment. 🌸", modelUsed: 'fallback', debug: { intent: 'error', tier: 'standard', error: error.message } };
+    console.error('❌ generateContent Error:', error);
+    return { 
+      text: "Give me a quick second, my network got a bit tangled up! Try asking me again in a moment. 🌸", 
+      modelUsed: 'fallback', 
+      debug: { intent: 'error', tier: 'standard', error: error.message } 
+    };
   }
 }
 
