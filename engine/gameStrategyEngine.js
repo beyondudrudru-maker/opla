@@ -457,6 +457,55 @@ const entityA = queryEngine.findEntityByName(nameA);
 }
 
 // ---------------------------------------------------------------
+// 3.6 BOSS / SCENARIO RESOLVER (deterministic, keyword-locked)
+// ---------------------------------------------------------------
+// Named bosses that must ALWAYS resolve to real scenario guide data from
+// gameKnowledge.js — never "no data found" just because an upstream intent
+// classifier read "against"/"beat" as a PvP counter-query instead of a PvE
+// boss question. Mirrors the same detection layer used in gameDomainRouter.js
+// so both the router and this engine agree on what counts as a boss query.
+const BOSS_KEYWORDS = ['dagon', 'kraken', 'kalidor', 'balthazar', 'ashira'];
+
+function _detectBossKeywords(text) {
+  if (!text || typeof text !== 'string') return [];
+  const normalized = text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ');
+  const noSpace = text.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return BOSS_KEYWORDS.filter(k => new RegExp(`\\b${k}\\b`, 'i').test(normalized) || noSpace.includes(k));
+}
+
+/**
+ * Resolves free text mentioning a known boss to its scenario guide(s) in
+ * gameKnowledge.js strategies.scenarioGuides. Guaranteed non-empty for any
+ * recognized BOSS_KEYWORDS hit: falls back to the general boss-fight guide
+ * if no scenario entry names that specific boss by string, so a query is
+ * never silently dropped just because the data hasn't been updated yet.
+ */
+function resolveBossScenario(text) {
+  const strategies = gameLibrary.strategies;
+  if (!strategies || !Array.isArray(strategies.scenarioGuides)) {
+    return { error: 'No strategies.scenarioGuides data available in gameKnowledge.js.' };
+  }
+
+  const matchedBossKeywords = _detectBossKeywords(text);
+  if (!matchedBossKeywords.length) {
+    return { error: `No known boss name (${BOSS_KEYWORDS.join(', ')}) detected in "${text}".` };
+  }
+
+  let scenarioGuides = strategies.scenarioGuides.filter(scen => {
+    const scenString = JSON.stringify(scen).toLowerCase();
+    return matchedBossKeywords.some(k => scenString.includes(k));
+  });
+
+  let usedFallback = false;
+  if (!scenarioGuides.length) {
+    scenarioGuides = strategies.scenarioGuides.filter(scen => /\bboss\b/i.test(scen.scenario));
+    usedFallback = true;
+  }
+
+  return { matchedBossKeywords, scenarioGuides, usedFallback };
+}
+
+// ---------------------------------------------------------------
 // 4. HERO BUFF ANALYSIS
 // ---------------------------------------------------------------
 
@@ -723,7 +772,12 @@ function answerStrategyQuery(query) {
     const q = query.trim();
     const qLower = q.toLowerCase();
     let m;
-    if (qLower.match(/best\s+tank/)) {
+    // Boss-scenario check runs FIRST and wins over every other pattern below —
+    // a named boss mention (e.g. "against dagon boss") must never be misread as
+    // an unrelated hero-vs-hero or generic "which hero" match.
+    if (_detectBossKeywords(q).length > 0) {
+      type = 'bossScenario'; params = { text: q };
+    } else if (qLower.match(/best\s+tank/)) {
       type = 'bestTank'; params = { level: _extractLevel(q) || 10 };
     } else if ((m = qLower.match(/best\s+(\w+)\s+troop(?:\s+at\s+level\s*(\d+))?/))) {
       type = 'bestTroopInCategory'; params = { category: m[1].charAt(0).toUpperCase() + m[1].slice(1), level: m[2] ? parseInt(m[2], 10) : 10 };
@@ -748,6 +802,24 @@ function answerStrategyQuery(query) {
   }
 
   switch (type) {
+    case 'bossScenario': {
+      const result = resolveBossScenario(params.text || '');
+      if (result.error) {
+        return { queryType: 'bossScenario', data: null, calculations: null, candidates: [], ranking: [], recommendation: null, confidence: 'low', missingInformation: [result.error] };
+      }
+      const top = result.scenarioGuides[0];
+      return {
+        queryType: 'bossScenario',
+        data: { matchedBossKeywords: result.matchedBossKeywords, usedFallbackGuide: result.usedFallback },
+        calculations: { methodology: 'Keyword-locked match against strategies.scenarioGuides in gameKnowledge.js. Any text containing a known boss name (dagon, kraken, kalidor, balthazar, ashira) is guaranteed a guide, falling back to the general boss-fight entry if no scenario names that specific boss.' },
+        candidates: result.scenarioGuides,
+        ranking: result.scenarioGuides.map(g => g.scenario),
+        recommendation: top ? `${top.scenario}: ${top.notes}` : `No scenario guide found for boss keyword(s): ${result.matchedBossKeywords.join(', ')}.`,
+        confidence: result.usedFallback ? 'medium' : 'high',
+        missingInformation: result.scenarioGuides.length ? [] : [`Boss keyword(s) ${result.matchedBossKeywords.join(', ')} detected but no matching or fallback scenario guide exists in gameKnowledge.js.`]
+      };
+    }
+
     case 'compareEntities': {
       const res = compareEntities(params.nameA, params.nameB);
       if (res.error) {
@@ -899,5 +971,6 @@ module.exports = {
   analyzeTroopWithHeroes,
   calculateBattlePower,
   answerStrategyQuery,
-  compareEntities
+  compareEntities,
+  resolveBossScenario
 };
