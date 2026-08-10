@@ -3,6 +3,8 @@
  * 
  * PURPOSE: Resolves user queries into visual Embed Cards AND passes strict deterministic
  * data contexts to the AI pipeline for deep, hallucination-free strategic analysis.
+ * 🌟 UPGRADE: Added Smart Synergy Enrichment to automatically bundle faction-matching 
+ * heroes into the context when a user asks for troop recommendations!
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -15,18 +17,9 @@ const economyRatios = ecoModule.economyRatios || ecoModule;
 
 function route(text, recentContext = '') {
   let { intent, entities } = classify(text);
-  entities.rawText = text; // Ensure raw text is available for fallback matchers
+  entities.rawText = text;
 
   // 🧠 1. STRICT PRONOUN & FOLLOW-UP RESOLUTION
-  // Only pull entities from recentContext when the user explicitly uses a follow-up
-  // pronoun/trigger word AND the current message itself named no entity.
-  // NOTE: `entities` here comes straight from classify(text) on THIS message — it is
-  // never stale, since resolveEntities() builds a fresh object every call. There is no
-  // cross-turn carryover to guard against outside this branch, so no else-clause is
-  // needed. (A previous "clear entities when no follow-up trigger" else-branch was
-  // wiping out correctly-resolved entities on every plain single-word/short lookup —
-  // e.g. "tristan" or "anavin" alone — because those messages contain no pronoun.
-  // That block has been removed.)
   const hasFollowUpTrigger = /\b(uska|iske|woh|he|she|it|they|him|her|this|that|its|stats|ability|skill)\b/i.test(text);
 
   if (hasFollowUpTrigger && !entities.troopName && !entities.heroName && (!entities.heroNames || entities.heroNames.length === 0)) {
@@ -73,14 +66,6 @@ function route(text, recentContext = '') {
   let prebuiltEmbeds = [];
 
   // 📝 3. FACT & SINGLE ENTITY ENGINE
-  // Plain lookups (FACT/UNKNOWN/QUESTION/game-query) resolve instantly with just the
-  // card — no sentence-length gate, no AI needed.
-  // 🚀 FIX: STRATEGY-intent messages ("should I upgrade X", "how good is X") still
-  // need Melody's AI to reason over the data, so for those we attach the card to
-  // prebuiltEmbeds and let execution continue into Section 5, where strategyContextBuilder
-  // builds real context from the SAME resolved entity and hands it to the AI. Short-circuiting
-  // here for STRATEGY intent was skipping the AI pipeline entirely, leaving users with a bare
-  // stat card and no explanation.
   if (intent === 'FACT' || intent === 'UNKNOWN' || intent === 'QUESTION' || intent === 'STRATEGY' || intent === 'game-query') {
 
     const isStrategyIntent = intent === 'STRATEGY';
@@ -151,10 +136,9 @@ function route(text, recentContext = '') {
   }
 
   // ⚔️ 4. COMPARISON ENGINE (Dual Cards + AI Fallthrough)
-  // 🚀 FIX: Prevent comparison logic from triggering on 3+ heroes or general synergy queries
   const isExplicitVs = /(?:.+?)\s+vs\s+(?:.+)/i.test(text);
   const isExactlyTwoHeroes = entities.heroNames && entities.heroNames.length === 2;
-  const isSynergyQuery = /\b(best with|synergy|alongside|use with|combination|which hero)\b/i.test(text);
+  const isSynergyQuery = /\b(best with|synergy|alongside|use with|combination|which hero|konse hero|kiske sath)\b/i.test(text);
 
   if ((isExplicitVs || isExactlyTwoHeroes) && !isSynergyQuery) {
     let nameA, nameB;
@@ -208,12 +192,56 @@ function route(text, recentContext = '') {
   }
 
   // 🧠 5. STRATEGY & AI INTELLIGENCE PIPELINE
-  // We ALWAYS build context. If sufficient, we pass it to AI to generate the markdown analysis.
-  const strategyData = build(intent, entities);
+  let strategyData = build(intent, entities);
   
+  // 🌟 SMART SYNERGY ENRICHMENT 🌟
+  // If user asks for synergy (e.g., "who to use with Immortal") but didn't name a hero...
+  if (isSynergyQuery && entities.troopNames && entities.troopNames.length === 1 && (!entities.heroNames || entities.heroNames.length === 0)) {
+      const troopName = entities.troopNames[0];
+      const troopEntity = queryEngine.findEntityByName(troopName);
+
+      if (troopEntity && troopEntity.data) {
+          const troopFaction = (troopEntity.data.faction || troopEntity.data.type || '').toUpperCase();
+          
+          if (troopFaction) {
+              // Safely attempt to fetch all heroes from the engine
+              let allHeroes = [];
+              if (typeof queryEngine.getAllHeroes === 'function') {
+                  allHeroes = queryEngine.getAllHeroes();
+              } else if (typeof queryEngine.getAllEntities === 'function') {
+                  allHeroes = queryEngine.getAllEntities().filter(e => e.type === 'hero').map(e => e.data);
+              } else if (queryEngine.entities) {
+                  allHeroes = queryEngine.entities.filter(e => e.type === 'hero').map(e => e.data);
+              }
+
+              // Find heroes matching the troop's faction
+              const matchingHeroes = allHeroes.filter(h => {
+                  const hFaction = (h.faction || h.type || '').toUpperCase();
+                  return hFaction === troopFaction;
+              });
+
+              // Inject candidates directly into the context!
+              if (matchingHeroes.length > 0) {
+                  if (!strategyData.context) strategyData.context = {};
+                  
+                  strategyData.context.targetTroop = troopEntity.data;
+                  strategyData.context.factionSynergyCandidates = matchingHeroes.map(h => ({
+                      name: h.name,
+                      faction: h.faction,
+                      rarity: h.rarity,
+                      talent: h.talent ? (h.talent.description || h.talent) : 'N/A',
+                      ability: h.ability ? (h.ability.description || h.ability) : 'N/A'
+                  }));
+                  
+                  strategyData.sufficient = true; // Tell the pipeline we have enough data to proceed
+              }
+          }
+      }
+  }
+
   if (strategyData.sufficient || prebuiltEmbeds.length > 0) {
       return { 
-        resolved: false, // Force it to fall through to Melody AI for text generation
+        resolved: false, 
         embeds: prebuiltEmbeds.length > 0 ? prebuiltEmbeds : null,
         intent, 
         entities, 
