@@ -3,7 +3,7 @@
  * 
  * PURPOSE: Resolves user queries into visual Embed Cards AND passes strict deterministic
  * data contexts to the AI pipeline for deep, hallucination-free strategic analysis.
- * 🌟 FINAL UPGRADE: Scenario D added for Advanced 2-Hero Combos, Equipment, and Scenarios!
+ * 🌟 FINAL UPGRADE: Scenario D added for Advanced 2-Hero Combos, Equipment, Scenarios, and COUNTERS!
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -52,8 +52,11 @@ function route(text, recentContext = '') {
   // 🌍 MULTILINGUAL & ADVANCED SYNERGY REGEX
   const isSynergyQuery = /\b(best with|synergy|alongside|use with|combination|combo|formation|weapon|armor|equipment|gear|which hero|which troop|which troops|konse hero|konse troop|kiske sath|accha outcome|mejor con|melhor com|meilleur avec|terbaik dengan|sinergia|synergie)\b/i.test(text);
 
+  // ⚔️ COUNTER & COMBAT REGEX
+  const isCounterQuery = /\b(counter|beat|against|harana|opponents?|enemy|enemies|kill|defeat|samne)\b/i.test(text);
+
   // 🧠 FORCE STRATEGY INTENT
-  if (isSynergyQuery) {
+  if (isSynergyQuery || isCounterQuery) {
       intent = 'STRATEGY';
   }
 
@@ -175,7 +178,7 @@ function route(text, recentContext = '') {
   const isExplicitVs = /(?:.+?)\s+vs\s+(?:.+)/i.test(text);
   const isExactlyTwoHeroes = entities.heroNames && entities.heroNames.length === 2;
 
-  if ((isExplicitVs || isExactlyTwoHeroes) && !isSynergyQuery) {
+  if ((isExplicitVs || isExactlyTwoHeroes) && !isSynergyQuery && !isCounterQuery) {
     let nameA, nameB;
     
     if (isExactlyTwoHeroes) {
@@ -257,7 +260,7 @@ function route(text, recentContext = '') {
   }
 
   // 🌟 SCENARIO B: BIDIRECTIONAL SMART SYNERGY ENRICHMENT 🌟
-  if (isSynergyQuery) {
+  if (isSynergyQuery && !isCounterQuery) {
       if (entities.troopNames && entities.troopNames.length > 0) {
           let troopIdentifiers = new Set();
           entities.troopNames.forEach(tName => {
@@ -330,34 +333,33 @@ function route(text, recentContext = '') {
               }
           }
       }
+  }
 
-      // 🌟 SCENARIO C: CATEGORY & ROLE SCANNER 🌟
-      if (!enrichmentAdded && mentionedTags.length > 0) {
-          const matchingHeroes = allKnownHeroes.filter(h => {
-              let hId = [];
-              if (h.faction) hId.push(String(h.faction).toLowerCase());
-              if (h.type) hId.push(String(h.type).toLowerCase());
-              if (Array.isArray(h.tags)) hId.push(...h.tags.map(t => String(t).toLowerCase()));
-              if (Array.isArray(h.synergies)) hId.push(...h.synergies.map(t => String(t).toLowerCase()));
-              
-              return mentionedTags.some(mt => hId.some(id => id.includes(mt)));
-          });
+  // 🌟 SCENARIO C: CATEGORY & ROLE SCANNER 🌟
+  if (!enrichmentAdded && mentionedTags.length > 0 && !isCounterQuery) {
+      const matchingHeroes = allKnownHeroes.filter(h => {
+          let hId = [];
+          if (h.faction) hId.push(String(h.faction).toLowerCase());
+          if (h.type) hId.push(String(h.type).toLowerCase());
+          if (Array.isArray(h.tags)) hId.push(...h.tags.map(t => String(t).toLowerCase()));
+          if (Array.isArray(h.synergies)) hId.push(...h.synergies.map(t => String(t).toLowerCase()));
+          
+          return mentionedTags.some(mt => hId.some(id => id.includes(mt)));
+      });
 
-          if (matchingHeroes.length > 0) {
-              strategyData.context.targetCategory = mentionedTags.join(', ').toUpperCase();
-              strategyData.context.heroRecommendations = matchingHeroes.map(h => ({
-                  name: h.name,
-                  synergy_links: h.faction || h.type || (h.tags ? h.tags.join(', ') : 'N/A'),
-                  rarity: h.rarity,
-                  talent: h.talent ? (h.talent.description || h.talent) : 'N/A'
-              }));
-              enrichmentAdded = true;
-          }
+      if (matchingHeroes.length > 0) {
+          strategyData.context.targetCategory = mentionedTags.join(', ').toUpperCase();
+          strategyData.context.heroRecommendations = matchingHeroes.map(h => ({
+              name: h.name,
+              synergy_links: h.faction || h.type || (h.tags ? h.tags.join(', ') : 'N/A'),
+              rarity: h.rarity,
+              talent: h.talent ? (h.talent.description || h.talent) : 'N/A'
+          }));
+          enrichmentAdded = true;
       }
   }
 
-  // 🌟 SCENARIO D: ADVANCED COMBOS & EQUIPMENT STRATEGIES (New Upgrade) 🌟
-  // Checks if your new strategies file is available through the Central Hub
+  // 🌟 SCENARIO D: ADVANCED COMBOS, EQUIPMENT & COUNTERS 🌟
   const strategiesData = queryEngine.gameLibrary ? queryEngine.gameLibrary.strategies : null;
   
   if (strategiesData) {
@@ -367,9 +369,23 @@ function route(text, recentContext = '') {
           enrichmentAdded = true;
       }
 
-      // 2. 2-Hero Formations Check (Highly Token Efficient)
-      if (isSynergyQuery && strategiesData.optimalFormations) {
-          // Send only the formations that are relevant to what the user asked
+      // 2. COUNTER STRATEGY CHECK (NEW)
+      if (isCounterQuery && strategiesData.counterGuides) {
+          const relevantCounters = strategiesData.counterGuides.filter(guide => {
+              const guideString = JSON.stringify(guide).toLowerCase();
+              return entities.heroNames.some(h => guideString.includes(h.toLowerCase())) ||
+                     entities.troopNames.some(t => guideString.includes(t.toLowerCase())) ||
+                     text.toLowerCase().includes(guide.targetOpponent.toLowerCase());
+          });
+
+          if (relevantCounters.length > 0) {
+              strategyData.context.counterGuides = relevantCounters;
+              enrichmentAdded = true;
+          }
+      }
+
+      // 3. 2-Hero Formations Check
+      if (isSynergyQuery && !isCounterQuery && strategiesData.optimalFormations) {
           const relevantFormations = strategiesData.optimalFormations.filter(form => {
               const formString = JSON.stringify(form).toLowerCase();
               return entities.heroNames.some(h => formString.includes(h.toLowerCase())) ||
@@ -378,22 +394,19 @@ function route(text, recentContext = '') {
           });
 
           if (relevantFormations.length > 0) {
-              strategyData.context.optimalFormations = relevantFormations;
-              enrichmentAdded = true;
-          } else if (entities.heroNames.length === 0 && entities.troopNames.length === 0 && mentionedTags.length === 0) {
-              // If they ask generally "what is the best combo", give them the top 3
               strategyData.context.optimalFormations = strategiesData.optimalFormations.slice(0, 3);
               enrichmentAdded = true;
           }
       }
 
-      // 3. Scenario Strategy Guides (Bosses, PvP, Scenarios)
-      if (strategiesData.scenarioGuides) {
+      // 4. Scenario Strategy Guides (Bosses, PvP, Scenarios)
+      if (strategiesData.scenarioGuides && !isCounterQuery) {
           const relevantScenarios = strategiesData.scenarioGuides.filter(scen => {
               const scenString = JSON.stringify(scen).toLowerCase();
               return mentionedTags.some(tag => scenString.includes(tag.toLowerCase())) || 
                      text.toLowerCase().includes("scenario") || 
-                     text.toLowerCase().includes("fight");
+                     text.toLowerCase().includes("fight") ||
+                     text.toLowerCase().includes("boss");
           });
           
           if (relevantScenarios.length > 0) {
