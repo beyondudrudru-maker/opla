@@ -3,7 +3,7 @@
  * 
  * PURPOSE: Resolves user queries into visual Embed Cards AND passes strict deterministic
  * data contexts to the AI pipeline for deep, hallucination-free strategic analysis.
- * 🌟 UPGRADE: Bidirectional Multi-Entity Synergy (Troops <-> Heroes) to handle complex queries.
+ * 🌟 UPGRADE: Bulletproof Entity Scraper & Explicit Data Injection to prevent missed data.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -18,7 +18,41 @@ function route(text, recentContext = '') {
   let { intent, entities } = classify(text);
   entities.rawText = text;
 
-  // 🌍 MULTILINGUAL SYNERGY REGEX (Upgraded to catch troop queries)
+  // 🛡️ BULLETPROOF ENTITY SCRAPER 
+  // (Fixes classifier misses for names like "bone breaker" vs "bonebreaker" or lowercase names)
+  if (!entities.heroNames) entities.heroNames = [];
+  if (!entities.troopNames) entities.troopNames = [];
+  if (entities.heroName && !entities.heroNames.includes(entities.heroName)) entities.heroNames.push(entities.heroName);
+  if (entities.troopName && !entities.troopNames.includes(entities.troopName)) entities.troopNames.push(entities.troopName);
+
+  const allKnownHeroes = typeof queryEngine.findHeroes === 'function' ? queryEngine.findHeroes() : [];
+  const allKnownTroops = typeof queryEngine.findTroops === 'function' ? queryEngine.findTroops() : [];
+  
+  // Create versions of the text for robust matching
+  const normalizedText = text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ');
+  const textNoSpace = text.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  allKnownHeroes.forEach(h => {
+      const hName = h.name.toLowerCase();
+      const hNameNoSpace = hName.replace(/\s+/g, '');
+      if ((normalizedText.includes(hName) || textNoSpace.includes(hNameNoSpace)) && !entities.heroNames.some(e => e.toLowerCase() === hName)) {
+          entities.heroNames.push(h.name);
+      }
+  });
+
+  allKnownTroops.forEach(t => {
+      const tName = t.name.toLowerCase();
+      const tNameNoSpace = tName.replace(/\s+/g, '');
+      if ((normalizedText.includes(tName) || textNoSpace.includes(tNameNoSpace)) && !entities.troopNames.some(e => e.toLowerCase() === tName)) {
+          entities.troopNames.push(t.name);
+      }
+  });
+
+  if (entities.heroNames.length > 0) entities.heroName = entities.heroNames[0];
+  if (entities.troopNames.length > 0) entities.troopName = entities.troopNames[0];
+
+
+  // 🌍 MULTILINGUAL SYNERGY REGEX
   const isSynergyQuery = /\b(best with|synergy|alongside|use with|combination|which hero|which troop|which troops|konse hero|konse troop|kiske sath|accha outcome|mejor con|melhor com|meilleur avec|terbaik dengan|sinergia|synergie)\b/i.test(text);
 
   // 🧠 FORCE STRATEGY INTENT
@@ -199,22 +233,41 @@ function route(text, recentContext = '') {
 
   // 🧠 5. STRATEGY & AI INTELLIGENCE PIPELINE
   let strategyData = build(intent, entities);
+  if (!strategyData) strategyData = { sufficient: false, context: null };
+  if (!strategyData.context) strategyData.context = {};
   
-  // 🌟 BIDIRECTIONAL SMART SYNERGY ENRICHMENT 🌟
-  if (isSynergyQuery) {
-      if (!strategyData.context) strategyData.context = {};
-      let enrichmentAdded = false;
+  let enrichmentAdded = false;
 
-      // --- SCENARIO A: Fetch Heroes for mentioned Troops ---
+  // 🌟 SCENARIO A: EXPLICIT DATA INJECTION (The Fix for missed stats) 🌟
+  // Forces all mentioned entities' raw data into the prompt so AI never says "I don't have stats"
+  if (entities.heroNames.length > 0) {
+      strategyData.context.mentionedHeroes = [];
+      entities.heroNames.forEach(name => {
+          const data = queryEngine.findEntityByName(name);
+          if (data && data.data) strategyData.context.mentionedHeroes.push(data.data);
+      });
+      if (strategyData.context.mentionedHeroes.length > 0) enrichmentAdded = true;
+  }
+
+  if (entities.troopNames.length > 0) {
+      strategyData.context.mentionedTroops = [];
+      entities.troopNames.forEach(name => {
+          const data = queryEngine.findEntityByName(name);
+          if (data && data.data) strategyData.context.mentionedTroops.push(data.data);
+      });
+      if (strategyData.context.mentionedTroops.length > 0) enrichmentAdded = true;
+  }
+
+
+  // 🌟 SCENARIO B: BIDIRECTIONAL SMART SYNERGY ENRICHMENT 🌟
+  if (isSynergyQuery) {
+      // Fetch Heroes for mentioned Troops
       if (entities.troopNames && entities.troopNames.length > 0) {
           let troopIdentifiers = new Set();
-          let targetTroops = [];
-
           entities.troopNames.forEach(tName => {
               const tEntity = queryEngine.findEntityByName(tName);
               if (tEntity && tEntity.data) {
                   const tData = tEntity.data;
-                  targetTroops.push(tData);
                   if (tData.faction) troopIdentifiers.add(String(tData.faction).toUpperCase());
                   if (tData.type) troopIdentifiers.add(String(tData.type).toUpperCase());
                   if (Array.isArray(tData.tags)) tData.tags.forEach(t => troopIdentifiers.add(String(t).toUpperCase()));
@@ -224,21 +277,17 @@ function route(text, recentContext = '') {
           });
 
           if (troopIdentifiers.size > 0) {
-              let allHeroes = typeof queryEngine.findHeroes === 'function' ? queryEngine.findHeroes() : [];
               const tIdArray = Array.from(troopIdentifiers);
-
-              const matchingHeroes = allHeroes.filter(h => {
+              const matchingHeroes = allKnownHeroes.filter(h => {
                   let hId = [];
                   if (h.faction) hId.push(String(h.faction).toUpperCase());
                   if (h.type) hId.push(String(h.type).toUpperCase());
                   if (Array.isArray(h.tags)) hId.push(...h.tags.map(t => String(t).toUpperCase()));
                   if (Array.isArray(h.synergies)) hId.push(...h.synergies.map(t => String(t).toUpperCase()));
-                  
                   return hId.some(id => tIdArray.includes(id));
               });
 
               if (matchingHeroes.length > 0) {
-                  strategyData.context.targetTroops = targetTroops;
                   strategyData.context.heroRecommendations = matchingHeroes.map(h => ({
                       name: h.name,
                       synergy_links: h.faction || h.type || (h.tags ? h.tags.join(', ') : 'N/A'),
@@ -250,16 +299,13 @@ function route(text, recentContext = '') {
           }
       }
 
-      // --- SCENARIO B: Fetch Troops for mentioned Heroes ---
+      // Fetch Troops for mentioned Heroes
       if (entities.heroNames && entities.heroNames.length > 0) {
           let heroIdentifiers = new Set();
-          let targetHeroes = [];
-
           entities.heroNames.forEach(hName => {
               const hEntity = queryEngine.findEntityByName(hName);
               if (hEntity && hEntity.data) {
                   const hData = hEntity.data;
-                  targetHeroes.push(hData);
                   if (hData.faction) heroIdentifiers.add(String(hData.faction).toUpperCase());
                   if (hData.type) heroIdentifiers.add(String(hData.type).toUpperCase());
                   if (Array.isArray(hData.tags)) hData.tags.forEach(t => heroIdentifiers.add(String(t).toUpperCase()));
@@ -268,22 +314,18 @@ function route(text, recentContext = '') {
           });
 
           if (heroIdentifiers.size > 0) {
-              let allTroops = typeof queryEngine.findTroops === 'function' ? queryEngine.findTroops() : [];
               const hIdArray = Array.from(heroIdentifiers);
-
-              const matchingTroops = allTroops.filter(t => {
+              const matchingTroops = allKnownTroops.filter(t => {
                   let tId = [];
                   if (t.faction) tId.push(String(t.faction).toUpperCase());
                   if (t.type) tId.push(String(t.type).toUpperCase());
                   if (Array.isArray(t.tags)) tId.push(...t.tags.map(tag => String(tag).toUpperCase()));
                   if (t.analysis && Array.isArray(t.analysis.secondaryRoles)) tId.push(...t.analysis.secondaryRoles.map(tag => String(tag).toUpperCase()));
                   if (t.analysis && t.analysis.primaryRole) tId.push(String(t.analysis.primaryRole).toUpperCase());
-                  
                   return tId.some(id => hIdArray.includes(id));
               });
 
               if (matchingTroops.length > 0) {
-                  strategyData.context.targetHeroes = targetHeroes;
                   strategyData.context.troopRecommendations = matchingTroops.map(t => ({
                       name: t.name,
                       synergy_links: t.faction || (t.tags ? t.tags.join(', ') : 'N/A'),
@@ -293,10 +335,10 @@ function route(text, recentContext = '') {
               }
           }
       }
+  }
 
-      if (enrichmentAdded) {
-          strategyData.sufficient = true;
-      }
+  if (enrichmentAdded) {
+      strategyData.sufficient = true;
   }
 
   if (strategyData.sufficient || prebuiltEmbeds.length > 0) {
