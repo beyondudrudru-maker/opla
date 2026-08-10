@@ -31,6 +31,19 @@ function route(text, recentContext = '') {
   const normalizedText = text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ');
   const textNoSpace = text.toLowerCase().replace(/[^a-z0-9]/g, '');
 
+  // 🐙🔥 BOSS / SCENARIO INSTANT-RECOGNITION LAYER 🔥🐙
+  // "dagon", "kraken", "kalidor", "balthazar", "ashira" must ALWAYS be treated as a
+  // boss/scenario query, no matter what the intent classifier or the synergy/counter
+  // regexes below decide. Matches word-boundary (handles punctuation/case variance)
+  // AND a no-space substring pass (handles "Dagon's", "Dagon-Boss", stuck-together typos).
+  const BOSS_KEYWORDS = ['dagon', 'kraken', 'kalidor', 'balthazar', 'ashira'];
+  const matchedBossKeywords = BOSS_KEYWORDS.filter(k => {
+    const wordBoundaryHit = new RegExp(`\\b${k}\\b`, 'i').test(normalizedText);
+    const noSpaceHit = textNoSpace.includes(k); // catches "Dagon's", "Dagon-Boss", stuck-together phrasing
+    return wordBoundaryHit || noSpaceHit;
+  });
+  const isBossQuery = matchedBossKeywords.length > 0;
+
   allKnownHeroes.forEach(h => {
       const hName = h.name.toLowerCase();
       const hNameNoSpace = hName.replace(/\s+/g, '');
@@ -72,7 +85,7 @@ function route(text, recentContext = '') {
   const isCounterQuery = /\b(counter|beat|against|harana|opponents?|enemy|enemies|kill|defeat|samne)\b/i.test(text);
 
   // 🧠 FORCE STRATEGY INTENT
-  if (isSynergyQuery || isCounterQuery) {
+  if (isSynergyQuery || isCounterQuery || isBossQuery) {
       intent = 'STRATEGY';
   }
 
@@ -379,6 +392,43 @@ function route(text, recentContext = '') {
   const strategiesData = queryEngine.gameLibrary ? queryEngine.gameLibrary.strategies : null;
   
   if (strategiesData) {
+
+      // 🐙🔥 SCENARIO E: FORCE-INJECT BOSS GUIDE (fixes "against dagon boss" false negatives) 🔥🐙
+      // Runs unconditionally — completely bypasses isSynergyQuery/isCounterQuery gating below,
+      // since "against"/"beat"/"counter" phrasing was previously misrouting boss questions into
+      // the PvP counterGuides branch (which has no boss entries) while excluding them from the
+      // scenarioGuides branch that DOES have the data. This block guarantees a match instead.
+      if (isBossQuery && Array.isArray(strategiesData.scenarioGuides)) {
+          const existingScenarios = Array.isArray(strategyData.context.scenarioGuides) ? strategyData.context.scenarioGuides : [];
+          const seen = new Set(existingScenarios.map(s => s.scenario));
+
+          let bossGuides = strategiesData.scenarioGuides.filter(scen => {
+              const scenString = JSON.stringify(scen).toLowerCase();
+              return matchedBossKeywords.some(k => scenString.includes(k));
+          });
+
+          // Robustness fallback: a boss keyword was recognized but doesn't literally appear
+          // in any scenario entry (e.g. data not yet updated for a newly added boss) — fall
+          // back to the general boss-fight guide so the user still gets a real answer.
+          if (bossGuides.length === 0) {
+              bossGuides = strategiesData.scenarioGuides.filter(scen => /\bboss\b/i.test(scen.scenario));
+          }
+
+          bossGuides.forEach(g => {
+              if (!seen.has(g.scenario)) {
+                  existingScenarios.push(g);
+                  seen.add(g.scenario);
+              }
+          });
+
+          if (existingScenarios.length > 0) {
+              strategyData.context.scenarioGuides = existingScenarios;
+              strategyData.context.detectedBoss = matchedBossKeywords.join(', ');
+              enrichmentAdded = true;
+              strategyData.sufficient = true; // guaranteed — never falls through to "no data found"
+          }
+      }
+
       // 1. Equipment Guide Check
       if (/\b(weapon|armor|equipment|gear|item|items)\b/i.test(text) && strategiesData.equipmentSynergies) {
           strategyData.context.equipmentGuide = strategiesData.equipmentSynergies;
@@ -391,7 +441,7 @@ function route(text, recentContext = '') {
               const guideString = JSON.stringify(guide).toLowerCase();
               return entities.heroNames.some(h => guideString.includes(h.toLowerCase())) ||
                      entities.troopNames.some(t => guideString.includes(t.toLowerCase())) ||
-                     text.toLowerCase().includes(guide.targetOpponent.toLowerCase());
+                     (guide.targetOpponent && text.toLowerCase().includes(guide.targetOpponent.toLowerCase()));
       });
 
           if (relevantCounters.length > 0) {
@@ -419,17 +469,31 @@ function route(text, recentContext = '') {
       }
 
       // 4. Scenario Strategy Guides (Bosses, PvP, Scenarios)
-      if (strategiesData.scenarioGuides && !isCounterQuery) {
+      // Gate relaxed: a boss query (isBossQuery) must never be blocked here just because
+      // "against"/"beat"/"counter" phrasing also tripped isCounterQuery above.
+      if (strategiesData.scenarioGuides && (!isCounterQuery || isBossQuery)) {
+          // NOTE: the generic "scenario/fight/boss" hit is scoped to the scenario's OWN
+          // name (scen.scenario), not the raw user text — otherwise any message containing
+          // the word "boss" would match every single scenario guide (including irrelevant
+          // ones like "Swarm Clear"), which is imprecise and not "smart".
+          const genericScenarioQuery = /\b(scenario|fight|boss)\b/i.test(normalizedText);
           const relevantScenarios = strategiesData.scenarioGuides.filter(scen => {
               const scenString = JSON.stringify(scen).toLowerCase();
-              return mentionedTags.some(tag => scenString.includes(tag.toLowerCase())) || 
-                     text.toLowerCase().includes("scenario") || 
-                     text.toLowerCase().includes("fight") ||
-                     text.toLowerCase().includes("boss");
+              return mentionedTags.some(tag => scenString.includes(tag.toLowerCase())) ||
+                     matchedBossKeywords.some(k => scenString.includes(k)) ||
+                     (genericScenarioQuery && /\b(scenario|fight|boss)\b/i.test(scen.scenario));
           });
-          
+
           if (relevantScenarios.length > 0) {
-              strategyData.context.scenarioGuides = relevantScenarios;
+              const existingScenarios = Array.isArray(strategyData.context.scenarioGuides) ? strategyData.context.scenarioGuides : [];
+              const seen = new Set(existingScenarios.map(s => s.scenario));
+              relevantScenarios.forEach(g => {
+                  if (!seen.has(g.scenario)) {
+                      existingScenarios.push(g);
+                      seen.add(g.scenario);
+                  }
+              });
+              strategyData.context.scenarioGuides = existingScenarios;
               enrichmentAdded = true;
           }
       }
