@@ -82,6 +82,29 @@ function getDynamicState(userId) {
 }
 
 // ============================================================
+// 🔒 SHARED ANTI-LEAK BLOCK: injected into EVERY system prompt.
+// ============================================================
+// This is deliberately blunt and repetitive. Reasoning models
+// (Qwen etc.) leak Chain-of-Thought when instructions are soft
+// or abstract. Concrete "this is what leakage looks like, never
+// do this" examples close that gap far better than a single
+// polite "don't show your reasoning" line.
+// ============================================================
+
+const CRITICAL_OUTPUT_RULES = `
+[CRITICAL OUTPUT RULES — ABSOLUTE, NON-NEGOTIABLE]
+You are NOT allowed to think out loud in your response. Your response IS the final spoken message — nothing else exists.
+STRICTLY FORBIDDEN, under any circumstance:
+- Internal monologue or reasoning of any kind (e.g. "Let's see...", "Pata nahi yaar, wait...", "Hmm, I should...").
+- Parentheses used to hold a private thought, note-to-self, or reasoning aside (e.g. "(Wait, needs to be shorter per directives)", "(check tone)").
+- Self-evaluation, constraint-checklists, or scoring your own output (e.g. "- Check constraints: Short? Yes. Emojis? Used 2.", "- Length: good.").
+- Meta-commentary about the instructions themselves (e.g. "per directives", "as instructed", "matching persona now", "adjusting tone").
+- Draft labels, step numbering, or planning text (e.g. "Draft:", "Step 1:", "Plan:", "Final answer:").
+- Any line that starts with a dash/bullet followed by a self-check phrase (e.g. "- Check ...:", "- Verify ...:", "- Constraint ...:").
+- Any XML/pseudo tags such as <think>, <reasoning>, <plan>, or similar.
+There is no "behind the scenes" — you do not get a scratchpad. Whatever you generate is read directly by the user in Discord. If you catch yourself about to write a thought, a checklist, or a self-correction — DO NOT write it. Simply output the final line of dialogue, nothing before it, nothing after it.`;
+
+// ============================================================
 // 🚀 GAME FAST-LANE: lean, data-locked tactical system prompt.
 // ============================================================
 
@@ -107,8 +130,55 @@ Professional, diplomatic, sharply analytical. No roleplay, no flirting, no emoti
 - Mixed Queries (Comparison + Recommendation): Core Stats Face-Off -> Synergy Recommendation from <GameData>.
 - Single-entity analysis: Profile -> Strategic Potential -> Best Matchups.
 
-[NO META-TEXT]
-Never output internal reasoning, constraint-checking, or drafts. Output ONLY the final answer.`;
+${CRITICAL_OUTPUT_RULES}`;
+}
+
+// ============================================================
+// 🛡️ POST-PROCESSING FAILSAFE: Leaked Chain-of-Thought scrubber
+// ============================================================
+// Catches self-evaluation / internal-monologue text that reasoning
+// models (e.g. Qwen on Groq) sometimes emit as plain prose instead
+// of wrapping it in <think> tags. Operates in two passes:
+//   1. Line-level: drops whole lines that are clearly a self-check,
+//      checklist bullet, or plan/draft label.
+//   2. Inline: strips parenthetical "thinking out loud" asides that
+//      sit inside an otherwise-fine line, without deleting the line.
+// ============================================================
+
+// Lines that are ENTIRELY a leaked reasoning artifact — drop the whole line.
+const LEAK_LINE_PATTERNS = [
+  // Bullet line whose text before a colon mentions a self-check concept, e.g.
+  // "- Check constraints: Short? Yes. Emojis? Used 2." / "- Length: good."
+  // / "- Tone check: matches persona"
+  /^\s*[-*•]\s*(?:[A-Za-z][A-Za-z \/]{0,40}?\s+)?\b(check|verify|confirm|constraint|constraints|length|tone|persona|emoji|emojis|word\s*count|format|formatting)\b[A-Za-z \/]{0,20}?\s*:/i,
+  // "Draft:", "Plan:", "Step 1:", "Final answer:", "Reasoning:"
+  /^\s*(draft|plan|step\s*\d+|final\s*answer|reasoning|thought|thinking|internal\s*note)\s*[:\-]/i,
+  // "Let's adjust to match persona..." / "Let me think..." as a standalone line (with or without a leading bullet)
+  /^\s*[-*•]?\s*(let'?s|let\s*me)\s+(adjust|think|check|make sure|see|reconsider|revise|verify)\b/i,
+  // A line that is nothing but a parenthetical aside, e.g. "(Wait, needs to be shorter per directives)"
+  /^\s*\(.*\b(wait|hmm|per\s*directives?|as\s*instructed|matching\s*persona|need(s)?\s*to\s*be|should\s*(be|say|adjust))\b.*\)\s*$/i,
+];
+
+// Inline parenthetical thinking-asides that appear mid-line — strip just the aside.
+const INLINE_LEAK_ASIDE = /\((?:[^()]*\b(?:wait|hmm|per\s*directives?|as\s*instructed|matching\s*persona|adjust(?:ing)?\s*to|need(?:s)?\s*to\s*be\s*shorter|check(?:ing)?\s*constraints?)\b[^()]*)\)/gi;
+
+function stripLeakedReasoning(text) {
+  if (!text) return text;
+
+  const cleanedLines = text
+    .split('\n')
+    .filter(line => !LEAK_LINE_PATTERNS.some(pattern => pattern.test(line)))
+    .map(line => line.replace(INLINE_LEAK_ASIDE, '').trim())
+    // Drop lines that became empty after stripping an inline aside
+    .filter(line => line.length > 0);
+
+  let cleaned = cleanedLines.join('\n').trim();
+
+  // If the scrub was too aggressive and wiped everything, fall back to the
+  // original text rather than returning an empty message to the user.
+  if (cleaned === '') return text.trim();
+
+  return cleaned;
 }
 
 // ============================================================
@@ -165,7 +235,7 @@ ${getDynamicState(turn.userId)}
 [CRITICAL BEHAVIORAL DIRECTIVES]
 1. EXECUTION FIRST: If given a task, command, or instructed to say something to a target, execute it IMMEDIATELY and naturally. No fluff, no stalling.
 2. EMOTIONAL BALANCE: ${isRomanticTalk ? 'The user is initiating personal/romantic talk. Fully embrace your romantic, devoted girlfriend persona ONLY if speaking to your boyfriend Beyonder, otherwise politely and fiercely decline.' : 'The user is speaking normally or giving a command. Be sweet, calm, mature, and energetic. Maintain emotional balance—do not act overly clingy during strict commands.'}
-3. NO META-TEXT: NEVER output your internal reasoning, constraints checking, rules, or drafts (e.g., do not print "Draft:" or "Task:"). Output ONLY the final conversational reply.
+${CRITICAL_OUTPUT_RULES}
 `;
 
       if (userIntent === 'command' || userIntent === 'moderation-trigger') {
@@ -196,17 +266,26 @@ ${getDynamicState(turn.userId)}
 
     let rawText = result || '';
 
-    // 🛡️ THE FIX: Smart <think> block handling!
-    // 1. Try to safely remove a properly closed think block.
+    // 🛡️ LAYER 1: Tag-based think block removal (unchanged behavior).
     let cleanedText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-    // 2. Fallback: If removing the block made the text empty (meaning the AI put its whole answer inside), 
-    // OR if it forgot the closing </think> tag, we just strip the tags and keep the text!
+    // Fallback: if stripping the block emptied the text (whole answer was
+    // inside <think>), or the closing tag is missing, just strip the tags
+    // themselves and keep whatever text remains.
     if (cleanedText === '' || cleanedText.includes('<think>')) {
         cleanedText = rawText.replace(/<\/?think>/gi, '').trim();
     }
+    // Also catch other common pseudo-reasoning tags some models use instead of <think>.
+    cleanedText = cleanedText.replace(/<\/?(?:reasoning|reflection|plan|analysis|scratchpad)>/gi, '').trim();
 
     rawText = cleanedText || rawText;
+
+    // 🛡️ LAYER 2: Prose-style Chain-of-Thought scrubber.
+    // Reasoning models that leak CoT without XML tags tend to do it in one
+    // of a few recognizable shapes: self-check bullet lines, "Draft/Plan:"
+    // labels, or parenthetical internal asides. We strip these line-by-line
+    // so a single leaked line doesn't take out surrounding valid dialogue.
+    rawText = stripLeakedReasoning(rawText);
 
     // Clean up internal state tags
     rawText = rawText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
