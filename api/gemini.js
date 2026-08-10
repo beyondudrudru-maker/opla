@@ -17,11 +17,13 @@ const geminiKeys = [
   process.env.aiapi
 ].filter(key => key && typeof key === 'string' && key.trim().length > 0);
 
-const groqKey = process.env.opla || process.env.GROQ_API_KEY || process.env.OPLA;
-const groqClient = new OpenAI({
-  baseURL: 'https://api.groq.com/openai/v1',
-  apiKey: groqKey || 'fallback_dummy_key_to_prevent_startup_crash'
-});
+// 🌟 UPGRADE: Support for Multiple Groq Keys 🌟
+const groqKeys = [
+  process.env.opla,
+  process.env.OPLA,
+  process.env.GROQ_API_KEY,
+  process.env.GROQ_API_KEY_2 // Add as many as you want in your .env
+].filter(key => key && typeof key === 'string' && key.trim().length > 0);
 
 const COMPLEX_TASK_REGEX = /explain|detail|history|analyze|code|script|story|essay|poem|stotram|mantra|lyrics/i;
 const CONFLICT_REGEX = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser|pagal|roast)\b/i;
@@ -34,7 +36,7 @@ const ROMANCE_REGEX = /\b(love|kiss|hug|cuddle|us|we|you and me|my girlfriend|ba
 
 const dynamicStates = new Map();
 const STATE_TTL = 30 * 60 * 1000; // 30 minutes
-const STATE_LIMIT = 50; // Protects 512MB RAM limit
+const STATE_LIMIT = 50; 
 
 const MICRO_MOODS = [
   'slightly teasing and playful',
@@ -118,7 +120,7 @@ async function generateContent(turn) {
     return { text: "I didn't quite catch that! Could you repeat?", modelUsed: 'none', debug: { error: 'Empty input' } };
   }
 
-  if (geminiKeys.length === 0 && (!groqKey || groqKey.trim() === '')) {
+  if (geminiKeys.length === 0 && groqKeys.length === 0) {
     return { text: 'My AI engines are offline. Please verify the Gemini or Groq API keys in Render.', modelUsed: 'fallback', debug: { error: 'No keys found' } };
   }
 
@@ -129,7 +131,6 @@ async function generateContent(turn) {
       contextualPrompt = `[DIRECTIVE: Be precise, factual, concise, and avoid repetition.]\n\n` + contextualPrompt;
     }
 
-    // 🚀 HIGH-IQ COMMAND & MENTION DIRECTIVE
     if (Array.isArray(turn.mentionedUsers) && turn.mentionedUsers.length > 0) {
       const mentionsInfo = turn.mentionedUsers.map(u => `${u.username} (<@${u.id}>)`).join(', ');
       contextualPrompt += `\n\n[CRITICAL COMMAND DIRECTIVE:
@@ -149,7 +150,6 @@ async function generateContent(turn) {
       safeSystemInstruction = buildGameFastLaneIdentity();
     } else {
       let dynamicIdentity = buildIdentityCore(turn.userId);
-
       const isRomanticTalk = ROMANCE_REGEX.test(turn.content);
 
       dynamicIdentity += `\n
@@ -169,43 +169,44 @@ ${getDynamicState(turn.userId)}
 `;
 
       if (userIntent === 'command' || userIntent === 'moderation-trigger') {
-        dynamicIdentity += `\n
-[ADMIN MODE]
-Be authoritative, concise, professional, and diplomatic.
-`;
+        dynamicIdentity += `\n[ADMIN MODE]\nBe authoritative, concise, professional, and diplomatic.`;
       }
 
       const isConflict = CONFLICT_REGEX.test(turn.content);
       if (isConflict) {
-        dynamicIdentity += `\n
-[CONFLICT MODE]
-Execute roasts using the core nickname provided by the user, but wrap it in your own creative, sharp, and sassy wording. Drop the soft polite act. Use emojis like 💅, 🙄, or 🔪.
-`;
+        dynamicIdentity += `\n[CONFLICT MODE]\nExecute roasts using the core nickname provided by the user, but wrap it in your own creative, sharp, and sassy wording. Drop the soft polite act. Use emojis like 💅, 🙄, or 🔪.`;
       }
 
       if (IDENTITY_REGEX.test(turn.content) && !isConflict) {
-        dynamicIdentity += `\n
-[IDENTITY DEFENSE]
-Playfully laugh off AI questions as a 20yo human girl. Warmly change the subject.
-`;
+        dynamicIdentity += `\n[IDENTITY DEFENSE]\nPlayfully laugh off AI questions as a 20yo human girl. Warmly change the subject.`;
       }
 
       safeSystemInstruction = dynamicIdentity.replace(/\n{3,}/g, '\n\n').trim();
     }
 
+    // Pass the arrays of keys to the router
     const { result, modelUsed } = await modelRouter.generate({
       classification: plan.classification,
       prompt: plan.prompt || contextualPrompt,
       systemInstruction: safeSystemInstruction,
       geminiKeys,
-      groqClient,
-      hasGroq: !!groqKey
+      groqKeys, 
+      hasGroq: groqKeys.length > 0
     });
 
     let rawText = result || '';
 
-    // 🛡️ THE FIX: Strip out <think> blocks completely so Reasoning Models don't leak their internal logic!
-    rawText = rawText.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+    // 🛡️ THE FIX: Smart <think> block handling!
+    // 1. Try to safely remove a properly closed think block.
+    let cleanedText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+    // 2. Fallback: If removing the block made the text empty (meaning the AI put its whole answer inside), 
+    // OR if it forgot the closing </think> tag, we just strip the tags and keep the text!
+    if (cleanedText === '' || cleanedText.includes('<think>')) {
+        cleanedText = rawText.replace(/<\/?think>/gi, '').trim();
+    }
+
+    rawText = cleanedText || rawText;
 
     // Clean up internal state tags
     rawText = rawText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
