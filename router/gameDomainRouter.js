@@ -3,7 +3,7 @@
  * 
  * PURPOSE: Resolves user queries into visual Embed Cards AND passes strict deterministic
  * data contexts to the AI pipeline for deep, hallucination-free strategic analysis.
- * 🌟 UPGRADE: Advanced Tag & Faction Matching for Smart Synergy Enrichment.
+ * 🌟 UPGRADE: Advanced Tag, Role & Synergy Matching for Ultra-Smart Hero Recommendations.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -200,7 +200,7 @@ function route(text, recentContext = '') {
   // 🧠 5. STRATEGY & AI INTELLIGENCE PIPELINE
   let strategyData = build(intent, entities);
   
-  // 🌟 SMART SYNERGY ENRICHMENT (Upgraded for Tags & Multiple Formats) 🌟
+  // 🌟 SMART SYNERGY ENRICHMENT (Powered by your rich tags & types) 🌟
   if (isSynergyQuery && entities.troopNames && entities.troopNames.length === 1 && (!entities.heroNames || entities.heroNames.length === 0)) {
       const troopName = entities.troopNames[0];
       const troopEntity = queryEngine.findEntityByName(troopName);
@@ -208,26 +208,34 @@ function route(text, recentContext = '') {
       if (troopEntity && troopEntity.data) {
           const tData = troopEntity.data;
           
-          // Collect ALL possible identifiers into an array to ensure we don't miss a match
+          // Collect ALL possible identifiers (Faction, Type, Tags, Primary/Secondary Roles)
           let troopIdentifiers = [];
           if (tData.faction) troopIdentifiers.push(String(tData.faction).toUpperCase());
           if (tData.type) troopIdentifiers.push(String(tData.type).toUpperCase());
           if (Array.isArray(tData.tags)) {
               troopIdentifiers.push(...tData.tags.map(t => String(t).toUpperCase()));
           }
+          if (tData.analysis && Array.isArray(tData.analysis.secondaryRoles)) {
+              troopIdentifiers.push(...tData.analysis.secondaryRoles.map(t => String(t).toUpperCase()));
+          }
+          if (tData.analysis && tData.analysis.primaryRole) {
+              troopIdentifiers.push(String(tData.analysis.primaryRole).toUpperCase());
+          }
           
           if (troopIdentifiers.length > 0) {
-              // Fetch all heroes
-              let allHeroes = [];
-              if (typeof queryEngine.getAllHeroes === 'function') {
-                  allHeroes = queryEngine.getAllHeroes();
-              } else if (typeof queryEngine.getAllEntities === 'function') {
-                  allHeroes = queryEngine.getAllEntities().filter(e => e.type === 'hero').map(e => e.data);
-              } else if (queryEngine.entities) {
-                  allHeroes = queryEngine.entities.filter(e => e.type === 'hero').map(e => e.data);
+              // 🚀 Automatically use your engine's existing findHeroes() function!
+              let allHeroes = typeof queryEngine.findHeroes === 'function' ? queryEngine.findHeroes() : [];
+              
+              // Fallbacks just in case
+              if (allHeroes.length === 0) {
+                  if (typeof queryEngine.getAllHeroes === 'function') {
+                      allHeroes = queryEngine.getAllHeroes();
+                  } else if (typeof queryEngine.getAllEntities === 'function') {
+                      allHeroes = queryEngine.getAllEntities().filter(e => e.type === 'hero').map(e => e.data);
+                  }
               }
 
-              // Filter heroes that share AT LEAST ONE identifier (tag, faction, or type)
+              // Filter heroes that share AT LEAST ONE identifier with the troop
               const matchingHeroes = allHeroes.filter(h => {
                   let hIdentifiers = [];
                   if (h.faction) hIdentifiers.push(String(h.faction).toUpperCase());
@@ -235,8 +243,11 @@ function route(text, recentContext = '') {
                   if (Array.isArray(h.tags)) {
                       hIdentifiers.push(...h.tags.map(t => String(t).toUpperCase()));
                   }
+                  if (Array.isArray(h.synergies)) {
+                      hIdentifiers.push(...h.synergies.map(t => String(t).toUpperCase()));
+                  }
 
-                  // Check if there is any overlap between troop identifiers and hero identifiers
+                  // Check for any overlap between troop and hero
                   return hIdentifiers.some(id => troopIdentifiers.includes(id));
               });
 
@@ -247,7 +258,7 @@ function route(text, recentContext = '') {
                   strategyData.context.targetTroop = tData;
                   strategyData.context.factionSynergyCandidates = matchingHeroes.map(h => ({
                       name: h.name,
-                      tags_faction: h.faction || h.type || (h.tags ? h.tags.join(', ') : 'N/A'),
+                      synergy_links: h.faction || h.type || (h.tags ? h.tags.join(', ') : 'N/A'),
                       rarity: h.rarity,
                       talent: h.talent ? (h.talent.description || h.talent) : 'N/A',
                       ability: h.ability ? (h.ability.description || h.ability) : 'N/A'
