@@ -7,7 +7,7 @@
  */
 
 const strategies = {
-  version: "1.0.0",
+  version: "1.1.0",
   maxHeroesPerFormation: 2,
 
   // 1. OPTIMAL FORMATIONS
@@ -41,12 +41,12 @@ const strategies = {
     },
     {
       id: "form-boss-burst",
-      name: "Boss Burst Squad",
-      heroes: ["HARKON_01", "REMUS_01"],
-      troopArchetype: "Ranged",
-      recommendedTroops: ["tr-magic-archer", "tr-cursed-catapult", "tr-axe-throwers", "tr-shaman"],
-      synergyRating: "A",
-      reasoning: "Both heroes carry the 'Boss-Damage' tag. Remus's Threat of Giants buffs All-Allies damage specifically against tanks and bosses (30-85%), while Harkon's Insatiable Flame grows stronger with every enemy that dies inside his burn zone — in a long single-target boss fight neither effect wastes potential, and Remus's Light Shield absorbs the punishing counter-hits bosses deal back."
+      name: "Elite Boss Burst Squad",
+      heroes: ["REMUS_01", "TRISTAN_01", "LIREAL_01", "CALYRA_01"],
+      troopArchetype: "Mixed DPS",
+      recommendedTroops: ["tr-imp", "tr-alchemist", "tr-bonebreaker", "tr-headless", "tr-storm-mistresses", "tr-assassin", "tr-bone-thrower", "tr-archer", "tr-paladin", "tr-axe-throwers"],
+      synergyRating: "S",
+      reasoning: "For maximum boss damage, stick strictly to the approved roster. Remus provides massive boss-specific damage buffs. Pair him with sustain/utility heroes like Tristan, Lireal, or Calyra. WARNING: Never use Harkon in this formation, as his talent does not function in boss battles."
     },
     {
       id: "form-swarm-lockdown",
@@ -71,10 +71,16 @@ const strategies = {
   // 2. SCENARIO GUIDES
   scenarioGuides: [
     {
-      scenario: "High-Damage Boss Fight",
-      recommendedHeroes: ["HARKON_01", "REMUS_01"],
-      primaryTroopType: "Ranged",
-      notes: "Prioritize this over Trickster comps for bosses specifically — Remus's Boss-Damage buff and Harkon's snowballing burn zones both reward the longer, single-target nature of boss encounters."
+      scenario: "General Boss Fights (Kalidor, Balthazar, Ashira)",
+      recommendedHeroes: ["Lireal", "Calyra", "Remus", "Tristan", "Anavin", "Drake", "Dragon Rider", "Bone Dragon"],
+      recommendedTroops: ["Imp", "Alchemist", "Bone Breaker", "Headless", "Storm Mistress", "Assassin", "Bone Thrower", "Archer", "Paladin", "Axe Thrower"],
+      notes: "For maximum efficiency against bosses, stick strictly to the approved roster above. Heroes like Remus provide massive boss-damage buffs, while Calyra and Tristan provide the necessary sustain. WARNING: Do not use Harkon, his talent is disabled during boss fights."
+    },
+    {
+      scenario: "Kraken Boss / Dagon: Max Score Timings",
+      recommendedHeroes: ["Bone Dragon"],
+      primaryTroopType: "High Single-Target DPS",
+      notes: "CRUCIAL TACTICS:\n1. 🛑 Turn OFF Auto Hero Ability!\n2. 🐉 Place Bone Dragon at the RIGHT of the formation.\n\nFollow these precise target timings for maximum damage:\n\n⏱️ Minute 4\n4:51 Mouth\n4:39 Barrel\n4:24 Tentacles\n4:13 Barrel\n4:03 Tentacles\n\n⏱️ Minute 3\n3:40 Tentacles\n3:21 Tentacles\n3:10 Mouth\n3:00 Tentacles\n\n⏱️ Minute 2\n2:37 Tentacles\n2:18 Tentacles\n2:07 Mouth\n\n⏱️ Minute 1\n1:56 Tentacles\n1:34 Tentacles\n1:15 Tentacles\n1:04 Mouth\n\n⏱️ Minute 0\n0:54 Tentacles\n0:31 Tentacles\n0:21 Mouth\n0:11 Tentacles"
     },
     {
       scenario: "PvP Defense",
@@ -99,12 +105,6 @@ const strategies = {
       recommendedHeroes: ["ANAVIN_01", "KEYRA_01"],
       primaryTroopType: "Mages",
       notes: "Use when facing high-HP single targets or bunched formations — the stacked attack multipliers reward sustained backline uptime rather than burst windows."
-    },
-    {
-      scenario: "Speed Clear / Fast Rush",
-      recommendedHeroes: ["BRUTALLUS_01", "ATREYA_01"],
-      primaryTroopType: "Trickster",
-      notes: "Best for farming low-resistance stages quickly — fear+crit stacking front-loads damage so fights end before enemy abilities come off cooldown."
     }
   ],
 
