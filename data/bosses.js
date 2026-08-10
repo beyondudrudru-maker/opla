@@ -1,7 +1,10 @@
 /**
  * MELODY Game Knowledge Library — Bosses
- * Boss kits and fight strategy notes, unchanged from source.
+ * Boss kits and fight strategy notes, enriched with strict hero/troop roster rules.
  */
+
+const bossRosterWarning = "\n\n[UNIVERSAL BOSS ROSTER & WARNING]: Do NOT use Harkon. His talent is disabled in boss battles. Recommended Heroes: Lireal, Calyra, Remus, Tristan, Anavin, Drake, Dragon Rider, Bone Dragon. Recommended Troops: Imp, Alchemist, Bone Breaker, Headless, Storm Mistress, Assassin, Bone Thrower, Archer, Paladin, Axe Thrower.";
+
 const bosses = [
   {
     "name": "KALIDOR",
@@ -34,7 +37,7 @@ const bosses = [
         "description": "Throws a spear into the center unleashing an explosive wave dealing 6000 DMG."
       }
     ],
-    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Kalidor has 30% Ranged Protection. Use high HP melee/tanks and heavy healers to survive the massive 6000 DMG Explosive Spear."
+    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Kalidor has 30% Ranged Protection. Use high HP melee/tanks and heavy healers to survive the massive 6000 DMG Explosive Spear." + bossRosterWarning
   },
   {
     "name": "BALTHAZAR",
@@ -69,7 +72,7 @@ const bosses = [
         "damage": 7200
       }
     ],
-    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Balthazar has 30% Melee Protection. Rely heavily on Ranged units for your primary DPS. Bring strong healers to sustain your troops through his massive, battlefield-wide AoE attacks like Fury from the Deep."
+    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Balthazar has 30% Melee Protection. Rely heavily on Ranged units for your primary DPS. Bring strong healers to sustain your troops through his massive, battlefield-wide AoE attacks like Fury from the Deep." + bossRosterWarning
   },
   {
     "name": "ASHIRA",
@@ -110,7 +113,7 @@ const bosses = [
         "damage": 550
       }
     ],
-    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Ashira has 30% Ranged Protection, so you should prioritize **Melee units** for your primary DPS. However, be careful—her **Chitin Carapace** reflects 20% of basic attack damage back at your melee units, so bring heavy healers or shield-bearers to keep your frontline alive against both the reflected damage and the constant swarms of explosive spiders!"
+    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Ashira has 30% Ranged Protection, so you should prioritize **Melee units** for your primary DPS. However, be careful—her **Chitin Carapace** reflects 20% of basic attack damage back at your melee units, so bring heavy healers or shield-bearers to keep your frontline alive against both the reflected damage and the constant swarms of explosive spiders!" + bossRosterWarning
   },
   {
     "name": "DAGON",
@@ -144,7 +147,7 @@ const bosses = [
         "damage": 8000
       }
     ],
-    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Dagon has 30% Ranged Protection, so rely heavily on your strongest Melee/Tank units. Be extremely vigilant with the Hungry Jaws mechanic—keep your finger ready on the ship's cannon to interrupt him and save your 15 units. High-health troops are required to survive the massive 18,000 DMG Tentacle Smash!"
+    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Dagon has 30% Ranged Protection, so rely heavily on your strongest Melee/Tank units. Be extremely vigilant with the Hungry Jaws mechanic—keep your finger ready on the ship's cannon to interrupt him and save your 15 units. High-health troops are required to survive the massive 18,000 DMG Tentacle Smash!\n\n[KRAKEN BOSS MAX SCORE TIMINGS]: Turn OFF Auto Hero Ability! Place Bone Dragon at the RIGHT of the formation. Target Timings: Minute 4 (4:51 Mouth, 4:39 Barrel, 4:24 Tentacles, 4:13 Barrel, 4:03 Tentacles), Minute 3 (3:40 Tentacles, 3:21 Tentacles, 3:10 Mouth, 3:00 Tentacles), Minute 2 (2:37 Tentacles, 2:18 Tentacles, 2:07 Mouth), Minute 1 (1:56 Tentacles, 1:34 Tentacles, 1:15 Tentacles, 1:04 Mouth), Minute 0 (0:54 Tentacles, 0:31 Tentacles, 0:21 Mouth, 0:11 Tentacles)." + bossRosterWarning
   }
 ];
 
