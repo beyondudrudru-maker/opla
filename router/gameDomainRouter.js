@@ -3,7 +3,7 @@
  * 
  * PURPOSE: Resolves user queries into visual Embed Cards AND passes strict deterministic
  * data contexts to the AI pipeline for deep, hallucination-free strategic analysis.
- * 🌟 UPGRADE: Added SCENARIO C to detect general Categories/Roles (like "Tanks" or "Mages").
+ * 🌟 FINAL UPGRADE: Scenario D added for Advanced 2-Hero Combos, Equipment, and Scenarios!
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -49,8 +49,8 @@ function route(text, recentContext = '') {
   if (entities.heroNames.length > 0) entities.heroName = entities.heroNames[0];
   if (entities.troopNames.length > 0) entities.troopName = entities.troopNames[0];
 
-  // 🌍 MULTILINGUAL SYNERGY REGEX
-  const isSynergyQuery = /\b(best with|synergy|alongside|use with|combination|which hero|which troop|which troops|konse hero|konse troop|kiske sath|accha outcome|mejor con|melhor com|meilleur avec|terbaik dengan|sinergia|synergie)\b/i.test(text);
+  // 🌍 MULTILINGUAL & ADVANCED SYNERGY REGEX
+  const isSynergyQuery = /\b(best with|synergy|alongside|use with|combination|combo|formation|weapon|armor|equipment|gear|which hero|which troop|which troops|konse hero|konse troop|kiske sath|accha outcome|mejor con|melhor com|meilleur avec|terbaik dengan|sinergia|synergie)\b/i.test(text);
 
   // 🧠 FORCE STRATEGY INTENT
   if (isSynergyQuery) {
@@ -233,6 +233,10 @@ function route(text, recentContext = '') {
   
   let enrichmentAdded = false;
 
+  // Compute generic game tags early for efficient matching
+  const gameTags = ['tank', 'mage', 'archer', 'undead', 'human', 'beast', 'support', 'melee', 'ranged', 'ranger', 'summoner', 'assassin', 'boss', 'pvp', 'defense'];
+  const mentionedTags = gameTags.filter(tag => new RegExp(`\\b${tag}s?\\b`, 'i').test(text));
+
   // 🌟 SCENARIO A: EXPLICIT DATA INJECTION
   if (entities.heroNames.length > 0) {
       strategyData.context.mentionedHeroes = [];
@@ -327,55 +331,63 @@ function route(text, recentContext = '') {
           }
       }
 
-      // 🌟 SCENARIO C: CATEGORY & ROLE SCANNER (The fix for "Tanks" and generic classes) 🌟
-      if (!enrichmentAdded) {
-          // Add core gameplay roles, classes, and factions here
-          const gameTags = ['tank', 'mage', 'archer', 'undead', 'human', 'beast', 'support', 'melee', 'ranged', 'ranger', 'summoner', 'assassin'];
-          
-          // Check if the user mentioned any of these generic tags (handles plurals like "tanks" too)
-          let mentionedTags = gameTags.filter(tag => new RegExp(`\\b${tag}s?\\b`, 'i').test(text));
+      // 🌟 SCENARIO C: CATEGORY & ROLE SCANNER 🌟
+      if (!enrichmentAdded && mentionedTags.length > 0) {
+          const matchingHeroes = allKnownHeroes.filter(h => {
+              let hId = [];
+              if (h.faction) hId.push(String(h.faction).toLowerCase());
+              if (h.type) hId.push(String(h.type).toLowerCase());
+              if (Array.isArray(h.tags)) hId.push(...h.tags.map(t => String(t).toLowerCase()));
+              if (Array.isArray(h.synergies)) hId.push(...h.synergies.map(t => String(t).toLowerCase()));
+              
+              return mentionedTags.some(mt => hId.some(id => id.includes(mt)));
+          });
 
-          if (mentionedTags.length > 0) {
-              const matchingHeroes = allKnownHeroes.filter(h => {
-                  let hId = [];
-                  if (h.faction) hId.push(String(h.faction).toLowerCase());
-                  if (h.type) hId.push(String(h.type).toLowerCase());
-                  if (Array.isArray(h.tags)) hId.push(...h.tags.map(t => String(t).toLowerCase()));
-                  if (Array.isArray(h.synergies)) hId.push(...h.synergies.map(t => String(t).toLowerCase()));
-                  
-                  // Does this hero relate to the generic tag asked about?
-                  return mentionedTags.some(mt => hId.includes(mt));
-              });
-
-              if (matchingHeroes.length > 0) {
-                  strategyData.context.targetCategory = mentionedTags.join(', ').toUpperCase();
-                  strategyData.context.heroRecommendations = matchingHeroes.map(h => ({
-                      name: h.name,
-                      synergy_links: h.faction || h.type || (h.tags ? h.tags.join(', ') : 'N/A'),
-                      rarity: h.rarity,
-                      talent: h.talent ? (h.talent.description || h.talent) : 'N/A'
-                  }));
-                  enrichmentAdded = true;
-              }
+          if (matchingHeroes.length > 0) {
+              strategyData.context.targetCategory = mentionedTags.join(', ').toUpperCase();
+              strategyData.context.heroRecommendations = matchingHeroes.map(h => ({
+                  name: h.name,
+                  synergy_links: h.faction || h.type || (h.tags ? h.tags.join(', ') : 'N/A'),
+                  rarity: h.rarity,
+                  talent: h.talent ? (h.talent.description || h.talent) : 'N/A'
+              }));
+              enrichmentAdded = true;
           }
       }
   }
 
-  if (enrichmentAdded) {
-      strategyData.sufficient = true;
-  }
+  // 🌟 SCENARIO D: ADVANCED COMBOS & EQUIPMENT STRATEGIES (New Upgrade) 🌟
+  // Checks if your new strategies file is available through the Central Hub
+  const strategiesData = queryEngine.gameLibrary ? queryEngine.gameLibrary.strategies : null;
+  
+  if (strategiesData) {
+      // 1. Equipment Guide Check
+      if (/\b(weapon|armor|equipment|gear|item|items)\b/i.test(text) && strategiesData.equipmentSynergies) {
+          strategyData.context.equipmentGuide = strategiesData.equipmentSynergies;
+          enrichmentAdded = true;
+      }
 
-  if (strategyData.sufficient || prebuiltEmbeds.length > 0) {
-      return { 
-        resolved: false, 
-        embeds: prebuiltEmbeds.length > 0 ? prebuiltEmbeds : null,
-        intent, 
-        entities, 
-        context: strategyData.sufficient ? strategyData.context : null 
-      };
-  }
+      // 2. 2-Hero Formations Check (Highly Token Efficient)
+      if (isSynergyQuery && strategiesData.optimalFormations) {
+          // Send only the formations that are relevant to what the user asked
+          const relevantFormations = strategiesData.optimalFormations.filter(form => {
+              const formString = JSON.stringify(form).toLowerCase();
+              return entities.heroNames.some(h => formString.includes(h.toLowerCase())) ||
+                     entities.troopNames.some(t => formString.includes(t.toLowerCase())) ||
+                     mentionedTags.some(tag => formString.includes(tag.toLowerCase()));
+          });
 
-  return { resolved: false, intent, entities, context: null };
-}
+          if (relevantFormations.length > 0) {
+              strategyData.context.optimalFormations = relevantFormations;
+              enrichmentAdded = true;
+          } else if (entities.heroNames.length === 0 && entities.troopNames.length === 0 && mentionedTags.length === 0) {
+              // If they ask generally "what is the best combo", give them the top 3
+              strategyData.context.optimalFormations = strategiesData.optimalFormations.slice(0, 3);
+              enrichmentAdded = true;
+          }
+      }
 
-module.exports = { route };
+      // 3. Scenario Strategy Guides (Bosses, PvP, Scenarios)
+      if (strategiesData.scenarioGuides) {
+          const relevantScenarios = strategiesData.scenarioGuides.filter(scen => {
+              const scenString = JSON.stringify(scen).toLowerCase
