@@ -147,12 +147,20 @@ const MODEL_REGISTRY = {
       gameStrategy: 6, longContext: 6, toolUse: 6, reliability: 8,
       costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
     },
-    'qwen/qwen3.6-27b': {
-      provider: 'groq', model: 'qwen/qwen3.6-27b',
-      quality: 7, speed: 8, reasoning: 7, coding: 7, math: 6, casualChat: 7,
-      creativeWriting: 6, multilingual: 9, hindi: 8, structuredOutput: 6,
-      gameStrategy: 6, longContext: 6, toolUse: 5, reliability: 6,
-      costTier: 'free-limited', preview: true, maxOutputTokens: 4096, status: 'active'
+    // qwen/qwen3.6-27b REMOVED (2026-08-10): it's a preview reasoning model
+    // that intermittently leaks its raw chain-of-thought / scratchpad
+    // ("Here's a thinking process: 1. Analyze User Input...") straight into
+    // the user-facing reply, ignoring "NO internal thoughts, DIRECT response
+    // only" persona instructions. Groq itself documents it as
+    // eval-only, not production. Replaced with Kimi K2 0905 — a
+    // non-thinking instruct model with comparable multilingual/Hindi
+    // strength and no scratchpad-leak behavior observed.
+    'moonshotai/kimi-k2-instruct-0905': {
+      provider: 'groq', model: 'moonshotai/kimi-k2-instruct-0905',
+      quality: 8, speed: 7, reasoning: 7, coding: 8, math: 6, casualChat: 7,
+      creativeWriting: 7, multilingual: 8, hindi: 7, structuredOutput: 7,
+      gameStrategy: 6, longContext: 7, toolUse: 7, reliability: 7,
+      costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
     },
     'groq/compound': {
       provider: 'groq', model: 'groq/compound',
@@ -1016,6 +1024,10 @@ async function discoverGroqModels(groqClient) {
   const ids = (list?.data || []).map((m) => m.id).filter(Boolean);
   for (const id of ids) {
     if (/whisper|tts|guard/i.test(id)) continue;
+    // Explicitly blocked from auto-(re)discovery: leaks raw chain-of-thought
+    // into user-facing replies (see registry comment above). Do not remove
+    // this line without confirming the leak behavior is fixed upstream.
+    if (/^qwen\//i.test(id)) continue;
     upsertDiscovered('groq', id, { costTier: 'free-limited' });
   }
 }
