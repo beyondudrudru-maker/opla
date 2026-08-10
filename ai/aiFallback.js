@@ -1,10 +1,10 @@
-// ai/aiFallback.js
 /**
  * ai/aiFallback.js
  *
  * PURPOSE: The authoritative AI strategy layer. It enforces strict 
  * formatting, anti-hallucination rules, and professional diplomatic tone
  * before passing the context to modelRouter.
+ * 🚀 UPGRADE: Updated to support the multi-key groqKeys array array architecture seamlessly.
  */
 
 const modelRouter = require('../router/modelRouter.js'); 
@@ -45,10 +45,10 @@ STRICT RULES:
    • **Optimal Matchups:** Analyze intelligently what types of situations they counter.`;
 
 /**
- * askAI({ userMessage, intent, context, geminiKeys, groqClient, hasGroq, classification })
+ * askAI({ userMessage, intent, context, geminiKeys, groqKeys, classification })
  * -> Promise<string>
  */
-async function askAI({ userMessage, intent, context, geminiKeys = [], groqClient, hasGroq, classification }) {
+async function askAI({ userMessage, intent, context, geminiKeys = [], groqKeys = [], classification }) {
   
   const prompt = `
 <UserQuestion>${userMessage || 'Provide a strategic breakdown.'}</UserQuestion>
@@ -66,8 +66,7 @@ ${context ? JSON.stringify(context, null, 2) : 'No exact data found in database.
     userMessage,
     systemInstruction: STRATEGY_SYSTEM_INSTRUCTION,
     geminiKeys,
-    groqClient,
-    hasGroq
+    groqKeys
   });
 
   let cleanResult = result || '';
