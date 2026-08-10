@@ -4,6 +4,7 @@
  * PURPOSE: Resolves user queries into visual Embed Cards AND passes strict deterministic
  * data contexts to the AI pipeline for deep, hallucination-free strategic analysis.
  * 🌟 FINAL UPGRADE: Scenario D added for Advanced 2-Hero Combos, Equipment, Scenarios, and COUNTERS!
+ * 🛡️ SMART SCRAPER: Scunthorpe-Proof entity detection to prevent false-positive matches.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -18,7 +19,7 @@ function route(text, recentContext = '') {
   let { intent, entities } = classify(text);
   entities.rawText = text;
 
-  // 🛡️ BULLETPROOF ENTITY SCRAPER 
+  // 🛡️ BULLETPROOF ENTITY SCRAPER (Scunthorpe-Proof)
   if (!entities.heroNames) entities.heroNames = [];
   if (!entities.troopNames) entities.troopNames = [];
   if (entities.heroName && !entities.heroNames.includes(entities.heroName)) entities.heroNames.push(entities.heroName);
@@ -33,7 +34,15 @@ function route(text, recentContext = '') {
   allKnownHeroes.forEach(h => {
       const hName = h.name.toLowerCase();
       const hNameNoSpace = hName.replace(/\s+/g, '');
-      if ((normalizedText.includes(hName) || textNoSpace.includes(hNameNoSpace)) && !entities.heroNames.some(e => e.toLowerCase() === hName)) {
+      
+      // Escape regex special characters just in case
+      const safeName = hName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // 1. Strict word boundary match
+      const exactMatch = new RegExp(`\\b${safeName}\\b`, 'i').test(normalizedText);
+      // 2. Typo match (no spaces), but ONLY for names > 4 chars to avoid false positives
+      const typoMatch = hNameNoSpace.length > 4 && textNoSpace.includes(hNameNoSpace);
+
+      if ((exactMatch || typoMatch) && !entities.heroNames.some(e => e.toLowerCase() === hName)) {
           entities.heroNames.push(h.name);
       }
   });
@@ -41,7 +50,14 @@ function route(text, recentContext = '') {
   allKnownTroops.forEach(t => {
       const tName = t.name.toLowerCase();
       const tNameNoSpace = tName.replace(/\s+/g, '');
-      if ((normalizedText.includes(tName) || textNoSpace.includes(tNameNoSpace)) && !entities.troopNames.some(e => e.toLowerCase() === tName)) {
+      
+      const safeName = tName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // 1. Strict word boundary match
+      const exactMatch = new RegExp(`\\b${safeName}\\b`, 'i').test(normalizedText);
+      // 2. Typo match (no spaces), but ONLY for names > 4 chars to avoid false positives (e.g., "imp")
+      const typoMatch = tNameNoSpace.length > 4 && textNoSpace.includes(tNameNoSpace);
+
+      if ((exactMatch || typoMatch) && !entities.troopNames.some(e => e.toLowerCase() === tName)) {
           entities.troopNames.push(t.name);
       }
   });
@@ -376,7 +392,7 @@ function route(text, recentContext = '') {
               return entities.heroNames.some(h => guideString.includes(h.toLowerCase())) ||
                      entities.troopNames.some(t => guideString.includes(t.toLowerCase())) ||
                      text.toLowerCase().includes(guide.targetOpponent.toLowerCase());
-          });
+      });
 
           if (relevantCounters.length > 0) {
               strategyData.context.counterGuides = relevantCounters;
@@ -394,6 +410,9 @@ function route(text, recentContext = '') {
           });
 
           if (relevantFormations.length > 0) {
+              strategyData.context.optimalFormations = relevantFormations;
+              enrichmentAdded = true;
+          } else if (entities.heroNames.length === 0 && entities.troopNames.length === 0 && mentionedTags.length === 0) {
               strategyData.context.optimalFormations = strategiesData.optimalFormations.slice(0, 3);
               enrichmentAdded = true;
           }
