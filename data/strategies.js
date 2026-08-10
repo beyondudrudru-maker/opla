@@ -131,7 +131,25 @@ const strategies = {
     generalRecommendation: "Because both weapon and armor slots contribute additively to the same multiplier, always keep a weapon AND an armor equipped (never 'none') on any active formation."
   },
 
-  // 4. ARENA FORMATIONS
+  // 4. COUNTER-STRIKE GUIDES (NEW)
+  counterGuides: [
+    {
+      targetOpponent: "Durand",
+      targetArchetype: "Heavy Tank / Frontline Protector",
+      recommendedHeroes: ["BRUTALLUS_01", "ATREYA_01", "REMUS_01"],
+      recommendedTroops: ["tr-assassins", "tr-axe-throwers", "tr-bonebreaker"],
+      tacticalAdvice: "Durand provides massive damage reduction to frontline tanks. Do not try to out-sustain him. Instead, use heroes with high burst damage (Brutallus/Atreya) or anti-tank buffs (Remus). Deploy Axe Throwers or Assassins to bypass his frontline shield and strike the backline directly."
+    },
+    {
+      targetOpponent: "Morgana",
+      targetArchetype: "Undead Summoner / Swarm",
+      recommendedHeroes: ["BUMI_01", "ZAHEER_01", "HARKON_01"],
+      recommendedTroops: ["tr-alchemist", "tr-storm-mistresses", "tr-pyrotechnician"],
+      tacticalAdvice: "Morgana will attempt to overwhelm your forces with continuous Undead summons. You must counter her with heavy AoE (Area of Effect) damage and crowd control. Use Zaheer to group her summons, or Bumi/Harkon to lay down massive area damage to clear the skeletons before they snowball."
+    }
+  ],
+
+  // 5. ARENA FORMATIONS
   arena: [
     {
       name: "REGULAR FORM",
@@ -150,7 +168,7 @@ const strategies = {
     }
   ],
 
-  // 5. META & ECONOMY GUIDES
+  // 6. META & ECONOMY GUIDES
   meta: [
     {
       category: "ECONOMY META",
