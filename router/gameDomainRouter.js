@@ -3,7 +3,7 @@
  * 
  * PURPOSE: Resolves user queries into visual Embed Cards AND passes strict deterministic
  * data contexts to the AI pipeline for deep, hallucination-free strategic analysis.
- * 🌟 UPGRADE: Bulletproof Entity Scraper & Explicit Data Injection to prevent missed data.
+ * 🌟 UPGRADE: Added SCENARIO C to detect general Categories/Roles (like "Tanks" or "Mages").
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -19,7 +19,6 @@ function route(text, recentContext = '') {
   entities.rawText = text;
 
   // 🛡️ BULLETPROOF ENTITY SCRAPER 
-  // (Fixes classifier misses for names like "bone breaker" vs "bonebreaker" or lowercase names)
   if (!entities.heroNames) entities.heroNames = [];
   if (!entities.troopNames) entities.troopNames = [];
   if (entities.heroName && !entities.heroNames.includes(entities.heroName)) entities.heroNames.push(entities.heroName);
@@ -28,7 +27,6 @@ function route(text, recentContext = '') {
   const allKnownHeroes = typeof queryEngine.findHeroes === 'function' ? queryEngine.findHeroes() : [];
   const allKnownTroops = typeof queryEngine.findTroops === 'function' ? queryEngine.findTroops() : [];
   
-  // Create versions of the text for robust matching
   const normalizedText = text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ');
   const textNoSpace = text.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -50,7 +48,6 @@ function route(text, recentContext = '') {
 
   if (entities.heroNames.length > 0) entities.heroName = entities.heroNames[0];
   if (entities.troopNames.length > 0) entities.troopName = entities.troopNames[0];
-
 
   // 🌍 MULTILINGUAL SYNERGY REGEX
   const isSynergyQuery = /\b(best with|synergy|alongside|use with|combination|which hero|which troop|which troops|konse hero|konse troop|kiske sath|accha outcome|mejor con|melhor com|meilleur avec|terbaik dengan|sinergia|synergie)\b/i.test(text);
@@ -111,7 +108,6 @@ function route(text, recentContext = '') {
 
     const isStrategyIntent = intent === 'STRATEGY';
 
-    // Single Hero Lookup
     if ((entities.heroName || (entities.heroNames && entities.heroNames.length === 1)) && (!entities.troopName && (!entities.troopNames || entities.troopNames.length === 0))) {
         const heroQuery = entities.heroName || entities.heroNames[0];
         const entity = queryEngine.findEntityByName(heroQuery);
@@ -139,7 +135,6 @@ function route(text, recentContext = '') {
         }
     }
 
-    // Single Troop Lookup
     if ((entities.troopName || (entities.troopNames && entities.troopNames.length === 1)) && (!entities.heroName && (!entities.heroNames || entities.heroNames.length === 0))) {
         const troopQuery = entities.troopName || entities.troopNames[0];
         const lvl = (entities.levels && entities.levels.length > 0) ? entities.levels[0] : 10;
@@ -238,8 +233,7 @@ function route(text, recentContext = '') {
   
   let enrichmentAdded = false;
 
-  // 🌟 SCENARIO A: EXPLICIT DATA INJECTION (The Fix for missed stats) 🌟
-  // Forces all mentioned entities' raw data into the prompt so AI never says "I don't have stats"
+  // 🌟 SCENARIO A: EXPLICIT DATA INJECTION
   if (entities.heroNames.length > 0) {
       strategyData.context.mentionedHeroes = [];
       entities.heroNames.forEach(name => {
@@ -258,10 +252,8 @@ function route(text, recentContext = '') {
       if (strategyData.context.mentionedTroops.length > 0) enrichmentAdded = true;
   }
 
-
   // 🌟 SCENARIO B: BIDIRECTIONAL SMART SYNERGY ENRICHMENT 🌟
   if (isSynergyQuery) {
-      // Fetch Heroes for mentioned Troops
       if (entities.troopNames && entities.troopNames.length > 0) {
           let troopIdentifiers = new Set();
           entities.troopNames.forEach(tName => {
@@ -299,7 +291,6 @@ function route(text, recentContext = '') {
           }
       }
 
-      // Fetch Troops for mentioned Heroes
       if (entities.heroNames && entities.heroNames.length > 0) {
           let heroIdentifiers = new Set();
           entities.heroNames.forEach(hName => {
@@ -330,6 +321,39 @@ function route(text, recentContext = '') {
                       name: t.name,
                       synergy_links: t.faction || (t.tags ? t.tags.join(', ') : 'N/A'),
                       rarity: t.rarity
+                  }));
+                  enrichmentAdded = true;
+              }
+          }
+      }
+
+      // 🌟 SCENARIO C: CATEGORY & ROLE SCANNER (The fix for "Tanks" and generic classes) 🌟
+      if (!enrichmentAdded) {
+          // Add core gameplay roles, classes, and factions here
+          const gameTags = ['tank', 'mage', 'archer', 'undead', 'human', 'beast', 'support', 'melee', 'ranged', 'ranger', 'summoner', 'assassin'];
+          
+          // Check if the user mentioned any of these generic tags (handles plurals like "tanks" too)
+          let mentionedTags = gameTags.filter(tag => new RegExp(`\\b${tag}s?\\b`, 'i').test(text));
+
+          if (mentionedTags.length > 0) {
+              const matchingHeroes = allKnownHeroes.filter(h => {
+                  let hId = [];
+                  if (h.faction) hId.push(String(h.faction).toLowerCase());
+                  if (h.type) hId.push(String(h.type).toLowerCase());
+                  if (Array.isArray(h.tags)) hId.push(...h.tags.map(t => String(t).toLowerCase()));
+                  if (Array.isArray(h.synergies)) hId.push(...h.synergies.map(t => String(t).toLowerCase()));
+                  
+                  // Does this hero relate to the generic tag asked about?
+                  return mentionedTags.some(mt => hId.includes(mt));
+              });
+
+              if (matchingHeroes.length > 0) {
+                  strategyData.context.targetCategory = mentionedTags.join(', ').toUpperCase();
+                  strategyData.context.heroRecommendations = matchingHeroes.map(h => ({
+                      name: h.name,
+                      synergy_links: h.faction || h.type || (h.tags ? h.tags.join(', ') : 'N/A'),
+                      rarity: h.rarity,
+                      talent: h.talent ? (h.talent.description || h.talent) : 'N/A'
                   }));
                   enrichmentAdded = true;
               }
