@@ -3,7 +3,7 @@
  * 
  * PURPOSE: Resolves user queries into visual Embed Cards AND passes strict deterministic
  * data contexts to the AI pipeline for deep, hallucination-free strategic analysis.
- * 🌟 UPGRADE: Forced Strategy Intent for Synergy Queries to prevent premature short-circuiting.
+ * 🌟 UPGRADE: Advanced Tag & Faction Matching for Smart Synergy Enrichment.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -18,11 +18,10 @@ function route(text, recentContext = '') {
   let { intent, entities } = classify(text);
   entities.rawText = text;
 
-  // 🌍 MULTILINGUAL SYNERGY REGEX (Moved to TOP)
-  // Supports: English, Hinglish, Spanish, Portuguese, French, Indonesian
+  // 🌍 MULTILINGUAL SYNERGY REGEX
   const isSynergyQuery = /\b(best with|synergy|alongside|use with|combination|which hero|konse hero|kiske sath|accha outcome|mejor con|melhor com|meilleur avec|terbaik dengan|sinergia|synergie)\b/i.test(text);
 
-  // 🧠 FORCE STRATEGY INTENT: If a synergy question is asked, DO NOT short-circuit. Force AI analysis.
+  // 🧠 FORCE STRATEGY INTENT
   if (isSynergyQuery) {
       intent = 'STRATEGY';
   }
@@ -201,17 +200,24 @@ function route(text, recentContext = '') {
   // 🧠 5. STRATEGY & AI INTELLIGENCE PIPELINE
   let strategyData = build(intent, entities);
   
-  // 🌟 SMART SYNERGY ENRICHMENT 🌟
-  // If user asks for synergy (e.g., "who to use with Immortal") but didn't name a hero...
+  // 🌟 SMART SYNERGY ENRICHMENT (Upgraded for Tags & Multiple Formats) 🌟
   if (isSynergyQuery && entities.troopNames && entities.troopNames.length === 1 && (!entities.heroNames || entities.heroNames.length === 0)) {
       const troopName = entities.troopNames[0];
       const troopEntity = queryEngine.findEntityByName(troopName);
 
       if (troopEntity && troopEntity.data) {
-          const troopFaction = (troopEntity.data.faction || troopEntity.data.type || '').toUpperCase();
+          const tData = troopEntity.data;
           
-          if (troopFaction) {
-              // Safely attempt to fetch all heroes from the engine
+          // Collect ALL possible identifiers into an array to ensure we don't miss a match
+          let troopIdentifiers = [];
+          if (tData.faction) troopIdentifiers.push(String(tData.faction).toUpperCase());
+          if (tData.type) troopIdentifiers.push(String(tData.type).toUpperCase());
+          if (Array.isArray(tData.tags)) {
+              troopIdentifiers.push(...tData.tags.map(t => String(t).toUpperCase()));
+          }
+          
+          if (troopIdentifiers.length > 0) {
+              // Fetch all heroes
               let allHeroes = [];
               if (typeof queryEngine.getAllHeroes === 'function') {
                   allHeroes = queryEngine.getAllHeroes();
@@ -221,26 +227,33 @@ function route(text, recentContext = '') {
                   allHeroes = queryEngine.entities.filter(e => e.type === 'hero').map(e => e.data);
               }
 
-              // Find heroes matching the troop's faction
+              // Filter heroes that share AT LEAST ONE identifier (tag, faction, or type)
               const matchingHeroes = allHeroes.filter(h => {
-                  const hFaction = (h.faction || h.type || '').toUpperCase();
-                  return hFaction === troopFaction;
+                  let hIdentifiers = [];
+                  if (h.faction) hIdentifiers.push(String(h.faction).toUpperCase());
+                  if (h.type) hIdentifiers.push(String(h.type).toUpperCase());
+                  if (Array.isArray(h.tags)) {
+                      hIdentifiers.push(...h.tags.map(t => String(t).toUpperCase()));
+                  }
+
+                  // Check if there is any overlap between troop identifiers and hero identifiers
+                  return hIdentifiers.some(id => troopIdentifiers.includes(id));
               });
 
               // Inject candidates directly into the context!
               if (matchingHeroes.length > 0) {
                   if (!strategyData.context) strategyData.context = {};
                   
-                  strategyData.context.targetTroop = troopEntity.data;
+                  strategyData.context.targetTroop = tData;
                   strategyData.context.factionSynergyCandidates = matchingHeroes.map(h => ({
                       name: h.name,
-                      faction: h.faction,
+                      tags_faction: h.faction || h.type || (h.tags ? h.tags.join(', ') : 'N/A'),
                       rarity: h.rarity,
                       talent: h.talent ? (h.talent.description || h.talent) : 'N/A',
                       ability: h.ability ? (h.ability.description || h.ability) : 'N/A'
                   }));
                   
-                  strategyData.sufficient = true; // Tell the pipeline we have enough data to proceed
+                  strategyData.sufficient = true; 
               }
           }
       }
@@ -256,7 +269,6 @@ function route(text, recentContext = '') {
       };
   }
 
-  // Fallback if it's completely unresolvable locally
   return { resolved: false, intent, entities, context: null };
 }
 
