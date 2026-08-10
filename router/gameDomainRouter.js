@@ -3,8 +3,7 @@
  * 
  * PURPOSE: Resolves user queries into visual Embed Cards AND passes strict deterministic
  * data contexts to the AI pipeline for deep, hallucination-free strategic analysis.
- * 🌟 UPGRADE: Added Smart Synergy Enrichment to automatically bundle faction-matching 
- * heroes into the context when a user asks for troop recommendations!
+ * 🌟 UPGRADE: Forced Strategy Intent for Synergy Queries to prevent premature short-circuiting.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -18,6 +17,15 @@ const economyRatios = ecoModule.economyRatios || ecoModule;
 function route(text, recentContext = '') {
   let { intent, entities } = classify(text);
   entities.rawText = text;
+
+  // 🌍 MULTILINGUAL SYNERGY REGEX (Moved to TOP)
+  // Supports: English, Hinglish, Spanish, Portuguese, French, Indonesian
+  const isSynergyQuery = /\b(best with|synergy|alongside|use with|combination|which hero|konse hero|kiske sath|accha outcome|mejor con|melhor com|meilleur avec|terbaik dengan|sinergia|synergie)\b/i.test(text);
+
+  // 🧠 FORCE STRATEGY INTENT: If a synergy question is asked, DO NOT short-circuit. Force AI analysis.
+  if (isSynergyQuery) {
+      intent = 'STRATEGY';
+  }
 
   // 🧠 1. STRICT PRONOUN & FOLLOW-UP RESOLUTION
   const hasFollowUpTrigger = /\b(uska|iske|woh|he|she|it|they|him|her|this|that|its|stats|ability|skill)\b/i.test(text);
@@ -138,7 +146,6 @@ function route(text, recentContext = '') {
   // ⚔️ 4. COMPARISON ENGINE (Dual Cards + AI Fallthrough)
   const isExplicitVs = /(?:.+?)\s+vs\s+(?:.+)/i.test(text);
   const isExactlyTwoHeroes = entities.heroNames && entities.heroNames.length === 2;
-  const isSynergyQuery = /\b(best with|synergy|alongside|use with|combination|which hero|konse hero|kiske sath)\b/i.test(text);
 
   if ((isExplicitVs || isExactlyTwoHeroes) && !isSynergyQuery) {
     let nameA, nameB;
