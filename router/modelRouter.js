@@ -589,6 +589,10 @@ const GAME_INTENTS = new Set(['FACT', 'STRATEGY', 'CALC', 'GOLD', 'GEM', 'game-q
 const CODE_REGEX = /```|code|script|debug|function|python|javascript|java\b|c\+\+|sql|json|regex|api|stack ?trace|error:|exception/i;
 const MATH_REGEX = /\b(calculate|equation|solve|integral|derivative|algebra|geometry|probability|matrix)|[0-9]\s*[+\-*/^]\s*[0-9]|=\s*0\b/i;
 const REASONING_REGEX = /deep analysis|quantum|architecture|complex breakdown|thesis|geopolitics|explain in detail|analyze/i;
+// Catches "explain / summary / detailed / describe / batao / samjhao" style asks —
+// these need a bigger token budget + a stronger model, same as REASONING_REGEX,
+// even when the sentence isn't phrased as "explain in detail" or "analyze".
+const EXPLANATION_REGEX = /\b(explain|explanation|summary|summarize|summery|detail|detailed|elaborate|describe|batao|samjhao|samjhaiye)\b/i;
 const CREATIVE_REGEX = /\b(poem|story|essay|lyrics|write a|creative|stotram|mantra)\b/i;
 const HINDI_DEVANAGARI_REGEX = /[\u0900-\u097F]/;
 const HINGLISH_REGEX = /\b(kya|hai|nahi|kaise|kyu|bhai|yaar|acha|theek|kar|raha|rahi|tum|aap|mera|tera)\b/i;
@@ -602,7 +606,7 @@ function classifyRequest({ classification, prompt, userMessage }) {
   const isGame = GAME_INTENTS.has(intent) || /\b(stats|hp|damage|hero|troop|game|clash)\b/i.test(text) || /\[GAME DATA\]/i.test(text);
   const isCode = CODE_REGEX.test(text);
   const isMath = MATH_REGEX.test(text);
-  const isReasoningHeavy = intent === (INTENTS && INTENTS.HEAVY_TASK) || REASONING_REGEX.test(text);
+  const isReasoningHeavy = intent === (INTENTS && INTENTS.HEAVY_TASK) || REASONING_REGEX.test(text) || EXPLANATION_REGEX.test(text);
   const isCreative = CREATIVE_REGEX.test(text);
   const isDevanagari = HINDI_DEVANAGARI_REGEX.test(text);
   const isHinglish = !isDevanagari && HINGLISH_REGEX.test(text);
@@ -644,7 +648,7 @@ const MAX_TOKENS_BY_CATEGORY = {
   gameStrategy: 1536,
   coding: 3072,
   math: 2048,
-  reasoning: 4096
+  reasoning: 6144
 };
 
 function scoreModel(entry, category, opts = {}) {
