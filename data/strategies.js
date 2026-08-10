@@ -1,146 +1,206 @@
 /**
- * MELODY Game Knowledge Library — Strategies
- * Arena formation guides and meta/economy guidance from the source file.
- * Not one of the 5 requested modules, but split out here so no data from
- * the original monolith is lost or left orphaned in the other files.
+ * MELODY Game Knowledge Library — strategies.js
+ * 
+ * PURPOSE:
+ * Combines formation strategies, scenario guides, equipment synergies, 
+ * arena layouts, and meta/economy guides into a single unified module.
  */
+
 const strategies = {
-  "arena": [
+  version: "1.0.0",
+  maxHeroesPerFormation: 2,
+
+  // 1. OPTIMAL FORMATIONS
+  optimalFormations: [
     {
-      "name": "REGULAR FORM",
-      "faction": "STABILITY & COUNTER",
-      "rank": "Beginner Friendly",
-      "moves": [
+      id: "form-mage-nuke",
+      name: "Mage Backline Nuke",
+      heroes: ["ANAVIN_01", "KEYRA_01"],
+      troopArchetype: "Mages",
+      recommendedTroops: ["tr-phoenix", "tr-shaman", "tr-stone-golem", "tr-magic-archer", "tr-storm-mistresses"],
+      synergyRating: "S",
+      reasoning: "Anavin's talent (Flaming Heart) and Keyra's talent (Power of Water) both target the 'Mage' tag with stacking attack buffs (2-25% and 3-35% respectively), and neither overlaps with the other's kit. Anavin's ability additionally throws a burst All-Allies attack+defense buff, so the Mage troop line gets a double-stacked attack multiplier plus a periodic defense cushion — turning backline mages into the primary win condition instead of a support line."
+    },
+    {
+      id: "form-undead-legion",
+      name: "Undead Legion Snowball",
+      heroes: ["DRAKE_01", "BONE_DRAGON_01"],
+      troopArchetype: "Undead",
+      recommendedTroops: ["tr-immortal", "tr-headless", "tr-imp", "tr-night-hunter", "tr-gravedigger", "tr-steel-revenant", "tr-necromancer"],
+      synergyRating: "S",
+      reasoning: "Both talents target the 'Undead' tag exclusively: Drake grants a stacking double-damage chance (Boarding Party) while Bone Dragon adds a flat damage-dealt increase (Death Aura). Since one is a proc-chance modifier and the other a flat multiplier, they compound rather than compete — every Undead troop hit has both a higher base damage and a chance to double it."
+    },
+    {
+      id: "form-unkillable-wall",
+      name: "Unkillable Tank Wall",
+      heroes: ["DURAND_01", "CALYRA_01"],
+      troopArchetype: "Tank",
+      recommendedTroops: ["tr-immortal", "tr-stone-golem", "tr-bonebreaker", "tr-headless", "tr-monk", "tr-steel-revenant"],
+      synergyRating: "S",
+      reasoning: "Durand's talent (Immutability) specifically reduces incoming damage and debuff duration for Tank-role troops, while Calyra's talent+ability (Gift of Light / Healing Veil) provide continuous All-Allies HP restoration that persists after her death. Durand shrinks the damage the frontline takes; Calyra refills whatever gets through — the combination makes a Tank line functionally unkillable in prolonged fights."
+    },
+    {
+      id: "form-boss-burst",
+      name: "Boss Burst Squad",
+      heroes: ["HARKON_01", "REMUS_01"],
+      troopArchetype: "Ranged",
+      recommendedTroops: ["tr-magic-archer", "tr-cursed-catapult", "tr-axe-throwers", "tr-shaman"],
+      synergyRating: "A",
+      reasoning: "Both heroes carry the 'Boss-Damage' tag. Remus's Threat of Giants buffs All-Allies damage specifically against tanks and bosses (30-85%), while Harkon's Insatiable Flame grows stronger with every enemy that dies inside his burn zone — in a long single-target boss fight neither effect wastes potential, and Remus's Light Shield absorbs the punishing counter-hits bosses deal back."
+    },
+    {
+      id: "form-swarm-lockdown",
+      name: "Swarm Lockdown & Clear",
+      heroes: ["BUMI_01", "ZAHEER_01"],
+      troopArchetype: "AoE",
+      recommendedTroops: ["tr-alchemist", "tr-lava-golem", "tr-pyrotechnician", "tr-cursed-catapult"],
+      synergyRating: "A",
+      reasoning: "Bumi's Dream puts enemies to sleep in multiple zones while Zaheer's Tornado pulls and immobilizes up to 60 units at once — together they lock down large swarm packs almost continuously since the two crowd-control windows can be staggered on cooldown. Both talents also grant Mage-troop evasion, so whatever AoE troops are clearing take reduced ranged chip damage while the enemy is helpless."
+    },
+    {
+      id: "form-trickster-rush",
+      name: "Trickster Fear Rush",
+      heroes: ["BRUTALLUS_01", "ATREYA_01"],
+      troopArchetype: "Trickster",
+      recommendedTroops: ["tr-assassins", "tr-storm-mistresses", "tr-night-hunter", "tr-gravedigger", "tr-axe-throwers"],
+      synergyRating: "A",
+      reasoning: "Brutallus's Easy Prey makes feared enemies take 45-100% more damage, and Atreya's Smashing Light gives All-Allies a chance to deal double damage on top of a flat damage boost. Feared targets are already taking increased damage before the double-damage proc is even applied, so fast Trickster/Melee-DPS troops can burst down priority targets in one or two hits — ideal for rush-down comps that need to end fights quickly."
+    }
+  ],
+
+  // 2. SCENARIO GUIDES
+  scenarioGuides: [
+    {
+      scenario: "High-Damage Boss Fight",
+      recommendedHeroes: ["HARKON_01", "REMUS_01"],
+      primaryTroopType: "Ranged",
+      notes: "Prioritize this over Trickster comps for bosses specifically — Remus's Boss-Damage buff and Harkon's snowballing burn zones both reward the longer, single-target nature of boss encounters."
+    },
+    {
+      scenario: "PvP Defense",
+      recommendedHeroes: ["DURAND_01", "CALYRA_01"],
+      primaryTroopType: "Tank",
+      notes: "Durand's tank-specific damage reduction plus Calyra's persistent healing maximizes time-to-break, which is the key defensive metric in PvP base defense."
+    },
+    {
+      scenario: "Swarm Clear",
+      recommendedHeroes: ["BUMI_01", "ZAHEER_01"],
+      primaryTroopType: "AoE",
+      notes: "Stack the two CC windows so one is always active; let AoE troops (Alchemist, Lava Golem, Pyrotechnician) clean up while enemies can't retaliate."
+    },
+    {
+      scenario: "Undead Legion Push (PvE Farming)",
+      recommendedHeroes: ["DRAKE_01", "BONE_DRAGON_01"],
+      primaryTroopType: "Undead",
+      notes: "Best used when your Undead troop roster (Immortal, Headless, Night Hunter, Steel Revenant, Necromancer) is the deepest bench — both buffs are dead weight with any other troop type since they're hard-locked to the Undead tag."
+    },
+    {
+      scenario: "Mage Backline Burst",
+      recommendedHeroes: ["ANAVIN_01", "KEYRA_01"],
+      primaryTroopType: "Mages",
+      notes: "Use when facing high-HP single targets or bunched formations — the stacked attack multipliers reward sustained backline uptime rather than burst windows."
+    },
+    {
+      scenario: "Speed Clear / Fast Rush",
+      recommendedHeroes: ["BRUTALLUS_01", "ATREYA_01"],
+      primaryTroopType: "Trickster",
+      notes: "Best for farming low-resistance stages quickly — fear+crit stacking front-loads damage so fights end before enemy abilities come off cooldown."
+    }
+  ],
+
+  // 3. EQUIPMENT SYNERGIES
+  equipmentSynergies: {
+    _dataNote: "The current equipment system in gameKnowledge.js only defines 2 weapons and 2 armors, each granting a flat, role-agnostic mastery bonus (itemLevel * 0.20% per item). There is no stat-typed gear in the source data.",
+    availableWeapons: ["Mirage glaive", "Hammer of Devournment"],
+    availableArmors: ["armor of devounment", "mirage garment"],
+    bonusFormula: "bonusPct = itemLevel * 0.20 per equipped item (0 if slot is 'none'); weaponMasteryBonusPct + armorMasteryBonusPct + heroCollectionBonusPct = totalBonusPct, applied as multiplier = 1 + totalBonusPct/100 to (armyPower + heroPower)",
+    roleAllocation: [
+      {
+        role: "Tank",
+        priority: "Level both weapon and armor evenly. Since the bonus is a global power multiplier rather than a stat-specific one, a Tank formation gains identical value from either slot."
+      },
+      {
+        role: "Mage / Ranged DPS",
+        priority: "Same flat-multiplier logic applies. There is no current bonus that specifically amplifies attack or cooldown — do not deprioritize armor leveling for DPS formations."
+      },
+      {
+        role: "Support / Healer",
+        priority: "Identical treatment — equipment scales total formation power uniformly regardless of hero role."
+      }
+    ],
+    generalRecommendation: "Because both weapon and armor slots contribute additively to the same multiplier, always keep a weapon AND an armor equipped (never 'none') on any active formation."
+  },
+
+  // 4. ARENA FORMATIONS
+  arena: [
+    {
+      name: "REGULAR FORM",
+      faction: "STABILITY & COUNTER",
+      rank: "Beginner Friendly",
+      moves: [
         {
-          "name": "SETUP & GEAR",
-          "description": "[ HERO REQUIREMENTS ]\n\nPrimary Hero: Tristan (Best Synergy)\n\nSecondary Hero: Flexible (Any legendary with stun capability)\n\n[ TROOP REQUIREMENTS ]\n\n- Immortals: 7x (Lv. 7-10)\n\n- Magic Archers: 7x (Lv. 7-10)\n\n- Cursed Catapults: 8x (Lv. 7-10)\n\n- Necromancers: 2x (Lv. 7-10)\n\n- Alchemists: 4 to 5x (Lv. 7-10)\n\n- Gravediggers: 4 to 5x (Lv. 7-10)\n\n- Undead Mages: 3 to 4x (Lv. 7-10)\n\n- Monks: 2 to 3x (Lv. 7-10)\n\n- Bone Breakers: 2x (Lv. 7-10)\n\n- Shamans: 2x (Lv. 7-10)\n\n- Pyrotechnician: 1x (Lv. 7-10)\n\n► TOTAL CAPACITY: 49 UNITS"
+          name: "SETUP & GEAR",
+          description: "[ HERO REQUIREMENTS ]\n\nPrimary Hero: Tristan (Best Synergy)\n\nSecondary Hero: Flexible (Any legendary with stun capability)\n\n[ TROOP REQUIREMENTS ]\n\n- Immortals: 7x (Lv. 7-10)\n\n- Magic Archers: 7x (Lv. 7-10)\n\n- Cursed Catapults: 8x (Lv. 7-10)\n\n- Necromancers: 2x (Lv. 7-10)\n\n- Alchemists: 4 to 5x (Lv. 7-10)\n\n- Gravediggers: 4 to 5x (Lv. 7-10)\n\n- Undead Mages: 3 to 4x (Lv. 7-10)\n\n- Monks: 2 to 3x (Lv. 7-10)\n\n- Bone Breakers: 2x (Lv. 7-10)\n\n- Shamans: 2x (Lv. 7-10)\n\n- Pyrotechnician: 1x (Lv. 7-10)\n\n► TOTAL CAPACITY: 49 UNITS"
         },
         {
-          "name": "TACTIC & STRATEGY",
-          "description": "[ BATTLE DYNAMICS ]\n\nTristan's Core Synergy. This formation is incredibly stable. It delivers high-impact attack and reliable stunning while maintaining excellent healing sustain. It performs consistently within your power range and is highly customizable without losing its structural integrity.\n\n[ HOW IT WORKS ]\n\n1. Damage Absorption & Defense: Immortals and Bone Breakers form a solid frontline. The Necromancers are key here—they significantly aid in absorbing incoming damage, keeping the frontline alive longer.\n\n2. Tactical Positioning: Cursed Catapults are placed on the sides, protecting them from direct damage and allowing them to operate at peak efficiency. Gravediggers act as silent killers, flanking and dismantling the opposition.\n\n3. Counter-Meta Performance: This formation is highly effective against Skeleton builds and specifically counters Spider-heavy attacks by neutralizing their initiation.\n\n4. Efficiency: Even with lower troop counts, this layout produces impressive output. With Magic Archers and Catapults providing constant pressure, you can secure wins even when slightly outpowered."
+          name: "TACTIC & STRATEGY",
+          description: "[ BATTLE DYNAMICS ]\n\nTristan's Core Synergy. This formation is incredibly stable. It delivers high-impact attack and reliable stunning while maintaining excellent healing sustain.\n\n[ HOW IT WORKS ]\n\n1. Damage Absorption & Defense: Immortals and Bone Breakers form a solid frontline.\n\n2. Tactical Positioning: Cursed Catapults are placed on the sides, protecting them from direct damage.\n\n3. Counter-Meta Performance: This formation is highly effective against Skeleton builds and Spider-heavy attacks.\n\n4. Efficiency: With Magic Archers and Catapults providing constant pressure, you can secure wins even when slightly outpowered."
         }
       ]
     }
   ],
-  "meta": [
+
+  // 5. META & ECONOMY GUIDES
+  meta: [
     {
-      "category": "ECONOMY META",
-      "title": "The Ultimate Gold Farming & Spending Blueprint",
-      "summary": "Maximize your gold income in the Arena and learn the strict 50-20-10 reserve blueprint for spending.",
-      "rules": [
-        "Gold is the lifeblood of your army's progression. Mismanaging it will stall your growth. Follow these strict clan directives to maximize your earnings and optimize your spending.",
-        "Part 1: Arena Farming Tactics",
-        "- The 7-Day Trap: For the first 7 days of a new Arena season, purposefully set a weak or normal defense formation. This keeps your rank lower, allowing you to easily farm weaker opponents for consistent gold wins.",
-        "- Target Prioritization: When refreshing opponents, specifically hunt for players using the 441 troop formation. These setups yield the highest and easiest gold earnings.",
-        "- Deploy the Baron: Upgrade the Baron hero and deploy him exclusively for gold farming runs. His passive abilities will generate a solid gold income boost of up to 1.5%.",
-        "Part 2: The Golden Spending Blueprint",
-        "Never spend gold randomly. Hoard your wealth and divide your total reserves using this exact ratio:",
-        "50% — Troop Recruitment: Always save up to use the 120k gold pulls to ensure you are recruiting high-tier troops.",
-        "20% — Hero Upgrades: Only upgrade when necessary. Priority order: Legendary ➔ Epic ➔ Mythical.",
-        "10% — Fusions: Spend strictly on necessary troop/hero fusions.",
-        "20% — Emergency Reserve: DO NOT TOUCH. Keep this saved for a backup.",
-        "Part 3: Multipliers & Dailies",
-        "- Headhunt Sweeps: Play the Headhunt mode 2 to 3 times every single day. This is a crucial source of steady gold and bonus gems.",
-        "- Ad Multipliers: Always watch the optional ads at the end of battles to double your gold revenue. Never leave free gold on the table.",
-        "- Double Gold Card Rule: Do NOT waste Double Gold Cards on low-yield runs. Only activate these cards if your base earning (without ads or cards) is already hitting 14k to 15k gold. This guarantees maximum return on your consumables."
+      category: "ECONOMY META",
+      title: "The Ultimate Gold Farming & Spending Blueprint",
+      summary: "Maximize your gold income in the Arena and learn the strict 50-20-10 reserve blueprint for spending.",
+      rules: [
+        "Gold is the lifeblood of your army's progression. Mismanaging it will stall your growth.",
+        "Part 1: Arena Farming Tactics - For the first 7 days of a new Arena season, set a weak or normal defense formation to farm easy wins.",
+        "Part 2: Golden Spending Blueprint - 50% Troop Recruitment, 20% Hero Upgrades, 10% Fusions, 20% Emergency Reserve.",
+        "Part 3: Multipliers & Dailies - Run Headhunt sweeps daily and watch ad multipliers."
       ]
     },
     {
-      "category": "ARENA META",
-      "title": "The Arena Masterclass: Trophies, Tactics & Psychology",
-      "summary": "The ultimate guide to Arena domination. Covers the 14-day cycle, trophy math, hidden formations, and hero requirements.",
-      "rules": [
-        "The Arena is the ultimate testing ground. It exposes your strategy, mindset, and the true efficiency of your formation. Every attack must be calculated. Follow these directives to dominate the global ladder.",
-        "Part 1: The 14-Day Season Cycle",
-        "- The Split Strategy: An Arena season lasts exactly two weeks. Dedicate the first 7 days strictly to gold farming (use a weak defense to farm easy wins). Use the final 7 days to aggressively push for trophies and global rankings.",
-        "- Max Attempts: Never waste a ticket. You get 20 attempts per day, and gold for killed units is tripled in the Arena. Use every single attempt.",
-        "- The Late Push: Play your daily ranked attacks as late in the day as possible to maximize your trophy earnings after the ladder settles.",
-        "Part 2: Target Selection & Trophy Math",
-        "Target Selection: Only attack players equivalent to your power or those you know are guaranteed wins.",
-        "Trophy Math: The higher the trophy difference between you and your opponent, the more you earn. The maximum gain per battle is +35, and the maximum loss is -19. Protect your rating!",
-        "Part 3: Information Warfare & Hero Meta",
-        "- Hide Your Power: Always hide your best formation on defense. Save your ultimate, highly-tuned setup exclusively to crush the toughest opponents you face on offense.",
-        "- Clan Sparring: Never test a new formation in ranked play. Test your Arena layouts by doing friendly battles with Clan Members first.",
-        "- Hero Minimums: Mythical and Legendary heroes are incredibly powerful, but only after they reach Level 5 and unlock their active and passive skills. Until then, they might underperform.",
-        "- Gear Optimization: Best heroes, weapons, and armor vary heavily based on your specific troop placement. Consult the Clan Heroes/Troops pages to synergize your gear.",
-        "Follow this strategy, execute your 20 attacks daily, and secure your identity among the top global players! 💪🏻"
+      category: "ARENA META",
+      title: "The Arena Masterclass: Trophies, Tactics & Psychology",
+      summary: "The ultimate guide to Arena domination. Covers the 14-day cycle, trophy math, hidden formations, and hero requirements.",
+      rules: [
+        "Part 1: 14-Day Season Cycle - First 7 days gold farming, final 7 days trophy pushing.",
+        "Part 2: Target Selection & Trophy Math - Maximize gains (+35) and minimize losses (-19).",
+        "Part 3: Information Warfare - Hide your best formation on defense; test layouts in clan sparring."
       ]
     },
     {
-      "category": "ECONOMY META",
-      "title": "The Premium Gem Matrix: Acquisition & Optimal Spending",
-      "summary": "Master the secrets of infinite gem farming—including the Library milestone loop—and decode the 40-20-20-10 spending hierarchy.",
-      "rules": [
-        "Gems are the most critical premium resource in the realm. They dictate your access to elite troops and Legendary heroes. Squandering them on random chest pulls will completely ruin your late-game progression. Memorize this strategic manual to harvest and invest your gems flawlessly.",
-        "Part 1: The Ultimate Gem Harvesting Streams",
-        "- The Library Exploitation: This is your primary hidden goldmine. Keep executing stages to gather library books. Once you hit the 150-book milestone, the system triggers a massive payout: every single book collected from there on yields a massive 50 gems. Focus heavily on this.",
-        "- Competitive & Grinding Yields: Secure top ranks in the Arena and Boss Raids to extract massive seasonal gem payloads. Supplement this daily by running Headhunt missions, unlocking your level-dependent Idle Chests, and clearing Campaign stages.",
-        "- System Bonuses: Never miss a Daily Login claim or Promo Code drops (which frequently award up to 500 gems instantly). Use your daily Lucky Royale spins, which feature mega-jackpots up to 20k gems depending on your accumulated spin milestones.",
-        "- Premium Access: For fast-track progression, purchase gem bundles directly from the store or invest in the Seasonal Battle Passes for high-density gem returns.",
-        "Part 2: Tactical Fusion & Deployment Tricks",
-        "The Gem-Saving Fusion Meta: Troop fusion consumes heavy resources. While a standard 4 + 4 + 4 level troop combination is common, veteran players use the highly efficient 10 + 4 + 1 config to bypass extreme fusion costs and save massive amounts of gems.",
-        "Calculated Investments: Use gems for critical Hero Upgrades (starting at Level 7+), buying high-value 3k Hero Bundles, and targeted Lucky Wheel cycles to pull specific default troops/hero cards. Avoid buying single 350-gem chests unless absolutely necessary.",
-        "Part 3: The Clan Gem Budget Matrix",
-        "To ensure steady development without running dry, apply your gathered gems strictly to this percentage layout:",
-        "40% — Troop & Hero Fusions: Your main spending engine to forge max-tier units.",
-        "20% — High-Level Hero Upgrades: To unlock crucial ability stats past Level 7.",
-        "20% — Legendary Bundles: Mandatory to raise your Legendary hero collection and secure powerful global Hero Bonuses.",
-        "10% — Lucky Wheel Spins: For resource cycling and picking up extra upgrade materials.",
-        "10% — Operational Reserves: Kept safely for emergency purchases, Conquest unlocks (worth 1700 gems for massive value), or Demo mode testing (10 gems per Boss run).",
-        "// DIRECTIVE RECEIVED — COLLECT HOARD & DEPLOY WISELY //"
+      category: "ECONOMY META",
+      title: "The Premium Gem Matrix: Acquisition & Optimal Spending",
+      summary: "Master the secrets of infinite gem farming—including the Library milestone loop—and decode the 40-20-20-10 spending hierarchy.",
+      rules: [
+        "Part 1: Gem Harvesting - Exploit the Library milestone past 150 books (50 gems per book).",
+        "Part 2: Tactical Fusion & Deployment - Use the 10 + 4 + 1 configuration to bypass extreme fusion costs.",
+        "Part 3: Clan Gem Budget Matrix - 40% Fusions, 20% Hero Upgrades, 20% Legendary Bundles, 10% Lucky Wheel, 10% Reserves."
       ]
     },
     {
-      "category": "WARFARE META",
-      "title": "Operation Clan Clash: Tactical Deployment & Scoring Supremacy",
-      "summary": "The absolute battlefield manual for the new PvP weekly event. Lock your formations, maximize your 3 daily attacks, and master the scoring formula.",
-      "rules": [
-        "Warriors, a new era of localized warfare has arrived—Clan Clash PvP is officially active. This weekly event lets us face off directly against opposing player formations to skyrocket our global clan ranking. Leaving attacks unused or mismanaging your setup will actively drag down the clan's progress. Memorize these combat protocols immediately.",
-        "Part 1: The Weekly War Cycle",
-        "- The Timeline: Clan Clashes ignite every single week, running for four consecutive days from Thursday to Sunday. No exceptions—all clans are automatically pulled into the bracket.",
-        "- The Final Objective: Victory is determined purely by points. The clan with the highest cumulative score wins the clash. Forget trophies; in this event, raw event score is the only metric that matters.",
-        "- The Spoils: Once the event concludes on Sunday, your personal points are added to the clan's pool and converted directly into valuable clan currency. Command Note: Payouts have been temporarily increased until new activities roll out—hoard this currency now.",
-        "- Lock-out Restraint: Any mercenary or recruit who joins the clan while a Clan Clash is already active will be completely barred from participating in battles for that cycle.",
-        "Part 2: Stage Protocols & Formation Lock",
-        "Stage 1 — Preparation Day (Thursday): This stage lasts exactly 24 hours. You must manually set and save your defensive formation. Warning: Your formation is locked completely for the rest of the event once this day ends. If you fail to set it manually, the system will force-default to your last active Arena layout. Treat this with extreme care.",
-        "Stage 2 — The Clash Phase (Friday to Sunday): The war phase runs for 3 days. All matches are completely auto-fought with a maximum time limit of 5 minutes per match. You will not have manual control over your heroes' abilities, making formation composition your highest priority asset.",
-        "Part 3: Engagement Strategy & Score Multipliers",
-        "Every member has exactly 3 high-value attack chances per day. There is zero risk of losing points on failure, meaning you must maximize your targets using this operational matrix:",
-        "Target Acquisition: Do not waste attacks on low-tier, weak opponents that you can stomp instantly. Target players equal to or slightly stronger than your current rating, provided you have the element advantage to secure a win.",
-        "The Score Formula: Points scale exponentially based on three locked variables. Optimize your matchups accordingly:",
-        "[Your Army Power] + [Enemy Army Power] + [Battle Stats / Defeated Units] = Final Points",
-        "Formation Directives: Study the opponent's defensive layout before committing. Cross-reference our internal Arena, Hero, and Formation guides to build custom counters before pressing fight.",
-        "// TARGET EQUAL OR STRONGER — 3 DAILY AT TACKS ARE MANDATORY — NO EXCUSES //"
+      category: "WARFARE META",
+      title: "Operation Clan Clash: Tactical Deployment & Scoring Supremacy",
+      summary: "The absolute battlefield manual for the new PvP weekly event.",
+      rules: [
+        "Part 1: Weekly War Cycle - Thursdays to Sundays.",
+        "Part 2: Stage Protocols - Lock defensive formation on Thursday (Preparation Day).",
+        "Part 3: Score Formula - [Your Power] + [Enemy Power] + [Defeated Units] = Final Score."
       ]
     },
     {
-      "category": "TROOPS META",
-      "title": "The Strategic Army Composition: Baseline Minimum Requirements",
-      "summary": "The absolute minimum troop quantities and level thresholds required for clan members to participate in competitive Arena and Boss operations.",
-      "rules": [
-        "To maintain our competitive standing, all members must meet or exceed these barracks benchmarks. The quantities and levels listed below are strict minimum requirements—anything less is considered under-leveled for core operations.",
-        "High-Priority Minimum Rush Targets",
-        "- SG (Stone Golem) — [Arena]: Minimum requirement of exactly 1 unit pushed to Level 10 ASAP.",
-        "- HEADLESS — [Boss / Arena]: Minimum requirement of exactly 1 unit pushed to Level 10 ASAP.",
-        "Core Level 9 & 10 Minimum Benchmarks",
-        "LG (Lava Golem) — [Arena / Boss]: Minimum of 3 units, all at least Level 9.",
-        "BB (Bone Breaker) — [Boss / Arena]: Minimum of 1 unit at least Level 9.",
-        "NH (Night Hunter) — [Arena]: Minimum of 1 unit at least Level 9.",
-        "SHAMAN — [Arena]: Minimum of 2 units, both at least Level 9.",
-        "SM (Storm Mistress) — [Boss / Arena]: Minimum of 1 unit at least Level 9.",
-        "NM (Necromancer) — [Boss / Arena]: Minimum of 2 units, both at least Level 9.",
-        "GRAVEDIGGER — [Boss / Arena]: Minimum of 4 units, all scaled to at least Level 10.",
-        "ASSASSIN — [Boss / Arena]: Minimum of 4 units, all scaled to at least Level 10.",
-        "MONKS — [Boss / Arena]: Minimum of 2 units, both scaled to at least Level 10.",
-        "Mass Footprint Minimum Quantities",
-        "- MA (Magic Archer) — [Arena]: Minimum of 6 units, all at least Level 8.",
-        "- IMMORTALS — [Arena]: Minimum of 6 units, all at least Level 9.",
-        "- CC (Cursed Catapult) — [Arena]: Strict minimum requirement of 6 units in active rotation.",
-        "- UM (Undead Mage) — [Arena]: Strict minimum requirement of 4 units in active rotation.",
-        "- ALCHEMIST — [Boss / Arena]: Strict minimum requirement of 5 units in active rotation.",
-        "Non-Beneficial Cap (Do Not Exceed)",
-        "IG (Iron Guards) — [Arena / Boss]: Confirmed as NOT BENEFICIAL in the current meta. Maintain a baseline minimum of only 1–2 units. Do not invest any further resources into this unit.",
-        "// BARRACKS AUDIT PENDING — ENSURE ALL MINIMUM REQUIREMENTS ARE MET IMMEDIATELY //"
+      category: "TROOPS META",
+      title: "The Strategic Army Composition: Baseline Minimum Requirements",
+      summary: "The absolute minimum troop quantities and level thresholds required for clan members.",
+      rules: [
+        "High-Priority Rush: Stone Golem (Lv10), Headless (Lv10).",
+        "Core Levels: Lava Golem (3x Lv9), Bone Breaker (1x Lv9), Night Hunter (1x Lv9), Shaman (2x Lv9), Storm Mistress (1x Lv9), Necromancer (2x Lv9), Gravedigger (4x Lv10), Assassins (4x Lv10), Monks (2x Lv10).",
+        "Mass Footprint: Magic Archers (6x Lv8), Immortals (6x Lv9), Cursed Catapults (6x), Undead Mages (4x), Alchemists (5x)."
       ]
     }
   ]
