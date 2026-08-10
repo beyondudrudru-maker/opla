@@ -390,4 +390,34 @@ function route(text, recentContext = '') {
       // 3. Scenario Strategy Guides (Bosses, PvP, Scenarios)
       if (strategiesData.scenarioGuides) {
           const relevantScenarios = strategiesData.scenarioGuides.filter(scen => {
-              const scenString = JSON.stringify(scen).toLowerCase
+              const scenString = JSON.stringify(scen).toLowerCase();
+              return mentionedTags.some(tag => scenString.includes(tag.toLowerCase())) || 
+                     text.toLowerCase().includes("scenario") || 
+                     text.toLowerCase().includes("fight");
+          });
+          
+          if (relevantScenarios.length > 0) {
+              strategyData.context.scenarioGuides = relevantScenarios;
+              enrichmentAdded = true;
+          }
+      }
+  }
+
+  if (enrichmentAdded) {
+      strategyData.sufficient = true;
+  }
+
+  if (strategyData.sufficient || prebuiltEmbeds.length > 0) {
+      return { 
+        resolved: false, 
+        embeds: prebuiltEmbeds.length > 0 ? prebuiltEmbeds : null,
+        intent, 
+        entities, 
+        context: strategyData.sufficient ? strategyData.context : null 
+      };
+  }
+
+  return { resolved: false, intent, entities, context: null };
+}
+
+module.exports = { route };
