@@ -3,7 +3,8 @@
  *
  * PURPOSE: Dynamically computes response parameters (length, tone, emojis, mode)
  * based on user intent, emotional state, and relationship context.
- * 🚀 UPGRADE: Smarter intent handling, context-aware command execution, and robust fallback handling.
+ * 🚀 UPGRADE: Smarter intent handling, context-aware command execution, robust fallback handling,
+ * and strict formatting enforcement for point-wise game responses.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -69,6 +70,12 @@ function decideTone(intent, isModeration, isCreatorPath, isConflict) {
     : ['Kind', 'Warm', 'Pro'];
 }
 
+function decideFormat(isGameQuery) {
+  // Enforce point-wise answers strictly for game-related questions
+  if (isGameQuery) return 'Bullet-Points';
+  return 'Conversational';
+}
+
 function decide({ userId, emotionalState = {}, intent, relationship, userMessageLength = 50, isModeration = false, content = '' } = {}) {
   try {
     const isCreatorPath = userId === CREATOR_ID;
@@ -103,6 +110,7 @@ function decide({ userId, emotionalState = {}, intent, relationship, userMessage
       tone: decideTone(intent, isModeration, isCreatorPath, isConflict),
       emojiBudget: decideEmojiBudget(emotionalState, isCreatorPath && !isModeration, isInformational, isGameQuery, isConflict),
       mode: decideMode(intent, isModeration, isConflict),
+      format: decideFormat(isGameQuery),
       // Disable random reactions and follow-up questions when doing analytical game reporting or roasting
       preferReact: !isCreatorPath && (intent === INTENTS.BANTER || intent === INTENTS.SOCIAL) && !isGameQuery && !isConflict,
       askFollowUp: !isGameQuery && !isConflict && (intent === INTENTS.EMOTIONAL_DISCLOSURE || (emotionalState.curiosity && emotionalState.curiosity > 55)),
@@ -115,6 +123,7 @@ function decide({ userId, emotionalState = {}, intent, relationship, userMessage
       tone: ['Kind', 'Warm'],
       emojiBudget: 1,
       mode: 'conversational',
+      format: 'Conversational',
       preferReact: false,
       askFollowUp: false,
       forbidTraits: ['Ego', 'Robotic'],
@@ -125,7 +134,7 @@ function decide({ userId, emotionalState = {}, intent, relationship, userMessage
 // Token-compressed output
 function toBrief(decision) {
   if (!decision) return '[BEHAVIOR|UNKNOWN]';
-  return `[BEHAVIOR|LEN:${decision.targetLength}|MODE:${decision.mode}|TONE:${decision.tone.join(',')}|EMOJI:${decision.emojiBudget}|REACT:${decision.preferReact ? 'Y':'N'}|ASK:${decision.askFollowUp ? 'Y':'N'}|NO:${decision.forbidTraits.join(',')}]`;
+  return `[BEHAVIOR|LEN:${decision.targetLength}|MODE:${decision.mode}|FORMAT:${decision.format}|TONE:${decision.tone.join(',')}|EMOJI:${decision.emojiBudget}|REACT:${decision.preferReact ? 'Y':'N'}|ASK:${decision.askFollowUp ? 'Y':'N'}|NO:${decision.forbidTraits.join(',')}]`;
 }
 
 module.exports = { decide, toBrief };
