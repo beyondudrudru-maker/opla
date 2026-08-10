@@ -12,12 +12,18 @@
  *   dead providers. Optional periodic model discovery keeps the registry
  *   honest without ever calling out to a provider on every Discord message.
  *
- * PUBLIC CONTRACT (unchanged — required by gemini.js)
+ * PUBLIC CONTRACT (updated — required by gemini.js)
  *   const { result, modelUsed } = await modelRouter.generate({
  *     classification, prompt, userMessage, systemInstruction,
- *     geminiKeys, groqClient, hasGroq
+ *     geminiKeys, groqKeys
  *   });
  *   modelRouter.getRouterHealth()
+ *
+ *   groqKeys is an array of Groq API key strings (mirrors geminiKeys).
+ *   The router owns per-key OpenAI-compatible client construction, per-key
+ *   round-robin ordering, and per-key circuit breakers — a rate-limited or
+ *   quota-exhausted key is skipped in favor of the next key in the array,
+ *   exactly like the Gemini key failover.
  *
  * DESIGN NOTES
  *   - Gemini is the soft-preferred provider for normal conversation, Hindi/
@@ -233,6 +239,19 @@ function getGeminiClient(apiKey) {
     genAiClientCache.set(apiKey, new GoogleGenerativeAI(apiKey));
   }
   return genAiClientCache.get(apiKey);
+}
+
+// Groq uses the OpenAI SDK pointed at Groq's baseURL. One client per key,
+// cached — never rebuilt per-request. Mirrors getGeminiClient() above.
+const groqClientCache = new Map();
+function getGroqClient(apiKey) {
+  if (!groqClientCache.has(apiKey)) {
+    groqClientCache.set(apiKey, new OpenAI({
+      apiKey,
+      baseURL: 'https://api.groq.com/openai/v1'
+    }));
+  }
+  return groqClientCache.get(apiKey);
 }
 
 let openRouterClient = null;
@@ -803,7 +822,7 @@ async function execCloudflare({ modelName, prompt, systemInstruction, maxTokens,
 // ============================================================
 async function runCandidate(candidate, ctx) {
   const { provider, model: modelName } = candidate;
-  const { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqClient, hasGroq, openRouterFreeOnly } = ctx;
+  const { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqKeys, openRouterFreeOnly } = ctx;
 
   if (provider === 'gemini') {
     if (!ENABLE_GEMINI || !geminiKeys || geminiKeys.length === 0) return null;
@@ -827,20 +846,27 @@ async function runCandidate(candidate, ctx) {
   }
 
   if (provider === 'groq') {
-    if (!ENABLE_GROQ || !hasGroq || !groqClient) return null;
-    const id = breakerId('groq', modelName, process.env.GROQ_API_KEY || process.env.OPLA);
-    if (isBreakerOpen(id)) return null;
-    const start = Date.now();
-    try {
-      const { text, quota } = await withRetry(() => execOpenAICompatible(groqClient, { modelName, prompt, systemInstruction, maxTokens, temp }));
-      recordSuccess(id, Date.now() - start, quota);
-      return { result: text, modelUsed: `${modelName} (groq)`, provider: 'groq', metadata: { latencyMs: Date.now() - start, quota } };
-    } catch (error) {
-      const type = classifyFailure(error);
-      wlog(`groq/${modelName} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
-      if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
-      return null;
+    if (!ENABLE_GROQ || !groqKeys || groqKeys.length === 0) return null;
+    const order = nextKeyOrder(`groq:${modelName}`, groqKeys);
+    for (const { key, index } of order) {
+      const id = breakerId('groq', modelName, key);
+      if (isBreakerOpen(id)) continue;
+
+      const start = Date.now();
+      try {
+        const client = getGroqClient(key);
+        const { text, quota } = await withRetry(() => execOpenAICompatible(client, { modelName, prompt, systemInstruction, maxTokens, temp }));
+        recordSuccess(id, Date.now() - start, quota);
+        return { result: text, modelUsed: `${modelName} (groq, key ${index + 1})`, provider: 'groq', metadata: { latencyMs: Date.now() - start, quota } };
+      } catch (error) {
+        const type = classifyFailure(error);
+        wlog(`groq/${modelName} key=${index + 1} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
+        if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
+        // RATE_LIMIT / QUOTA_EXHAUSTED (429) and other hard-limit failures
+        // fall through to try the next key in groqKeys, exactly like Gemini.
+      }
     }
+    return null;
   }
 
   if (provider === 'openrouter') {
@@ -901,12 +927,12 @@ function isProviderLikelyDown(provider) {
   return sawAny && allOpen;
 }
 
-function buildCandidates({ category, isLong, geminiKeys, hasGroq, openRouterFreeOnly, cloudflareEnabled }) {
+function buildCandidates({ category, isLong, geminiKeys, groqKeys, openRouterFreeOnly, cloudflareEnabled }) {
   const candidates = [];
 
   for (const entry of allRegistryEntries()) {
     if (entry.provider === 'gemini' && (!ENABLE_GEMINI || !geminiKeys || geminiKeys.length === 0)) continue;
-    if (entry.provider === 'groq' && (!ENABLE_GROQ || !hasGroq)) continue;
+    if (entry.provider === 'groq' && (!ENABLE_GROQ || !groqKeys || groqKeys.length === 0)) continue;
     if (entry.provider === 'openrouter' && (!ENABLE_OPENROUTER || !getOpenRouterClient())) continue;
     if (entry.provider === 'cloudflare' && (!ENABLE_CLOUDFLARE || !cloudflareEnabled)) continue;
     if (entry.costTier === 'paid') continue;
@@ -916,15 +942,13 @@ function buildCandidates({ category, isLong, geminiKeys, hasGroq, openRouterFree
     if (score === -Infinity) continue;
 
     // Fold in live quota risk using the most-likely credential fingerprint;
-    // for Gemini this is approximate since keys round-robin, so we skip it
-    // there and rely on per-key breakers instead.
+    // for Gemini and Groq this is approximate since keys round-robin, so we
+    // skip it there and rely on per-key breakers instead.
     let riskAdjusted = score;
-    if (entry.provider !== 'gemini') {
-      const cred = entry.provider === 'groq'
-        ? (process.env.GROQ_API_KEY || process.env.OPLA)
-        : entry.provider === 'openrouter'
-          ? process.env.OPENROUTER_API_KEY
-          : (getCloudflareConfig() || {}).apiToken;
+    if (entry.provider !== 'gemini' && entry.provider !== 'groq') {
+      const cred = entry.provider === 'openrouter'
+        ? process.env.OPENROUTER_API_KEY
+        : (getCloudflareConfig() || {}).apiToken;
       riskAdjusted -= quotaRiskPenalty(breakerId(entry.provider, entry.model, cred));
     }
 
@@ -941,7 +965,7 @@ function buildCandidates({ category, isLong, geminiKeys, hasGroq, openRouterFree
 let lastDiscoveryAt = 0;
 let discoveryInFlight = false;
 
-async function maybeRunDiscovery({ groqClient, hasGroq }) {
+async function maybeRunDiscovery({ groqKeys }) {
   const now = Date.now();
   if (discoveryInFlight) return;
   if (now - lastDiscoveryAt < MODEL_DISCOVERY_TTL_MS) return;
@@ -949,7 +973,8 @@ async function maybeRunDiscovery({ groqClient, hasGroq }) {
   lastDiscoveryAt = now;
 
   try {
-    if (ENABLE_GROQ && hasGroq && groqClient) {
+    if (ENABLE_GROQ && groqKeys && groqKeys.length > 0) {
+      const groqClient = getGroqClient(groqKeys[0]);
       await discoverGroqModels(groqClient).catch((e) => dlog('groq discovery failed (non-fatal):', e.message));
     }
     const orClient = getOpenRouterClient();
@@ -1006,7 +1031,7 @@ async function discoverOpenRouterModels(orClient) {
 // ============================================================
 // 14. MAIN GENERATOR
 // ============================================================
-async function generate({ classification, prompt, userMessage, systemInstruction, geminiKeys = [], groqClient, hasGroq }) {
+async function generate({ classification, prompt, userMessage, systemInstruction, geminiKeys = [], groqKeys = [] }) {
   const { category, isLong, intent } = classifyRequest({ classification, prompt, userMessage });
   const temp = getDynamicTemp(intent);
   const cloudflareEnabled = !!getCloudflareConfig();
@@ -1015,10 +1040,10 @@ async function generate({ classification, prompt, userMessage, systemInstruction
 
   // Fire-and-forget cache refresh; never awaited beyond the cheap
   // TTL/in-flight checks above, so it never adds latency to a request.
-  maybeRunDiscovery({ groqClient, hasGroq }).catch(() => {});
+  maybeRunDiscovery({ groqKeys }).catch(() => {});
 
   const candidates = buildCandidates({
-    category, isLong, geminiKeys, hasGroq, openRouterFreeOnly, cloudflareEnabled
+    category, isLong, geminiKeys, groqKeys, openRouterFreeOnly, cloudflareEnabled
   });
 
   if (candidates.length === 0) {
@@ -1027,7 +1052,7 @@ async function generate({ classification, prompt, userMessage, systemInstruction
 
   dlog(`intent=${category} maxTokens=${maxTokens} candidates=${candidates.map(c => `${c.provider}/${c.model}(${c.score.toFixed(1)})`).join(', ')}`);
 
-  const ctx = { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqClient, hasGroq, openRouterFreeOnly };
+  const ctx = { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqKeys, openRouterFreeOnly };
   let lastError = null;
   let lastProviderTried = null;
 
@@ -1057,8 +1082,8 @@ async function generate({ classification, prompt, userMessage, systemInstruction
 
   const emergencyOrder = [
     (ENABLE_GEMINI && geminiKeys.length) ? { provider: 'gemini', model: 'gemini-3.5-flash-lite' } : null,
-    (ENABLE_GROQ && hasGroq) ? { provider: 'groq', model: 'openai/gpt-oss-20b' } : null,
-    (ENABLE_GROQ && hasGroq) ? { provider: 'groq', model: 'llama-3.1-8b-instant' } : null,
+    (ENABLE_GROQ && groqKeys.length) ? { provider: 'groq', model: 'openai/gpt-oss-20b' } : null,
+    (ENABLE_GROQ && groqKeys.length) ? { provider: 'groq', model: 'llama-3.1-8b-instant' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'openrouter/free' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free' } : null,
     cloudflareEnabled ? { provider: 'cloudflare', model: '@cf/meta/llama-3.1-8b-instruct' } : null
