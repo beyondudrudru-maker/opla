@@ -96,6 +96,7 @@ STRICTLY FORBIDDEN, under any circumstance:
 - Draft labels, step numbering, or planning text (e.g. "Draft:", "Step 1:", "Plan:", "Final answer:").
 - Any line that starts with a dash/bullet followed by a self-check phrase (e.g. "- Check ...:", "- Verify ...:", "- Constraint ...:").
 - Any XML/pseudo tags such as <think>, <reasoning>, <plan>, or similar.
+- STRICT SANDBOX RULE: NEVER calculate total power, stats, or troop capacities yourself. ONLY output the exact math provided in <GameData>. If it is not there, do not invent it.
 There is no "behind the scenes" — you do not get a scratchpad. Whatever you generate is read directly by the user in Discord. If you catch yourself about to write a thought, a checklist, or a self-correction — DO NOT write it. Simply output the final line of dialogue, nothing before it, nothing after it.`;
 
 // ============================================================
@@ -129,7 +130,7 @@ ${CRITICAL_OUTPUT_RULES}`;
 }
 
 // ============================================================
-// 🛡️ PRE-COMPILED POST-PROCESSING FAILSAFE REGEXES
+// 🛡️ PRE-COMPILED POST-PROCESSING FAILSAFE REGEXES & GATEKEEPER
 // ============================================================
 
 const LEAK_LINE_PATTERNS = [
@@ -151,9 +152,24 @@ function stripLeakedReasoning(text) {
     .filter(line => line.length > 0);
 
   let cleaned = cleanedLines.join('\n').trim();
-  if (cleaned === '') return ''; // Return empty to trigger auto-retry
+  if (cleaned === '') return ''; 
 
   return cleaned;
+}
+
+function gatekeeperLint(text) {
+    if (!text) return false;
+    // Hard fail if it tries to generate a markdown table
+    if (/\|---\|/.test(text) || /\|.*\|.*\|/.test(text)) {
+        console.warn('⚠️ [GATEKEEPER] Markdown table detected and blocked.');
+        return false;
+    }
+    // Hard fail if leaked reasoning tags slip through
+    if (/<think>|<\/think>|<plan>|<step>/i.test(text)) {
+        console.warn('⚠️ [GATEKEEPER] Leaked XML thought tags detected and blocked.');
+        return false;
+    }
+    return true;
 }
 
 // ============================================================
@@ -257,13 +273,14 @@ ${CRITICAL_OUTPUT_RULES}
       scrubbedText = scrubbedText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
       if (scrubbedText.endsWith(']')) scrubbedText = scrubbedText.slice(0, -1).trim();
 
-      if (scrubbedText !== '') {
+      // Pass through the new Gatekeeper
+      if (scrubbedText !== '' && gatekeeperLint(scrubbedText)) {
         rawText = scrubbedText;
         break; // Success! Break the loop.
       } else if (attempt < MAX_RETRIES) {
         // Retry logic injection
-        console.warn(`[RETRY] Attempt ${attempt} failed due to CoT leak or empty output. Retrying...`);
-        currentPrompt += `\n\n[SYSTEM WARNING: Your previous output was completely rejected because you leaked internal reasoning or checklists. Provide ONLY the final user-facing response. Use bullet points (•) for detailed breakdowns!]`;
+        console.warn(`[RETRY] Attempt ${attempt} blocked by Gatekeeper Middleware or empty output. Retrying...`);
+        currentPrompt += `\n\n[SYSTEM WARNING: Your previous output violated formatting rules (e.g., used markdown tables or leaked internal thoughts). Provide ONLY clean, bulleted dialogue.]`;
       }
     }
 
