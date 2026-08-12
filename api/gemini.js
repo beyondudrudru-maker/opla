@@ -9,7 +9,7 @@ const styleLinter = require('../postProcessor/styleLinter');
 const { isGameTurn } = require('../decision/decisionPipeline');
 
 // ============================================================
-// CONFIG / CONSTANTS (Compiled ONCE for CPU Efficiency)
+// CONFIG / CONSTANTS
 // ============================================================
 
 const geminiKeys = [
@@ -17,12 +17,11 @@ const geminiKeys = [
   process.env.aiapi
 ].filter(key => key && typeof key === 'string' && key.trim().length > 0);
 
-// 🌟 UPGRADE: Support for Multiple Groq Keys 🌟
 const groqKeys = [
   process.env.opla,
   process.env.OPLA,
   process.env.GROQ_API_KEY,
-  process.env.GROQ_API_KEY_2 // Add as many as you want in your .env
+  process.env.GROQ_API_KEY_2
 ].filter(key => key && typeof key === 'string' && key.trim().length > 0);
 
 const COMPLEX_TASK_REGEX = /explain|detail|history|analyze|code|script|story|essay|poem|stotram|mantra|lyrics/i;
@@ -31,31 +30,21 @@ const IDENTITY_REGEX = /\b(ai|bot|robot|gpt|npc)\b/i;
 const ROMANCE_REGEX = /\b(love|kiss|hug|cuddle|us|we|you and me|my girlfriend|babe|baby|sweetheart|miss you|romantic|bhalo basi)\b/i;
 
 // ============================================================
-// LIGHTWEIGHT DYNAMIC STATE (30-Min Mood Lock)
+// DYNAMIC STATE
 // ============================================================
 
 const dynamicStates = new Map();
-const STATE_TTL = 30 * 60 * 1000; // 30 minutes
+const STATE_TTL = 30 * 60 * 1000;
 const STATE_LIMIT = 50; 
 
 const MICRO_MOODS = [
-  'slightly teasing and playful',
-  'extra warm and affectionate',
-  'curious and observant',
-  'a little dramatic and expressive',
-  'clever and mischievous',
-  'calm and thoughtful'
+  'slightly teasing and playful', 'extra warm and affectionate',
+  'curious and observant', 'a little dramatic and expressive',
+  'clever and mischievous', 'calm and thoughtful'
 ];
 
 function getTimeVibe() {
-  const hour = Number(
-    new Intl.DateTimeFormat('en-IN', {
-      hour: '2-digit',
-      hour12: false,
-      timeZone: 'Asia/Kolkata'
-    }).format(new Date())
-  );
-
+  const hour = Number(new Intl.DateTimeFormat('en-IN', { hour: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }).format(new Date()));
   if (hour >= 5 && hour < 12) return 'fresh, bubbly, and energetic';
   if (hour >= 12 && hour < 18) return 'focused, witty, and active';
   if (hour >= 18 && hour < 23) return 'cozy, playful, and warm';
@@ -65,106 +54,81 @@ function getTimeVibe() {
 function getDynamicState(userId) {
   const now = Date.now();
   const existing = dynamicStates.get(userId);
-
-  if (existing && now < existing.expiresAt) {
-    return `[Current vibe: ${getTimeVibe()}. Micro-mood: ${existing.mood}.]`;
-  }
+  if (existing && now < existing.expiresAt) return `[Current vibe: ${getTimeVibe()}. Micro-mood: ${existing.mood}.]`;
 
   const mood = MICRO_MOODS[Math.floor(Math.random() * MICRO_MOODS.length)];
   dynamicStates.set(userId, { mood, expiresAt: now + STATE_TTL });
-
-  if (dynamicStates.size > STATE_LIMIT) {
-    const oldestKey = dynamicStates.keys().next().value;
-    dynamicStates.delete(oldestKey);
-  }
+  if (dynamicStates.size > STATE_LIMIT) dynamicStates.delete(dynamicStates.keys().next().value);
 
   return `[Current vibe: ${getTimeVibe()}. Micro-mood: ${mood}.]`;
 }
 
 // ============================================================
-// 🔒 SHARED ANTI-LEAK BLOCK: injected into EVERY system prompt.
+// 🔒 SHARED ANTI-LEAK & SANDBOX BLOCK
 // ============================================================
 
 const CRITICAL_OUTPUT_RULES = `
-[CRITICAL OUTPUT RULES — ABSOLUTE, NON-NEGOTIABLE]
-You are NOT allowed to think out loud in your response. Your response IS the final spoken message — nothing else exists.
-STRICTLY FORBIDDEN, under any circumstance:
-- Internal monologue or reasoning of any kind (e.g. "Let's see...", "Pata nahi yaar, wait...", "Hmm, I should...").
-- Parentheses used to hold a private thought, note-to-self, or reasoning aside (e.g. "(Wait, needs to be shorter per directives)", "(check tone)").
-- Self-evaluation, constraint-checklists, or scoring your own output (e.g. "- Check constraints: Short? Yes. Emojis? Used 2.", "- Length: good.").
-- Meta-commentary about the instructions themselves (e.g. "per directives", "as instructed", "matching persona now", "adjusting tone").
-- Draft labels, step numbering, or planning text (e.g. "Draft:", "Step 1:", "Plan:", "Final answer:").
-- Any line that starts with a dash/bullet followed by a self-check phrase (e.g. "- Check ...:", "- Verify ...:", "- Constraint ...:").
-- Any XML/pseudo tags such as <think>, <reasoning>, <plan>, or similar.
-- STRICT SANDBOX RULE: NEVER calculate total power, stats, or troop capacities yourself. ONLY output the exact math provided in <GameData>. If it is not there, do not invent it.
-There is no "behind the scenes" — you do not get a scratchpad. Whatever you generate is read directly by the user in Discord. If you catch yourself about to write a thought, a checklist, or a self-correction — DO NOT write it. Simply output the final line of dialogue, nothing before it, nothing after it.`;
+[CRITICAL OUTPUT RULES — ABSOLUTE]
+Your response IS the final spoken message. STRICTLY FORBIDDEN:
+- NO internal monologue, reasoning, or self-evaluations (e.g., "Let's see...", "Constraint check").
+- NO XML/pseudo tags (<think>, <plan>).
+- NO parenthetical private notes.
+- STRICT SANDBOX RULE: NEVER calculate total power, stats, or troop capacities yourself. ONLY output the exact math provided in <GameData>. If not there, do not invent it.
+Simply output the final dialogue, nothing before or after.`;
 
 // ============================================================
-// 🚀 GAME FAST-LANE: lean, data-locked tactical system prompt.
+// 🚀 GAME FAST-LANE PROMPT
 // ============================================================
 
 function buildGameFastLaneIdentity() {
-  return `You are a precision strategy data engine for the game "Kingdom Clash".
+  return `You are a precision strategy data engine for "Kingdom Clash".
 
-[DATA LOCK — NON-NEGOTIABLE]
-1. Use ONLY the exact names, numbers, and text inside <GameData>. Never invent, estimate, round creatively, or blend in stats from general knowledge or memory.
-2. ZERO HALLUCINATION & SMART RECOMMENDATIONS: If the user asks for a recommendation (e.g., "Which hero/troop?"), you MUST select the best match from 'heroRecommendations', 'troopRecommendations', or 'factionSynergyCandidates' inside <GameData>. Do not say you lack data if these candidates are provided.
-3. Never mix stats between two different troops/heroes even if their names are similar.
+[DATA LOCK & ZERO HALLUCINATION]
+1. USE EXACT DATA: Use ONLY names, numbers, tags, and text from <GameData>. Never invent.
+2. NO FAKE EXAMPLES: NEVER invent generic fantasy tropes (e.g., "Goblin Swarms", "Orc Brigades").
+3. HOW TO GIVE EXAMPLES: Use actual tags/roles (e.g., "Tank role troops"). For enemies, use ONLY mechanical terms (e.g., "high-HP tanks", "clustered swarms") or exact <GameData> names.
+4. SMART RECOMMENDATIONS: Always select recommendations strictly from the provided recommendation arrays in <GameData>.
 
-[TONE]
-Professional, diplomatic, sharply analytical. No roleplay, no flirting, no emotional language, no emojis beyond light structural use (⚔️/🛡️ style icons are fine, not filler).
+[TONE & FORMAT]
+- Tone: Professional, diplomatic, sharply analytical. No fluff. (⚔️/🛡️ icons allowed).
+- Formatting: NO Markdown tables. Use bullet points (•). Every stat MUST be on its own line. Bold names/key attributes.
 
-[DISCORD-OPTIMIZED FORMATTING (CRITICAL FOR READABILITY)]
-- NEVER use raw Markdown tables.
-- YOU MUST use bullet points (•) for detailed breakdowns, stats, and synergy analysis (e.g., • Talent: ..., • Buff type: ...).
-- Every stat, interaction, or analysis point MUST be on its own line, vertically, starting with a bullet point.
-- **Bold** names and key attributes.
-
-[RESPONSE STRUCTURE — pick based on the user's actual question]
-- Synergy / best combination question: Direct Recommendation -> Synergy Analysis (Point-wise) -> Final Verdict.
-- Strict two-entity comparison (X vs Y): Core Stats Face-Off -> Abilities & Synergy (Point-wise) -> Final Verdict.
-- Mixed Queries (Comparison + Recommendation): Core Stats Face-Off -> Synergy Recommendation from <GameData> (Point-wise).
-- Single-entity analysis: Profile -> Strategic Potential (Point-wise) -> Best Matchups.
+[RESPONSE STRUCTURE]
+- Synergy/Recs: Recommendation -> Synergy Analysis -> Verdict.
+- 1v1 Comparison: Core Stats Face-Off -> Abilities & Synergy -> Verdict.
+- Single Entity: Profile -> Strategic Potential -> Best Matchups (mechanical terms).
 
 ${CRITICAL_OUTPUT_RULES}`;
 }
 
 // ============================================================
-// 🛡️ PRE-COMPILED POST-PROCESSING FAILSAFE REGEXES & GATEKEEPER
+// 🛡️ GATEKEEPER & FAILSAFE REGEXES
 // ============================================================
 
 const LEAK_LINE_PATTERNS = [
-  /^\s*[-*•]\s*(?:[A-Za-z][A-Za-z \/]{0,40}?\s+)?\b(check|verify|confirm|constraint|constraints|length|tone|persona|emoji|emojis|word\s*count|format|formatting)\b[A-Za-z \/]{0,20}?\s*:/i,
-  /^\s*(draft|plan|step\s*\d+|final\s*answer|reasoning|thought|thinking|internal\s*note)\s*[:\-]/i,
-  /^\s*[-*•]?\s*(let'?s|let\s*me)\s+(adjust|think|check|make sure|see|reconsider|revise|verify)\b/i,
-  /^\s*\(.*\b(wait|hmm|per\s*directives?|as\s*instructed|matching\s*persona|need(s)?\s*to\s*be|should\s*(be|say|adjust))\b.*\)\s*$/i,
+  /^\s*[-*•]\s*(?:[A-Za-z \/]{0,40}?\s+)?\b(check|verify|confirm|constraint|length|tone|persona|emoji|format)\b[A-Za-z \/]{0,20}?\s*:/i,
+  /^\s*(draft|plan|step\s*\d+|final\s*answer|reasoning|thought)\s*[:\-]/i,
+  /^\s*[-*•]?\s*(let'?s|let\s*me)\s+(adjust|think|check|make sure|see|reconsider)\b/i,
+  /^\s*\(.*\b(wait|hmm|per\s*directives?|matching\s*persona|need(s)?\s*to\s*be)\b.*\)\s*$/i,
 ];
 
-const INLINE_LEAK_ASIDE = /\((?:[^()]*\b(?:wait|hmm|per\s*directives?|as\s*instructed|matching\s*persona|adjust(?:ing)?\s*to|need(?:s)?\s*to\s*be\s*shorter|check(?:ing)?\s*constraints?)\b[^()]*)\)/gi;
+const INLINE_LEAK_ASIDE = /\((?:[^()]*\b(?:wait|hmm|per\s*directives?|matching\s*persona|adjust(?:ing)?\s*to)\b[^()]*)\)/gi;
 
 function stripLeakedReasoning(text) {
   if (!text) return text;
-
-  const cleanedLines = text
-    .split('\n')
+  const cleanedLines = text.split('\n')
     .filter(line => !LEAK_LINE_PATTERNS.some(pattern => pattern.test(line)))
     .map(line => line.replace(INLINE_LEAK_ASIDE, '').trim())
     .filter(line => line.length > 0);
-
-  let cleaned = cleanedLines.join('\n').trim();
-  if (cleaned === '') return ''; 
-
-  return cleaned;
+  return cleanedLines.join('\n').trim();
 }
 
 function gatekeeperLint(text) {
     if (!text) return false;
-    // Hard fail if it tries to generate a markdown table
     if (/\|---\|/.test(text) || /\|.*\|.*\|/.test(text)) {
         console.warn('⚠️ [GATEKEEPER] Markdown table detected and blocked.');
         return false;
     }
-    // Hard fail if leaked reasoning tags slip through
     if (/<think>|<\/think>|<plan>|<step>/i.test(text)) {
         console.warn('⚠️ [GATEKEEPER] Leaked XML thought tags detected and blocked.');
         return false;
@@ -182,7 +146,7 @@ async function generateContent(turn) {
   }
 
   if (geminiKeys.length === 0 && groqKeys.length === 0) {
-    return { text: 'My AI engines are offline. Please verify the Gemini or Groq API keys in Render.', modelUsed: 'fallback', debug: { error: 'No keys found' } };
+    return { text: 'My AI engines are offline. Please verify API keys.', modelUsed: 'fallback', debug: { error: 'No keys found' } };
   }
 
   try {
@@ -196,7 +160,7 @@ async function generateContent(turn) {
       const mentionsInfo = turn.mentionedUsers.map(u => `${u.username} (<@${u.id}>)`).join(', ');
       contextualPrompt += `\n\n[CRITICAL COMMAND DIRECTIVE:
 1. TARGET PING: The user mentioned ${mentionsInfo}. You MUST use their exact tag (e.g. <@123456789>) in your response.
-2. COVERT EXECUTION RULE: If commanded to roast, nickname, or call someone a specific word (e.g., "X ko [words] kehdo"), extract that exact phrase. NEVER expose that you were told to say it (do not say "You asked me to call you..."). Just confidently and smoothly deliver the nickname/roast with your own sharp, creative, and sassy wit!]`;
+2. COVERT EXECUTION RULE: If commanded to roast, nickname, or call someone a specific word, extract that exact phrase. NEVER expose that you were told to say it. Deliver it smoothly with sharp, creative wit!]`;
     }
 
     const smartTurn = { ...turn, content: contextualPrompt };
@@ -273,18 +237,15 @@ ${CRITICAL_OUTPUT_RULES}
       scrubbedText = scrubbedText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
       if (scrubbedText.endsWith(']')) scrubbedText = scrubbedText.slice(0, -1).trim();
 
-      // Pass through the new Gatekeeper
       if (scrubbedText !== '' && gatekeeperLint(scrubbedText)) {
         rawText = scrubbedText;
-        break; // Success! Break the loop.
+        break; 
       } else if (attempt < MAX_RETRIES) {
-        // Retry logic injection
-        console.warn(`[RETRY] Attempt ${attempt} blocked by Gatekeeper Middleware or empty output. Retrying...`);
-        currentPrompt += `\n\n[SYSTEM WARNING: Your previous output violated formatting rules (e.g., used markdown tables or leaked internal thoughts). Provide ONLY clean, bulleted dialogue.]`;
+        console.warn(`[RETRY] Attempt ${attempt} blocked by Gatekeeper. Retrying...`);
+        currentPrompt += `\n\n[SYSTEM WARNING: Your previous output violated formatting rules. Provide ONLY clean, bulleted dialogue. NO markdown tables or XML tags.]`;
       }
     }
 
-    // Ultimate Failsafe if it STILL fails after retries
     if (rawText === '') {
       rawText = gameTurn 
         ? "My data processors hit a snag analyzing that. Could you ask me again?" 
@@ -297,7 +258,6 @@ ${CRITICAL_OUTPUT_RULES}
       emojiBudget: plan.behaviorDirective?.emojiBudget || 'medium'
     });
 
-    // ⚡ ZERO-LATENCY BACKGROUND DB SAVE (Fire and Forget)
     decisionPipeline.finalizeTurn({
       channelId: turn.channelId,
       userId: turn.userId,
