@@ -67,6 +67,32 @@ const { classify, resolveEntities } = require('./gameIntentClassifier.js');
 const { build } = require('./strategyContextBuilder.js');
 const queryEngine = require('../engine/gameQueryEngine.js');
 
+// 🆕 STAT FORMATTING: hero stats (hp/defense/attack) moved from single
+// integers to { min, max } objects (Level 1 -> Level 10 scaling range).
+// This helper collapses that into a "Min - Max" string for Discord embeds
+// while staying backward-compatible with the older array-of-10 shape and
+// with plain number/string stats (e.g. troop stats, still per-level singles).
+function formatStat(stat) {
+  const fmt = (n) => (typeof n === 'number' ? n.toLocaleString() : String(n));
+
+  // Current heroes.js shape: { min, max }
+  if (stat && typeof stat === 'object' && !Array.isArray(stat) && 'min' in stat && 'max' in stat) {
+    if (stat.min === stat.max) return fmt(stat.min);
+    return `${fmt(stat.min)} - ${fmt(stat.max)}`;
+  }
+
+  // Legacy/alternate shape: array of per-level values, e.g. statLevels[stat]
+  if (Array.isArray(stat)) {
+    if (stat.length === 0) return 'N/A';
+    const min = stat[0];
+    const max = stat[stat.length - 1];
+    return stat.length === 1 ? fmt(min) : `${fmt(min)} - ${fmt(max)}`;
+  }
+
+  if (stat === undefined || stat === null || stat === '') return 'N/A';
+  return typeof stat === 'number' ? stat.toLocaleString() : String(stat);
+}
+
 const ecoModule = require('../data/economyRatios.js');
 const economyRatios = ecoModule.economyRatios || ecoModule;
 
@@ -464,9 +490,9 @@ function route(text, recentContext = '', userCorrections = []) {
           .addFields(
             { name: 'Faction',     value: hero.faction || 'N/A',                                  inline: true },
             { name: 'Rarity',      value: hero.rarity  || 'N/A',                                  inline: true },
-            { name: '❤️ HP',       value: hero.stats?.hp      ? hero.stats.hp.toLocaleString()  : 'N/A', inline: true },
-            { name: '🛡️ Defense', value: String(hero.stats?.defense || 'N/A'),                   inline: true },
-            { name: '⚔️ Attack',  value: hero.stats?.attack  ? hero.stats.attack.toLocaleString(): 'N/A', inline: true }
+            { name: '❤️ HP',       value: formatStat(hero.stats?.hp),      inline: true },
+            { name: '🛡️ Defense', value: formatStat(hero.stats?.defense), inline: true },
+            { name: '⚔️ Attack',  value: formatStat(hero.stats?.attack),  inline: true }
           );
         if (hero.talent) {
           embed.addFields({ name: `🌟 Talent: ${hero.talent.name}`, value: hero.talent.description });
@@ -572,9 +598,9 @@ function route(text, recentContext = '', userCorrections = []) {
           .setTitle(`🦸‍♂️ ${h1.name}`)
           .addFields(
             { name: 'Faction / Rarity', value: `${h1.faction || 'N/A'} (${h1.rarity || 'N/A'})`, inline: false },
-            { name: '❤️ HP',            value: h1.stats?.hp      ? h1.stats.hp.toLocaleString()   : 'N/A', inline: true },
-            { name: '🛡️ Defense',      value: String(h1.stats?.defense || 'N/A'),                  inline: true },
-            { name: '⚔️ Attack',       value: h1.stats?.attack  ? h1.stats.attack.toLocaleString(): 'N/A', inline: true }
+            { name: '❤️ HP',            value: formatStat(h1.stats?.hp),      inline: true },
+            { name: '🛡️ Defense',      value: formatStat(h1.stats?.defense), inline: true },
+            { name: '⚔️ Attack',       value: formatStat(h1.stats?.attack),  inline: true }
           );
         if (h1.talent)  embed1.addFields({ name: `🌟 Talent: ${h1.talent.name}`,  value: h1.talent.description });
         if (h1.ability) embed1.addFields({ name: `✨ Ability: ${h1.ability.name}`, value: h1.ability.description });
@@ -584,9 +610,9 @@ function route(text, recentContext = '', userCorrections = []) {
           .setTitle(`🦸‍♂️ ${h2.name}`)
           .addFields(
             { name: 'Faction / Rarity', value: `${h2.faction || 'N/A'} (${h2.rarity || 'N/A'})`, inline: false },
-            { name: '❤️ HP',            value: h2.stats?.hp      ? h2.stats.hp.toLocaleString()   : 'N/A', inline: true },
-            { name: '🛡️ Defense',      value: String(h2.stats?.defense || 'N/A'),                  inline: true },
-            { name: '⚔️ Attack',       value: h2.stats?.attack  ? h2.stats.attack.toLocaleString(): 'N/A', inline: true }
+            { name: '❤️ HP',            value: formatStat(h2.stats?.hp),      inline: true },
+            { name: '🛡️ Defense',      value: formatStat(h2.stats?.defense), inline: true },
+            { name: '⚔️ Attack',       value: formatStat(h2.stats?.attack),  inline: true }
           );
         if (h2.talent)  embed2.addFields({ name: `🌟 Talent: ${h2.talent.name}`,  value: h2.talent.description });
         if (h2.ability) embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: h2.ability.description });
