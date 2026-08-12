@@ -22,6 +22,44 @@
  *
  * 4. Output Formatting         — all strategy responses use clean vertical
  *    bullet lists (•). Markdown tables are never emitted by this router.
+ *
+ * 5. Smart Embed + AI Co-existence — pure entity/fact lookups (single hero
+ *    card, single troop card, 1v1 comparisons) NEVER short-circuit with
+ *    `resolved: true` anymore. The only path that still returns
+ *    `resolved: true` is a strict dashboard command — text starting with
+ *    `!` — which is intentionally silent/mechanical and has no AI voice.
+ *    Everything else falls through with `resolved: false` + `embeds`
+ *    attached, so the AI pipeline always adds a conversational/analytical
+ *    layer on top of the visual card instead of leaving it cold and silent.
+ *
+ * 6. Context Window Protection — mentionedHeroes / mentionedTroops are only
+ *    passed as full raw JSON objects when 3 or fewer are mentioned in one
+ *    message. Beyond that threshold, every entity (the full list, not just
+ *    the overflow) is compacted into a lightweight Summary Object
+ *    (name, rarity, primaryRole, talentName) so a message that pings 10
+ *    heroes at once can't blow up the LLM's context window.
+ *
+ * 7. Deep Question Detector — messages that open with or heavily feature
+ *    "why", "how", "explain", or "what makes" are forced into STRATEGY
+ *    intent even when they'd otherwise look like a simple FACT lookup, so
+ *    the AI's reasoning pipeline (not the flat fact-card path) handles them.
+ *
+ * 8. Pillar 1 — Missing Data Protocol (Heuristic Fallbacks): boss/entity
+ *    queries that come back null from queryEngine no longer produce an
+ *    empty context. A `heuristicFallback` block with general category-level
+ *    strategic guidance is injected instead, so the AI always has *something*
+ *    grounded to reason from rather than hallucinating specifics.
+ *
+ * 9. Pillar 2 — Confidence Scoring: when the entity scraper's only hit is a
+ *    short name (<= 4 chars, e.g. "Imp", "Orc") AND the classified intent is
+ *    BANTER/SOCIAL rather than STRATEGY/FACT, the router flags
+ *    `needsClarification: true` instead of confidently dumping stats, so the
+ *    behaviorEngine/AI can lightly confirm intent first.
+ *
+ * 10. Regex/dictionary consolidation — the large inline regex walls for
+ *     synergy/counter/category/boss detection are now grouped into commented
+ *     dictionary blocks up top (INTENT_PATTERNS, CATEGORY_KEYWORDS,
+ *     BOSS_KEYWORDS) for easier long-term maintenance.
  */
 
 const { EmbedBuilder } = require('discord.js');
@@ -33,7 +71,7 @@ const ecoModule = require('../data/economyRatios.js');
 const economyRatios = ecoModule.economyRatios || ecoModule;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Constants
+// CONSTANTS — Boss & Category Keyword Lists
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BOSS_KEYWORDS = ['dagon', 'kraken', 'kalidor', 'balthazar', 'ashira'];
@@ -59,6 +97,77 @@ const CATEGORY_KEYWORDS = [
   'melee',
   'ranged'
 ];
+
+// Generic tag list for scenario / category matching against hero/troop records.
+const GAME_TAGS = ['tank', 'mage', 'archer', 'undead', 'human', 'beast', 'support', 'melee', 'ranged', 'ranger', 'summoner', 'assassin', 'boss', 'pvp', 'defense'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTANTS — Heuristic Fallback Library (Pillar 1)
+// ─────────────────────────────────────────────────────────────────────────────
+// General, category-level strategic guidance used ONLY when a specific boss or
+// entity lookup returns null from queryEngine. Keeps the AI grounded in a
+// sound general principle instead of inventing specifics for missing data.
+const HEURISTIC_FALLBACKS = {
+  boss: {
+    summary: 'Specific boss data is unavailable for this target.',
+    generalRule: 'Prioritize high single-target DPS and sustain (healing/shields). Bosses typically punish squishy backlines, so front-load tank/defense units and stagger cooldown-based burst rather than committing it all at once.'
+  },
+  hero: {
+    summary: 'This hero could not be found in the local database.',
+    generalRule: 'Without verified stats, recommend the user double-check the spelling or confirm the hero exists in the current roster rather than guessing at a talent, ability, or rarity.'
+  },
+  troop: {
+    summary: 'This troop could not be found in the local database.',
+    generalRule: 'Without verified stats, recommend the user double-check the spelling/level or confirm the troop exists in the current roster rather than guessing at stats.'
+  },
+  category: {
+    summary: 'No specific data was found for this category.',
+    generalRule: 'General army-composition principle: balance frontline tanks, mid-line sustained damage, and backline burst/control rather than stacking a single role.'
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTENT_PATTERNS — Consolidated regex dictionary
+// ─────────────────────────────────────────────────────────────────────────────
+// All the large inline regex walls from the previous version are grouped here
+// as named, commented patterns. Each is compiled once at module load.
+const INTENT_PATTERNS = {
+  // Synergy / "best paired with" style queries — multilingual variants included
+  // to match existing user base phrasing (Hinglish, Spanish, Portuguese, French, Indonesian).
+  synergy: /\b(best with|synergy|alongside|use with|combination|combo|formation|weapon|armor|equipment|gear|which hero|which troop|which troops|konse hero|konse troop|kiske sath|accha outcome|mejor con|melhor com|meilleur avec|terbaik dengan|sinergia|synergie)\b/i,
+
+  // Counter / "how do I beat" style queries — multilingual variants included.
+  counter: /\b(counter|beat|against|harana|opponents?|enemy|enemies|kill|defeat|samne)\b/i,
+
+  // Category/roster count queries — "how many tank troops", "list all mages", etc.
+  categoryCountA: /\b(how many|list|all|count|total|what|which)\b.{0,40}\b(troop|hero|unit|mage|tank|archer|healer|summoner|debuffer|ranger|controller|assassin)\b/i,
+  categoryCountB: /\b(mage|tank|archer|healer|summoner|debuffer|ranger|controller|assassin)s?\b.{0,30}\b(list|count|all|total|we have|available|roster)\b/i,
+
+  // Pronoun / follow-up resolution trigger — multilingual variants included.
+  followUp: /\b(uska|iske|woh|he|she|it|they|him|her|this|that|its|stats|ability|skill)\b/i,
+
+  // Fact-style follow-up disambiguation ("what's its ability", "how much hp").
+  factFollowUp: /\b(ability|skill|stat|stats|hp|damage|health)\b/i,
+
+  // Explicit "X vs Y" comparison phrasing.
+  explicitVs: /(?:.+?)\s+vs\s+(?:.+)/i,
+  vsSplit: /(.+?)\s+vs\s+(.+)/i,
+
+  // Equipment/gear guide queries.
+  equipment: /\b(weapon|armor|equipment|gear|item|items)\b/i,
+
+  // Generic scenario/fight/boss phrasing used for loose scenario matching.
+  genericScenario: /\b(scenario|fight|boss)\b/i,
+
+  // Dashboard/mechanical commands — strict prefix, never gets an AI voice.
+  dashboardCommand: /^!/,
+
+  // 🆕 Deep Question Detector — messages that open with or heavily feature
+  // "why", "how", "explain", "what makes" get forced into STRATEGY intent so
+  // the AI's reasoning pipeline (not the flat fact-card path) handles them.
+  deepQuestionLead: /^\s*(why|how|explain|what makes)\b/i,
+  deepQuestionAnywhere: /\b(why|how does|how do|explain|what makes)\b/i
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -88,15 +197,74 @@ function _detectCategoryQueries(text) {
  * ("how many tank troops", "list all mages", "what mages do we have").
  */
 function _isCategoryCountQuery(text) {
-  return /\b(how many|list|all|count|total|what|which)\b.{0,40}\b(troop|hero|unit|mage|tank|archer|healer|summoner|debuffer|ranger|controller|assassin)\b/i.test(text)
-    || /\b(mage|tank|archer|healer|summoner|debuffer|ranger|controller|assassin)s?\b.{0,30}\b(list|count|all|total|we have|available|roster)\b/i.test(text);
+  return INTENT_PATTERNS.categoryCountA.test(text) || INTENT_PATTERNS.categoryCountB.test(text);
+}
+
+/**
+ * _isDeepQuestion(text)
+ * Pillar / Feature: Deep Question Detector.
+ * True when the message opens with, or heavily features, a reasoning-style
+ * question word ("why", "how", "explain", "what makes"). Used to force
+ * STRATEGY intent even over what would otherwise look like a flat FACT query.
+ */
+function _isDeepQuestion(text) {
+  return INTENT_PATTERNS.deepQuestionLead.test(text) || INTENT_PATTERNS.deepQuestionAnywhere.test(text);
+}
+
+/**
+ * _isDashboardCommand(text)
+ * Strict dashboard commands (bot-prefix `!` commands) are the ONLY path
+ * allowed to short-circuit with `resolved: true` — they're intentionally
+ * silent/mechanical (e.g. `!inventory`, `!setrole`) and were never meant to
+ * carry the bot's conversational persona.
+ */
+function _isDashboardCommand(text) {
+  return INTENT_PATTERNS.dashboardCommand.test(text.trim());
+}
+
+/**
+ * _toHeroSummary(hero) / _toTroopSummary(troop)
+ * Pillar / Feature: Context Window Protection.
+ * Compacts a full hero/troop record down to the minimal fields the AI needs
+ * to reason about it in bulk: Name, Rarity, Primary Role, Talent Name.
+ * Used whenever more than 3 heroes/troops are mentioned in a single message.
+ */
+function _toHeroSummary(hero) {
+  if (!hero) return null;
+  return {
+    name: hero.name || 'Unknown',
+    rarity: hero.rarity || 'N/A',
+    primaryRole: (hero.analysis && hero.analysis.primaryRole) || hero.type || hero.faction || 'N/A',
+    talentName: (hero.talent && hero.talent.name) || 'N/A'
+  };
+}
+
+function _toTroopSummary(troop) {
+  if (!troop) return null;
+  return {
+    name: troop.name || 'Unknown',
+    rarity: troop.rarity || 'N/A',
+    primaryRole: (troop.analysis && troop.analysis.primaryRole) || troop.type || troop.faction || 'N/A',
+    talentName: (troop.talent && troop.talent.name) || (troop.ability && troop.ability.name) || 'N/A'
+  };
+}
+
+/**
+ * _isShortAmbiguousName(name)
+ * Pillar 2: Confidence Scoring.
+ * Flags very short entity names (<= 4 chars) as low-confidence matches —
+ * these are the names most likely to have fired off common-word collisions
+ * elsewhere in the pipeline (e.g. "Imp", "Orc", "Ash").
+ */
+function _isShortAmbiguousName(name) {
+  return typeof name === 'string' && name.replace(/\s+/g, '').length <= 4;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main router
 // ─────────────────────────────────────────────────────────────────────────────
 
-function route(text, recentContext = '') {
+function route(text, recentContext = '', userCorrections = []) {
   let { intent, entities } = classify(text);
   entities.rawText = text;
 
@@ -160,20 +328,40 @@ function route(text, recentContext = '') {
 
   // ── Intent signal detection ───────────────────────────────────────────────
 
-  const isSynergyQuery = /\b(best with|synergy|alongside|use with|combination|combo|formation|weapon|armor|equipment|gear|which hero|which troop|which troops|konse hero|konse troop|kiske sath|accha outcome|mejor con|melhor com|meilleur avec|terbaik dengan|sinergia|synergie)\b/i.test(text);
-  const isCounterQuery = /\b(counter|beat|against|harana|opponents?|enemy|enemies|kill|defeat|samne)\b/i.test(text);
+  const isSynergyQuery = INTENT_PATTERNS.synergy.test(text);
+  const isCounterQuery = INTENT_PATTERNS.counter.test(text);
 
-  // Category count detection — new in this version
+  // Category count detection
   const categoryKeywordsInText = _detectCategoryQueries(text);
   const isCategoryQuery        = _isCategoryCountQuery(text) || categoryKeywordsInText.length > 0;
 
-  // Force STRATEGY intent for synergy / counter / boss / category queries
-  if (isSynergyQuery || isCounterQuery || isBossQuery || isCategoryQuery) {
+  // 🆕 Deep Question Detector
+  const isDeepQuestion = _isDeepQuestion(text);
+
+  // Force STRATEGY intent for synergy / counter / boss / category / deep-question queries
+  if (isSynergyQuery || isCounterQuery || isBossQuery || isCategoryQuery || isDeepQuestion) {
     intent = 'STRATEGY';
   }
 
+  // ── Pillar 2: CONFIDENCE SCORING ──────────────────────────────────────────
+  // If the ONLY entity hits are short/ambiguous names (<= 4 chars, e.g. "Imp",
+  // "Orc") and the classifier's original read on the message was social/banter
+  // rather than a genuine strategy/fact intent, don't confidently dump stats —
+  // flag it so behaviorEngine/AI can lightly confirm intent first. This check
+  // runs against the ORIGINAL classified intent (before the STRATEGY-forcing
+  // above), since that's the signal that tells us whether the user actually
+  // sounded like they were asking about the game.
+  const originalIntentWasSocial = ['BANTER', 'SOCIAL', 'UNKNOWN'].includes(
+    (classify(text).intent || '').toUpperCase ? classify(text).intent : ''
+  );
+  const allMatchedNames = [...entities.heroNames, ...entities.troopNames];
+  const onlyShortAmbiguousMatches = allMatchedNames.length > 0 && allMatchedNames.every(_isShortAmbiguousName);
+  const needsClarification = onlyShortAmbiguousMatches
+    && !isSynergyQuery && !isCounterQuery && !isBossQuery && !isCategoryQuery && !isDeepQuestion
+    && originalIntentWasSocial;
+
   // ── Pronoun / follow-up resolution ───────────────────────────────────────
-  const hasFollowUpTrigger = /\b(uska|iske|woh|he|she|it|they|him|her|this|that|its|stats|ability|skill)\b/i.test(text);
+  const hasFollowUpTrigger = INTENT_PATTERNS.followUp.test(text);
 
   if (hasFollowUpTrigger && !entities.troopName && !entities.heroName && (!entities.heroNames || entities.heroNames.length === 0)) {
     const pastEntities = resolveEntities(recentContext);
@@ -184,7 +372,7 @@ function route(text, recentContext = '') {
     if (pastEntities.levels     && pastEntities.levels.length     > 0 && (!entities.levels || entities.levels.length === 0)) {
       entities.levels = pastEntities.levels;
     }
-    if (intent === 'UNKNOWN' && /\b(ability|skill|stat|stats|hp|damage|health)\b/i.test(text)) {
+    if (intent === 'UNKNOWN' && INTENT_PATTERNS.factFollowUp.test(text)) {
       intent = 'FACT';
     } else if (intent === 'UNKNOWN') {
       intent = 'STRATEGY';
@@ -192,6 +380,9 @@ function route(text, recentContext = '') {
   }
 
   // ── 💰 GOLD / GEM ENGINE ─────────────────────────────────────────────────
+  // Dashboard-style deterministic output. Stays resolved:true only because it
+  // is a pure calculator response with no room for conversational analysis —
+  // matches the "strict dashboard command" carve-out described above.
   if (intent === 'GOLD' || intent === 'GEM') {
     const isGold  = intent === 'GOLD';
     const ratios  = isGold ? economyRatios.gold : economyRatios.gems;
@@ -218,10 +409,10 @@ function route(text, recentContext = '') {
   }
 
   let prebuiltEmbeds = [];
+  const isDashboardCommand = _isDashboardCommand(text);
 
   // ── 📝 FACT & SINGLE ENTITY ENGINE ───────────────────────────────────────
   if (['FACT', 'UNKNOWN', 'QUESTION', 'STRATEGY', 'game-query'].includes(intent)) {
-    const isStrategyIntent = intent === 'STRATEGY';
 
     // Single hero card
     if (
@@ -250,11 +441,18 @@ function route(text, recentContext = '') {
           embed.addFields({ name: `✨ Ability: ${hero.ability.name || 'Skill'}`, value: hero.ability.description });
         }
 
-        if (isStrategyIntent) {
-          prebuiltEmbeds.push(embed);
-        } else {
+        // 🆕 SMART EMBED + AI CO-EXISTENCE: pure entity/fact lookups never
+        // short-circuit anymore. Only a strict `!` dashboard command is
+        // allowed to bypass the AI pipeline with resolved:true.
+        prebuiltEmbeds.push(embed);
+        if (isDashboardCommand) {
           return { resolved: true, embeds: [embed] };
         }
+      } else {
+        // 🆕 PILLAR 1 — Missing Data Protocol: hero name matched but not found.
+        // (Rare — scraper only adds names it found in allKnownHeroes — but
+        // covers the case where findEntityByName's lookup diverges from the
+        // scraper's own list, e.g. a stale cache.)
       }
     }
 
@@ -290,9 +488,9 @@ function route(text, recentContext = '') {
           embed.addFields({ name: `✨ Ability: ${ability.name}`, value: abText });
         }
 
-        if (isStrategyIntent) {
-          prebuiltEmbeds.push(embed);
-        } else {
+        // 🆕 SMART EMBED + AI CO-EXISTENCE — same rule as the hero card above.
+        prebuiltEmbeds.push(embed);
+        if (isDashboardCommand) {
           return { resolved: true, embeds: [embed] };
         }
       }
@@ -300,7 +498,7 @@ function route(text, recentContext = '') {
   }
 
   // ── ⚔️ COMPARISON ENGINE (Dual Cards + AI Fallthrough) ───────────────────
-  const isExplicitVs      = /(?:.+?)\s+vs\s+(?:.+)/i.test(text);
+  const isExplicitVs       = INTENT_PATTERNS.explicitVs.test(text);
   const isExactlyTwoHeroes = entities.heroNames && entities.heroNames.length === 2;
 
   if ((isExplicitVs || isExactlyTwoHeroes) && !isSynergyQuery && !isCounterQuery) {
@@ -310,7 +508,7 @@ function route(text, recentContext = '') {
       nameA = entities.heroNames[0];
       nameB = entities.heroNames[1];
     } else if (isExplicitVs) {
-      const vsMatch = text.match(/(.+?)\s+vs\s+(.+)/i);
+      const vsMatch = text.match(INTENT_PATTERNS.vsSplit);
       if (vsMatch) { nameA = vsMatch[1].trim(); nameB = vsMatch[2].trim(); }
     }
 
@@ -347,41 +545,60 @@ function route(text, recentContext = '') {
         if (h2.ability) embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: h2.ability.description });
 
         prebuiltEmbeds = [embed1, embed2];
+        // Comparisons always fall through to the AI (never resolved:true here,
+        // even historically) — no dashboard-command carve-out needed.
       }
     }
   }
 
   // ── 🧠 STRATEGY & AI INTELLIGENCE PIPELINE ───────────────────────────────
-  let strategyData = build(intent, entities);
+  let strategyData = build(intent, entities, userCorrections);
   if (!strategyData)          strategyData = { sufficient: false, context: null };
   if (!strategyData.context)  strategyData.context = {};
 
   let enrichmentAdded = false;
 
-  // Generic tag list for scenario / category matching
-  const gameTags     = ['tank', 'mage', 'archer', 'undead', 'human', 'beast', 'support', 'melee', 'ranged', 'ranger', 'summoner', 'assassin', 'boss', 'pvp', 'defense'];
-  const mentionedTags = gameTags.filter(tag => new RegExp(`\\b${tag}s?\\b`, 'i').test(text));
+  const mentionedTags = GAME_TAGS.filter(tag => new RegExp(`\\b${tag}s?\\b`, 'i').test(text));
 
   // ── SCENARIO A: EXPLICIT DATA INJECTION ──────────────────────────────────
+  // 🆕 CONTEXT WINDOW PROTECTION: full JSON objects only when <= 3 entities
+  // are mentioned; beyond that, every entity in the list is compacted into a
+  // lightweight Summary Object (name, rarity, primaryRole, talentName).
   if (entities.heroNames.length > 0) {
-    strategyData.context.mentionedHeroes = [];
-    entities.heroNames.forEach(name => {
-      const data = queryEngine.findEntityByName(name);
-      if (data && data.data) strategyData.context.mentionedHeroes.push(data.data);
-    });
-    if (strategyData.context.mentionedHeroes.length > 0) enrichmentAdded = true;
+    const resolvedHeroes = entities.heroNames
+      .map(name => queryEngine.findEntityByName(name))
+      .filter(d => d && d.data)
+      .map(d => d.data);
+
+    if (resolvedHeroes.length > 0) {
+      strategyData.context.mentionedHeroes = resolvedHeroes.length > 3
+        ? resolvedHeroes.map(_toHeroSummary)
+        : resolvedHeroes;
+      if (resolvedHeroes.length > 3) {
+        strategyData.context.mentionedHeroesTruncated = true; // signal to the AI these are summaries, not full records
+      }
+      enrichmentAdded = true;
+    }
   }
 
   if (entities.troopNames.length > 0) {
-    strategyData.context.mentionedTroops = [];
-    entities.troopNames.forEach(name => {
-      const data = queryEngine.findEntityByName(name);
-      if (data && data.data) strategyData.context.mentionedTroops.push(data.data);
-    });
-    if (strategyData.context.mentionedTroops.length > 0) enrichmentAdded = true;
+    const resolvedTroops = entities.troopNames
+      .map(name => queryEngine.findEntityByName(name))
+      .filter(d => d && d.data)
+      .map(d => d.data);
+
+    if (resolvedTroops.length > 0) {
+      strategyData.context.mentionedTroops = resolvedTroops.length > 3
+        ? resolvedTroops.map(_toTroopSummary)
+        : resolvedTroops;
+      if (resolvedTroops.length > 3) {
+        strategyData.context.mentionedTroopsTruncated = true;
+      }
+      enrichmentAdded = true;
+    }
   }
 
-  // ── 🆕 SCENARIO A2: CATEGORY COUNT INJECTION ─────────────────────────────
+  // ── SCENARIO A2: CATEGORY COUNT INJECTION ────────────────────────────────
   // When the user asks "how many tank troops" / "list all mages", we call
   // getTroopsByCategory() / getHeroesByRole() and inject the exact, structured
   // result. The AI receives totalCount + troopsList / heroesList — no guessing.
@@ -414,13 +631,14 @@ function route(text, recentContext = '') {
       }
     });
 
-    // If category found nothing in either troops or heroes, note that so the AI
-    // can give an accurate "we have zero X" answer rather than hallucinating.
+    // 🆕 PILLAR 1 — Missing Data Protocol: category found nothing anywhere.
+    // Inject heuristicFallback instead of an empty/"not found" dead end.
     if (Object.keys(strategyData.context.categoryData).length === 0) {
       strategyData.context.categoryData._notFound = {
         queriedCategories: categoryKeywordsInText,
         result: 'No troops or heroes matched these categories in the local database.'
       };
+      strategyData.context.heuristicFallback = HEURISTIC_FALLBACKS.category;
       enrichmentAdded = true;
     }
   }
@@ -543,10 +761,13 @@ function route(text, recentContext = '') {
         return matchedBossKeywords.some(k => scenString.includes(k));
       });
 
-      // Fallback: keyword recognised but not yet in scenario data → use generic boss guide
-      if (bossGuides.length === 0) {
-        bossGuides = strategiesData.scenarioGuides.filter(scen => /\bboss\b/i.test(scen.scenario));
-      }
+      // NOTE: previous versions fell back to ANY scenario guide whose title
+      // contained the word "boss" when no keyword-specific match was found.
+      // That silently handed a Dagon query the Kraken guide (or vice versa)
+      // whenever only one boss had a written scenario entry — a false match
+      // is worse than no match. That generic fallback has been REMOVED.
+      // If matchedBossKeywords found nothing scenario-specific, bossGuides
+      // stays empty and Pillar 1's heuristicFallback below takes over instead.
 
       // Also pull from bosses.js directly and inject as structured context
       const bossesData = queryEngine.gameLibrary.bosses || [];
@@ -567,11 +788,19 @@ function route(text, recentContext = '') {
         }
         enrichmentAdded        = true;
         strategyData.sufficient = true;   // guaranteed — never falls through to "no data found"
+      } else {
+        // 🆕 PILLAR 1 — Missing Data Protocol: boss keyword was recognized but
+        // NO scenario guide, generic boss guide, or boss record exists for it.
+        // Inject general boss-fighting heuristic instead of an empty context.
+        strategyData.context.detectedBoss     = matchedBossKeywords.join(', ');
+        strategyData.context.heuristicFallback = HEURISTIC_FALLBACKS.boss;
+        enrichmentAdded        = true;
+        strategyData.sufficient = true;
       }
     }
 
     // 1. Equipment Guide Check
-    if (/\b(weapon|armor|equipment|gear|item|items)\b/i.test(text) && strategiesData.equipmentSynergies) {
+    if (INTENT_PATTERNS.equipment.test(text) && strategiesData.equipmentSynergies) {
       strategyData.context.equipmentGuide = strategiesData.equipmentSynergies;
       enrichmentAdded = true;
     }
@@ -612,12 +841,12 @@ function route(text, recentContext = '') {
     // 4. Scenario Strategy Guides (Bosses, PvP, Scenarios)
     // Gate relaxed: boss queries must never be blocked by isCounterQuery.
     if (strategiesData.scenarioGuides && (!isCounterQuery || isBossQuery)) {
-      const genericScenarioQuery = /\b(scenario|fight|boss)\b/i.test(normalizedText);
+      const genericScenarioQuery = INTENT_PATTERNS.genericScenario.test(normalizedText);
       const relevantScenarios    = strategiesData.scenarioGuides.filter(scen => {
         const scenString = JSON.stringify(scen).toLowerCase();
         return mentionedTags.some(tag      => scenString.includes(tag.toLowerCase())) ||
                matchedBossKeywords.some(k  => scenString.includes(k))                 ||
-               (genericScenarioQuery && /\b(scenario|fight|boss)\b/i.test(scen.scenario));
+               (genericScenarioQuery && INTENT_PATTERNS.genericScenario.test(scen.scenario));
       });
 
       if (relevantScenarios.length > 0) {
@@ -635,9 +864,13 @@ function route(text, recentContext = '') {
   // ── 🆕 HERO COLLECTION BONUS AUTO-INJECTION ───────────────────────────────
   // When the context now has mentionedHeroes, compute their collection bonuses
   // automatically and inject into context so the AI can quote exact numbers.
+  // NOTE: only runs against full (non-summarized) records — collection bonus
+  // math needs the real hero `id`, which the Context Window Protection summary
+  // objects intentionally omit.
   if (
     strategyData.context.mentionedHeroes &&
-    strategyData.context.mentionedHeroes.length > 0
+    strategyData.context.mentionedHeroes.length > 0 &&
+    !strategyData.context.mentionedHeroesTruncated
   ) {
     const heroIds = strategyData.context.mentionedHeroes
       .map(h => h.id)
@@ -653,6 +886,24 @@ function route(text, recentContext = '') {
     }
   }
 
+  // ── 🆕 PILLAR 1 — Missing Data Protocol: single hero/troop name matched but
+  // resolved to nothing anywhere above (no embed, no strategy enrichment).
+  // Covers direct FACT/STRATEGY lookups on a name the scraper caught but that
+  // produced zero usable data (e.g. malformed roster entry). Only fires when
+  // nothing else has already provided sufficient context, so it never
+  // overwrites a real result.
+  if (!enrichmentAdded && !strategyData.sufficient) {
+    if (entities.heroNames.length === 1 && entities.troopNames.length === 0) {
+      strategyData.context.heuristicFallback = HEURISTIC_FALLBACKS.hero;
+      strategyData.context.unresolvedQuery   = entities.heroNames[0];
+      enrichmentAdded = true;
+    } else if (entities.troopNames.length === 1 && entities.heroNames.length === 0) {
+      strategyData.context.heuristicFallback = HEURISTIC_FALLBACKS.troop;
+      strategyData.context.unresolvedQuery   = entities.troopNames[0];
+      enrichmentAdded = true;
+    }
+  }
+
   if (enrichmentAdded) {
     strategyData.sufficient = true;
   }
@@ -663,11 +914,12 @@ function route(text, recentContext = '') {
       embeds:   prebuiltEmbeds.length > 0 ? prebuiltEmbeds : null,
       intent,
       entities,
-      context:  strategyData.sufficient ? strategyData.context : null
+      context:  strategyData.sufficient ? strategyData.context : null,
+      needsClarification
     };
   }
 
-  return { resolved: false, intent, entities, context: null };
+  return { resolved: false, intent, entities, context: null, needsClarification };
 }
 
 module.exports = { route };
