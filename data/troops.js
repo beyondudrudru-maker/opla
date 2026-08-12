@@ -18,11 +18,11 @@
  *      Hero short-names known to buff this troop, pulled directly from the
  *      already-curated synergies.js troopHeroSynergy reasoning (not
  *      re-derived) so the two files can never drift out of sync.
- *  - optimalGear: { weapons: string[], armors: string[] }
- *      Placeholder gear recommendations — no gear system exists yet in the
- *      source game data, so these are invented but follow a deterministic
- *      faction+role naming template (see router/gearTemplates in
- *      strategyContextBuilder-adjacent tooling) rather than being ad hoc.
+ *  - realGear: { roleFamily, hasRealGearData, weapon, armor, note }
+ *      Verified in-game gear only (Devourment set for Tank, Mirage set for
+ *      Trickster). When hasRealGearData is false, weapon/armor are null and
+ *      `note` explains that no confirmed gear exists yet for that role
+ *      family — never a placeholder or invented item name.
  */
 const troops = [
   {
@@ -139,16 +139,6 @@ const troops = [
       "Drake",
       "Bone Dragon"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Bone Warhammer",
-        "Grave Bulwark Mace"
-      ],
-      "armors": [
-        "Wraith Plate",
-        "Ashen Bastion Aegis"
-      ]
-    },
   "realGear": {
     "roleFamily": "Tank",
     "hasRealGearData": true,
@@ -327,16 +317,6 @@ const troops = [
       "Sigurd",
       "Ophelia"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Runic Talons",
-        "Ether Wingblades"
-      ],
-      "armors": [
-        "Starforged Windrider Harness",
-        "Mystic Scale Mail"
-      ]
-    },
   "realGear": {
     "roleFamily": "Tank",
     "hasRealGearData": true,
@@ -490,16 +470,6 @@ const troops = [
     "recommendedHeroes": [
       "Dragon Rider"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Kingsguard Scepter",
-        "Forged Ritual Wand"
-      ],
-      "armors": [
-        "Valorous Vestments",
-        "Militia Ward Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -682,16 +652,6 @@ const troops = [
       "Sigurd",
       "Ophelia"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Starforged Warhammer",
-        "Mystic Bulwark Mace"
-      ],
-      "armors": [
-        "Sorcerous Plate",
-        "Arcane Bastion Aegis"
-      ]
-    },
   "realGear": {
     "roleFamily": "Tank",
     "hasRealGearData": true,
@@ -851,16 +811,6 @@ const troops = [
       "Sigurd",
       "Ophelia"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Mystic Scepter",
-        "Sorcerous Ritual Wand"
-      ],
-      "armors": [
-        "Arcane Vestments",
-        "Runic Ward Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -1097,16 +1047,6 @@ const troops = [
       "Sigurd",
       "Ophelia"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Sorcerous Warhammer",
-        "Arcane Bulwark Mace"
-      ],
-      "armors": [
-        "Runic Plate",
-        "Ether Bastion Aegis"
-      ]
-    },
   "realGear": {
     "roleFamily": "Tank",
     "hasRealGearData": true,
@@ -1270,16 +1210,6 @@ const troops = [
     "recommendedHeroes": [
       "Dragon Rider"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Iron Warhammer",
-        "Steel Bulwark Mace"
-      ],
-      "armors": [
-        "Kingsguard Plate",
-        "Forged Bastion Aegis"
-      ]
-    },
   "realGear": {
     "roleFamily": "Tank",
     "hasRealGearData": true,
@@ -1425,16 +1355,6 @@ const troops = [
       "Drake",
       "Bone Dragon"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Grave Warhammer",
-        "Wraith Bulwark Mace"
-      ],
-      "armors": [
-        "Ashen Plate",
-        "Soulbound Bastion Aegis"
-      ]
-    },
   "realGear": {
     "roleFamily": "Tank",
     "hasRealGearData": true,
@@ -1560,16 +1480,6 @@ const troops = [
       "Sigurd",
       "Ophelia"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Ether Longbow",
-        "Starforged War Crossbow"
-      ],
-      "armors": [
-        "Mystic Leathers",
-        "Sorcerous Skirmish Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Ranger",
     "hasRealGearData": false,
@@ -1706,16 +1616,6 @@ const troops = [
     "recommendedHeroes": [
       "Dragon Rider"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Forged Warhammer",
-        "Valorous Bulwark Mace"
-      ],
-      "armors": [
-        "Militia Plate",
-        "Iron Bastion Aegis"
-      ]
-    },
   "realGear": {
     "roleFamily": "Tank",
     "hasRealGearData": true,
@@ -1849,16 +1749,6 @@ const troops = [
     "recommendedHeroes": [
       "Dragon Rider"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Valorous Twin Daggers",
-        "Militia Serrated Kris"
-      ],
-      "armors": [
-        "Iron Stalker Garb",
-        "Steel Shadow Wraps"
-      ]
-    },
   "realGear": {
     "roleFamily": "Trickster",
     "hasRealGearData": true,
@@ -2012,16 +1902,6 @@ const troops = [
       "Sigurd",
       "Ophelia"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Sorcerous Twin Daggers",
-        "Arcane Serrated Kris"
-      ],
-      "armors": [
-        "Runic Stalker Garb",
-        "Ether Shadow Wraps"
-      ]
-    },
   "realGear": {
     "roleFamily": "Trickster",
     "hasRealGearData": true,
@@ -2238,16 +2118,6 @@ const troops = [
       "Drake",
       "Bone Dragon"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Bone Longbow",
-        "Grave War Crossbow"
-      ],
-      "armors": [
-        "Wraith Leathers",
-        "Ashen Skirmish Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Ranger",
     "hasRealGearData": false,
@@ -2370,16 +2240,6 @@ const troops = [
       "Drake",
       "Bone Dragon"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Grave Talons",
-        "Wraith Wingblades"
-      ],
-      "armors": [
-        "Ashen Windrider Harness",
-        "Soulbound Scale Mail"
-      ]
-    },
   "realGear": {
     "roleFamily": "Ranger",
     "hasRealGearData": false,
@@ -2546,16 +2406,6 @@ const troops = [
       "Drake",
       "Bone Dragon"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Wraith Scepter",
-        "Ashen Ritual Wand"
-      ],
-      "armors": [
-        "Soulbound Vestments",
-        "Plague Ward Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Trickster",
     "hasRealGearData": true,
@@ -2679,16 +2529,6 @@ const troops = [
     "recommendedHeroes": [
       "Dragon Rider"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Forged Longbow",
-        "Valorous War Crossbow"
-      ],
-      "armors": [
-        "Militia Leathers",
-        "Iron Skirmish Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Ranger",
     "hasRealGearData": false,
@@ -2824,16 +2664,6 @@ const troops = [
       "Drake",
       "Bone Dragon"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Soulbound Twin Daggers",
-        "Plague Serrated Kris"
-      ],
-      "armors": [
-        "Bone Stalker Garb",
-        "Grave Shadow Wraps"
-      ]
-    },
   "realGear": {
     "roleFamily": "Trickster",
     "hasRealGearData": true,
@@ -3000,16 +2830,6 @@ const troops = [
     "recommendedHeroes": [
       "Dragon Rider"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Militia Longbow",
-        "Iron War Crossbow"
-      ],
-      "armors": [
-        "Steel Leathers",
-        "Kingsguard Skirmish Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Trickster",
     "hasRealGearData": true,
@@ -3155,16 +2975,6 @@ const troops = [
       "Drake",
       "Bone Dragon"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Bone Warhammer",
-        "Grave Bulwark Mace"
-      ],
-      "armors": [
-        "Wraith Plate",
-        "Ashen Bastion Aegis"
-      ]
-    },
   "realGear": {
     "roleFamily": "Tank",
     "hasRealGearData": true,
@@ -3378,16 +3188,6 @@ const troops = [
       "Drake",
       "Bone Dragon"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Grave Scepter",
-        "Wraith Ritual Wand"
-      ],
-      "armors": [
-        "Ashen Vestments",
-        "Soulbound Ward Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,

@@ -18,9 +18,11 @@
  *      Troops this hero synergizes with — the exact reverse mapping of
  *      troops.js's recommendedHeroes, both sourced from the same
  *      troopHeroSynergy table so they can't contradict each other.
- *  - optimalGear: { weapons: string[], armors: string[] }
- *      Placeholder gear recommendations, same faction+role template system
- *      used in troops.js.
+ *  - realGear: { roleFamily, hasRealGearData, weapon, armor, note }
+ *      Verified in-game gear only (Devourment set for Tank, Mirage set for
+ *      Trickster). When hasRealGearData is false, weapon/armor are null and
+ *      `note` explains that no confirmed gear exists yet for that role
+ *      family — never a placeholder or invented item name.
  */
 const heroes = [
   {
@@ -93,16 +95,6 @@ const heroes = [
       "Magic Archer",
       "Storm Mistresses"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Arcane Grimoire",
-        "Runic Sigil Staff"
-      ],
-      "armors": [
-        "Ether Runeweave Robes",
-        "Starforged Arcane Mantle"
-      ]
-    },
   "realGear": {
     "roleFamily": "Mage",
     "hasRealGearData": false,
@@ -174,16 +166,6 @@ const heroes = [
       "Magic Archer",
       "Storm Mistresses"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Runic Grimoire",
-        "Ether Sigil Staff"
-      ],
-      "armors": [
-        "Starforged Runeweave Robes",
-        "Mystic Arcane Mantle"
-      ]
-    },
   "realGear": {
     "roleFamily": "Mage",
     "hasRealGearData": false,
@@ -251,16 +233,6 @@ const heroes = [
       "Axe Throwers",
       "Imp"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Hellforged Grimoire",
-        "Cinderborn Sigil Staff"
-      ],
-      "armors": [
-        "Dreadfire Runeweave Robes",
-        "Infernal Arcane Mantle"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -331,16 +303,6 @@ const heroes = [
       "Axe Throwers",
       "Imp"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Cinderborn Scepter",
-        "Dreadfire Ritual Wand"
-      ],
-      "armors": [
-        "Infernal Vestments",
-        "Abyssal Ward Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -410,16 +372,6 @@ const heroes = [
       "Axe Throwers",
       "Imp"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Dreadfire Scepter",
-        "Infernal Ritual Wand"
-      ],
-      "armors": [
-        "Abyssal Vestments",
-        "Hellforged Ward Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -492,16 +444,6 @@ const heroes = [
       "Axe Throwers",
       "Imp"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Radiant Scepter",
-        "Celestial Ritual Wand"
-      ],
-      "armors": [
-        "Hallowed Vestments",
-        "Divine Ward Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -570,16 +512,6 @@ const heroes = [
       "Axe Throwers",
       "Imp"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Celestial Longbow",
-        "Hallowed War Crossbow"
-      ],
-      "armors": [
-        "Divine Leathers",
-        "Seraphic Skirmish Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Ranger",
     "hasRealGearData": false,
@@ -654,16 +586,6 @@ const heroes = [
       "Axe Throwers",
       "Imp"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Hallowed Warhammer",
-        "Divine Bulwark Mace"
-      ],
-      "armors": [
-        "Seraphic Plate",
-        "Radiant Bastion Aegis"
-      ]
-    },
   "realGear": {
     "roleFamily": "Tank",
     "hasRealGearData": true,
@@ -725,16 +647,6 @@ const heroes = [
       "Cursed Catapult",
       "Night Hunter"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Wraith Grimoire",
-        "Ashen Sigil Staff"
-      ],
-      "armors": [
-        "Soulbound Runeweave Robes",
-        "Plague Arcane Mantle"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -798,16 +710,6 @@ const heroes = [
       "Alchemist",
       "Assassins"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Forged Scepter",
-        "Valorous Ritual Wand"
-      ],
-      "armors": [
-        "Militia Vestments",
-        "Iron Ward Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -879,16 +781,6 @@ const heroes = [
       "Cursed Catapult",
       "Night Hunter"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Soulbound Grimoire",
-        "Plague Sigil Staff"
-      ],
-      "armors": [
-        "Bone Runeweave Robes",
-        "Grave Arcane Mantle"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -963,16 +855,6 @@ const heroes = [
       "Alchemist",
       "Assassins"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Militia Scepter",
-        "Iron Ritual Wand"
-      ],
-      "armors": [
-        "Steel Vestments",
-        "Kingsguard Ward Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -1043,16 +925,6 @@ const heroes = [
       "Shaman",
       "Storm Mistresses"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Arcane Grimoire",
-        "Runic Sigil Staff"
-      ],
-      "armors": [
-        "Ether Runeweave Robes",
-        "Starforged Arcane Mantle"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -1127,16 +999,6 @@ const heroes = [
       "Steel Revenant",
       "Necromancer"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Grave Scepter",
-        "Wraith Ritual Wand"
-      ],
-      "armors": [
-        "Ashen Vestments",
-        "Soulbound Ward Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -1210,16 +1072,6 @@ const heroes = [
       "Magic Archer",
       "Storm Mistresses"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Ether Grimoire",
-        "Starforged Sigil Staff"
-      ],
-      "armors": [
-        "Mystic Runeweave Robes",
-        "Sorcerous Arcane Mantle"
-      ]
-    },
   "realGear": {
     "roleFamily": "Mage",
     "hasRealGearData": false,
@@ -1295,16 +1147,6 @@ const heroes = [
       "Magic Archer",
       "Storm Mistresses"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Starforged Grimoire",
-        "Mystic Sigil Staff"
-      ],
-      "armors": [
-        "Sorcerous Runeweave Robes",
-        "Arcane Arcane Mantle"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -1378,16 +1220,6 @@ const heroes = [
       "Magic Archer",
       "Storm Mistresses"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Mystic Grimoire",
-        "Sorcerous Sigil Staff"
-      ],
-      "armors": [
-        "Arcane Runeweave Robes",
-        "Runic Arcane Mantle"
-      ]
-    },
   "realGear": {
     "roleFamily": "Mage",
     "hasRealGearData": false,
@@ -1459,16 +1291,6 @@ const heroes = [
       "Steel Revenant",
       "Necromancer"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Plague Scepter",
-        "Bone Ritual Wand"
-      ],
-      "armors": [
-        "Grave Vestments",
-        "Wraith Ward Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -1538,16 +1360,6 @@ const heroes = [
       "Cursed Catapult",
       "Night Hunter"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Bone Grimoire",
-        "Grave Sigil Staff"
-      ],
-      "armors": [
-        "Wraith Runeweave Robes",
-        "Ashen Arcane Mantle"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
@@ -1620,16 +1432,6 @@ const heroes = [
       "Magic Archer",
       "Storm Mistresses"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Runic Grimoire",
-        "Ether Sigil Staff"
-      ],
-      "armors": [
-        "Starforged Runeweave Robes",
-        "Mystic Arcane Mantle"
-      ]
-    },
   "realGear": {
     "roleFamily": "Mage",
     "hasRealGearData": false,
@@ -1700,16 +1502,6 @@ const heroes = [
       "Pyrotechnician",
       "Axe Throwers"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Kingsguard Longbow",
-        "Forged War Crossbow"
-      ],
-      "armors": [
-        "Valorous Leathers",
-        "Militia Skirmish Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Ranger",
     "hasRealGearData": false,
@@ -1852,16 +1644,6 @@ const heroes = [
       "Alchemist",
       "Assassins"
     ],
-    "optimalGear": {
-      "weapons": [
-        "Forged Scepter",
-        "Valorous Ritual Wand"
-      ],
-      "armors": [
-        "Militia Vestments",
-        "Iron Ward Cloak"
-      ]
-    },
   "realGear": {
     "roleFamily": "Support",
     "hasRealGearData": false,
