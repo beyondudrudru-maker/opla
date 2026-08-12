@@ -190,7 +190,7 @@ const heroes = [
     },
     "talent": {
       "name": "Echo of Pain",
-      "description": "Harkon enchants allied units so they only take a portion of incoming damage. The remaining damage is taken gradually once per second for 5 seconds. The effect continues after the hero’s death but does not work in boss battles.",
+      "description": "Harkon enchants allied units so they only take a portion of incoming damage. The remaining damage is taken gradually once per second for 5 seconds. The effect continues after the hero's death but does not work in boss battles.",
       "effects": {
         "Delayed Damage": "20% - 56%"
       },
@@ -752,7 +752,7 @@ const heroes = [
     },
     "talent": {
       "name": "Boarding Party",
-      "description": "In Drake’s presence, allied undead units have a chance to deal double damage with regular attacks.",
+      "description": "In Drake's presence, allied undead units have a chance to deal double damage with regular attacks.",
       "effects": {
         "Chance of Dealing Double Damage": "2% - 25%"
       },
@@ -1183,6 +1183,90 @@ const heroes = [
       "weaknesses": [
         "Below-average HP and defense",
         "No crowd control or defensive utility"
+      ]
+    }
+  },
+  // ─────────────────────────────────────────────────────────────────────────────
+  // NEW HERO: BARON BENUA
+  // Source: In-game screenshot (Level 9, Human / Rare)
+  // Stats confirmed at Level 9 from screenshot: HP 30,000 | Defense 425 | Damage 505
+  // All level scaling arrays derived from the screenshot's stat progression tables.
+  // Ability: Gold Mark (Active) — AOE Radius 15, Cooldown 6s, Gold Multiplier 1.4
+  //   at Level 9. Level 10 values taken from the displayed progression table.
+  // Collection Bonus: Rare-tier estimation consistent with other Rare/Epic heroes
+  //   (range 9–11). Set to 9.0 — flag as estimate if official value becomes known.
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    "id": "BARON_BENUA_01",
+    "name": "BARON BENUA",
+    "faction": "Human",
+    "rarity": "rare",
+    "description": "A wealthy baron who pays generously for results. Baron Benua marks high-value targets and rewards their elimination with additional gold, making every kill more profitable for his allies.",
+    "stats": {
+      // Values at Level 9 as read from the in-game screenshot.
+      // Full level scaling is captured in the abilityLevelStats below.
+      "hp": 30000,
+      "defense": 425,
+      "attack": 505,
+      // collectionBonus: Rare-tier estimate — no official value confirmed in data.
+      // Other Rare/Epic heroes range 9–11; 9.0 used as conservative baseline.
+      "collectionBonus": 9.0
+    },
+    "talent": null,
+    // Baron Benua has no talent listed in the screenshot — only an Active ability.
+    "ability": {
+      "name": "Gold Mark",
+      "description": "Gives an additional reward for enemy heads. Baron pays generously for killing undesirable opponents. Marks enemies in an AOE radius; killing marked enemies generates bonus gold with a gold multiplier.",
+      "type": "Active",
+      "effects": {
+        // Full level 1–10 scaling read directly from the in-game screenshot table.
+        // Values bolded in the screenshot (Level 9) are confirmed; all others are
+        // as displayed in the progression list.
+        "AOE Radius": "12 / 12 / 13 / 13 / 13 / 14 / 14 / 14 / 15 / 15",
+        "Cooldown (sec)": "9 / 8 / 8 / 8 / 7 / 7 / 7 / 6 / 6 / 6",
+        "Gold Multiplier": "1.2 / 1.2 / 1.2 / 1.3 / 1.3 / 1.3 / 1.4 / 1.4 / 1.4 / 1.5"
+      },
+      // Machine-readable level scaling arrays (index 0 = Level 1, index 9 = Level 10)
+      "levelStats": {
+        "aoeRadius":       [12, 12, 13, 13, 13, 14, 14, 14, 15, 15],
+        "cooldownSec":     [9,  8,  8,  8,  7,  7,  7,  6,  6,  6],
+        "goldMultiplier":  [1.2, 1.2, 1.2, 1.3, 1.3, 1.3, 1.4, 1.4, 1.4, 1.5]
+      },
+      "targets": []
+    },
+    // Full HP/Defense/Damage scaling extracted from the in-game stat table.
+    // Level 9 values (bolded in screenshot) are ground-truth; others as shown.
+    "statLevels": {
+      "hp":      [20000, 21250, 22500, 23750, 25000, 26250, 27500, 28750, 30000, 31250],
+      "defense": [85,    85,    170,   170,   255,   255,   340,   340,   425,   425],
+      "attack":  [330,   350,   375,   395,   420,   440,   460,   485,   505,   530]
+    },
+    "tags": [
+      "Human",
+      "Gold-Generation",
+      "Economy",
+      "AoE",
+      "Active-Ability"
+    ],
+    "type": "Support",
+    "analysis": {
+      "primaryRole": "Support",
+      "secondaryRoles": [
+        "Human",
+        "Economy",
+        "Gold-Generation"
+      ],
+      "strengths": [
+        "Generates bonus gold on kills — unique economy utility among all heroes",
+        "Short cooldown (6s at max level) means frequent mark reapplication",
+        "Scales gold multiplier to 1.5x at Level 10",
+        "Pairs well with high-damage human squads to maximize kill tempo and gold income"
+      ],
+      "weaknesses": [
+        "Rare rarity — lower collection bonus than Legendary/Mythical heroes",
+        "No direct combat buff to troop HP, damage, or defense",
+        "Below-average attack and HP relative to combat-focused heroes",
+        "Ability is utility-only; does not increase army DPS or survivability directly"
       ]
     }
   }
