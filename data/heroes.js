@@ -32,10 +32,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "A legendary mage capable of controlling celestial fire. Best placed in the backline to deal massive AoE damage and buff her allies.",
     "stats": {
-      "hp": 38250,
-      "defense": 300,
-      "attack": 900,
-      "collectionBonus": 12
+      "hp": { "min": 24750, "max": 35100 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 390, "max": 570 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [24750, 25900, 27050, 28200, 29350, 30500, 31650, 32800, 33950, 35100],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [390, 410, 430, 450, 470, 490, 510, 530, 550, 570]
     },
     "talent": {
       "name": "Flaming Heart",
@@ -110,10 +115,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "The protector of the ancient woods. Edelina excels at crowd control, turning the battlefield into a trap for her enemies while bolstering her allies.",
     "stats": {
-      "hp": 32100,
-      "defense": 250,
-      "attack": 850,
-      "collectionBonus": 10.5
+      "hp": { "min": 23500, "max": 34750 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 650, "max": 870 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [23500, 24750, 26000, 27250, 28500, 29750, 31000, 32250, 33500, 34750],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [650, 670, 690, 710, 735, 760, 785, 810, 840, 870]
     },
     "talent": {
       "name": "Thorns",
@@ -181,10 +191,15 @@ const heroes = [
     "rarity": "mythical",
     "description": "A harbinger of molten destruction. Xana consumes the battlefield in flames and turns the fallen into golems of lava, ensuring that even in death, her enemies face her wrath.",
     "stats": {
-      "hp": 28000,
-      "defense": 210,
-      "attack": 1100,
-      "collectionBonus": 17
+      "hp": { "min": 23000, "max": 55250 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 700, "max": 1100 },
+      "collectionBonus": { "min": 2.0, "max": 20.0 }
+    },
+    "statLevels": {
+      "hp": [23000, 25250, 28500, 31750, 35000, 39050, 43100, 47150, 51200, 55250],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [700, 740, 780, 820, 860, 900, 950, 1000, 1050, 1100]
     },
     "talent": {
       "name": "Meteor Requiem",
@@ -248,10 +263,15 @@ const heroes = [
     "rarity": "mythical",
     "description": "A master of combustion who turns the battlefield into a furnace. Harkon devastates enemy lines with growing infernos and shields his allies from lethal strikes by delaying the impact of damage.",
     "stats": {
-      "hp": 32000,
-      "defense": 250,
-      "attack": 1200,
-      "collectionBonus": 19
+      "hp": { "min": 28500, "max": 57750 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 700, "max": 1060 },
+      "collectionBonus": { "min": 2.0, "max": 20.0 }
+    },
+    "statLevels": {
+      "hp": [28500, 31750, 35000, 38250, 41500, 44750, 48000, 51250, 54500, 57750],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [700, 740, 780, 820, 860, 900, 940, 980, 1020, 1060]
     },
     "talent": {
       "name": "Echo of Pain",
@@ -318,10 +338,15 @@ const heroes = [
     "rarity": "mythical",
     "description": "A master of psychological warfare. Brutallus manipulates the battlefield by inciting terror in his foes, turning their own fear into a vulnerability that his allies can exploit.",
     "stats": {
-      "hp": 48000,
-      "defense": 400,
-      "attack": 600,
-      "collectionBonus": 18
+      "hp": { "min": 50250, "max": 105500 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 775, "max": 1500 },
+      "collectionBonus": { "min": 2.0, "max": 20.0 }
+    },
+    "statLevels": {
+      "hp": [50250, 53250, 60250, 65250, 70250, 75250, 80250, 85250, 95250, 105500],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [775, 800, 825, 850, 875, 900, 925, 950, 1250, 1500]
     },
     "talent": {
       "name": "Easy Prey",
@@ -387,10 +412,15 @@ const heroes = [
     "rarity": "mythical",
     "description": "A divine healer who channels the light to sustain her allies. Her presence ensures the squad remains combat-ready even under heavy pressure.",
     "stats": {
-      "hp": 29800,
-      "defense": 220,
-      "attack": 700,
-      "collectionBonus": 15
+      "hp": { "min": 22000, "max": 51250 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 700, "max": 1060 },
+      "collectionBonus": { "min": 2.0, "max": 20.0 }
+    },
+    "statLevels": {
+      "hp": [22000, 25250, 28500, 31750, 35000, 38250, 41500, 44750, 48000, 51250],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [700, 740, 780, 820, 860, 900, 940, 980, 1020, 1060]
     },
     "talent": {
       "name": "Gift of Light",
@@ -459,10 +489,15 @@ const heroes = [
     "rarity": "mythical",
     "description": "A divine archer whose presence turns the tide of battle. Atreya brings precision and devastating power to the squad, ensuring victory through overwhelming celestial force.",
     "stats": {
-      "hp": 27500,
-      "defense": 210,
-      "attack": 1200,
-      "collectionBonus": 14
+      "hp": { "min": 28500, "max": 57750 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 700, "max": 1060 },
+      "collectionBonus": { "min": 2.0, "max": 20.0 }
+    },
+    "statLevels": {
+      "hp": [28500, 31750, 35000, 38250, 41500, 44750, 48000, 51250, 54500, 57750],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [700, 740, 780, 820, 860, 900, 940, 980, 1020, 1060]
     },
     "talent": {
       "name": "Smashing Light",
@@ -527,10 +562,15 @@ const heroes = [
     "rarity": "mythical",
     "description": "A stalwart protector who turns defense into a strategic advantage. Remus specializes in shielding the squad and empowering attacks against the toughest enemies on the field.",
     "stats": {
-      "hp": 45000,
-      "defense": 450,
-      "attack": 500,
-      "collectionBonus": 18
+      "hp": { "min": 50250, "max": 95250 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 700, "max": 1375 },
+      "collectionBonus": { "min": 2.0, "max": 20.0 }
+    },
+    "statLevels": {
+      "hp": [50250, 53250, 60250, 65250, 70250, 75250, 80250, 85250, 90025, 95250],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [700, 775, 850, 925, 1000, 1075, 1150, 1225, 1300, 1375]
     },
     "talent": {
       "name": "Threat of Giants",
@@ -601,10 +641,15 @@ const heroes = [
     "rarity": "epic",
     "description": "A master of blight and misery. Malium utilizes his lizard companion to contaminate the battlefield, weakening enemies and making them susceptible to further damage.",
     "stats": {
-      "hp": 26000,
-      "defense": 180,
-      "attack": 950,
-      "collectionBonus": 9
+      "hp": { "min": 21250, "max": 32500 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 390, "max": 750 },
+      "collectionBonus": { "min": 0.5, "max": 5.0 }
+    },
+    "statLevels": {
+      "hp": [21250, 22500, 23750, 25000, 26250, 27500, 28750, 30000, 31250, 32500],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [390, 430, 470, 510, 550, 590, 630, 670, 710, 750]
     },
     "talent": {
       "name": "Poison Puddles",
@@ -662,10 +707,15 @@ const heroes = [
     "rarity": "epic",
     "description": "A devoted guardian who channels divine power to fortify his comrades. Tristan is essential for keeping the frontline resilient during intense skirmishes.",
     "stats": {
-      "hp": 30500,
-      "defense": 200,
-      "attack": 450,
-      "collectionBonus": 11
+      "hp": { "min": 17000, "max": 28250 },
+      "defense": { "min": 85, "max": 425 },
+      "attack": { "min": 330, "max": 530 },
+      "collectionBonus": { "min": 0.5, "max": 5.0 }
+    },
+    "statLevels": {
+      "hp": [17000, 18250, 19500, 20750, 22000, 23250, 24500, 25750, 27000, 28250],
+      "defense": [85, 85, 170, 170, 255, 255, 340, 340, 425, 425],
+      "attack": [330, 350, 375, 395, 420, 440, 460, 485, 505, 530]
     },
     "talent": null,
     "ability": {
@@ -725,10 +775,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "A master of pestilence and decay. Morgrane dominates the battlefield by summoning vermin to weaken his foes and spreading corrupting plagues that punish enemies who dare to strike back.",
     "stats": {
-      "hp": 35000,
-      "defense": 280,
-      "attack": 800,
-      "collectionBonus": 13.5
+      "hp": { "min": 27000, "max": 80000 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 700, "max": 1060 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [27000, 29125, 31250, 35500, 39750, 44000, 48250, 55500, 60750, 80000],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [700, 740, 780, 820, 860, 900, 940, 980, 1020, 1060]
     },
     "talent": {
       "name": "Black Plague",
@@ -796,10 +851,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "A fierce arbiter of justice who cleanses the battlefield with holy fire. Durand provides essential protection to his tank allies while demoralizing those who stand against the light.",
     "stats": {
-      "hp": 42000,
-      "defense": 350,
-      "attack": 650,
-      "collectionBonus": 16
+      "hp": { "min": 27000, "max": 80000 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 650, "max": 1000 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [27000, 29125, 31250, 35500, 39750, 44000, 48250, 55500, 60750, 80000],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [650, 675, 700, 725, 750, 775, 800, 825, 850, 1000]
     },
     "talent": {
       "name": "Immutability",
@@ -870,10 +930,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "A mystical weaver of sand and slumber. Bumi manipulates the battlefield by lulling foes into a false sense of security and shielding allies from ranged projectile threats.",
     "stats": {
-      "hp": 28000,
-      "defense": 200,
-      "attack": 750,
-      "collectionBonus": 11.5
+      "hp": { "min": 24750, "max": 38250 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 540, "max": 675 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [24750, 26250, 27750, 29250, 30750, 32250, 33750, 35250, 36750, 38250],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [540, 555, 570, 585, 600, 615, 630, 645, 660, 675]
     },
     "talent": {
       "name": "Sand Storm",
@@ -940,10 +1005,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "A spectral captain who brings the chill of the grave to every battlefield. Drake empowers his undead legions while devastating enemy lines with his spectral vessel.",
     "stats": {
-      "hp": 34000,
-      "defense": 260,
-      "attack": 850,
-      "collectionBonus": 12.5
+      "hp": { "min": 27000, "max": 61000 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 500, "max": 725 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [27000, 29125, 31250, 35500, 39750, 44000, 48250, 52500, 56750, 61000],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [500, 525, 550, 575, 600, 625, 650, 675, 700, 725]
     },
     "talent": {
       "name": "Boarding Party",
@@ -1014,10 +1084,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "A master of the tides who commands the crushing weight of the ocean. Keyra disrupts enemy formations by launching them into the air and empowers allied mages based on their vitality.",
     "stats": {
-      "hp": 27200,
-      "defense": 190,
-      "attack": 920,
-      "collectionBonus": 12
+      "hp": { "min": 24750, "max": 36900 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 560, "max": 690 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [24750, 26100, 27450, 28800, 30150, 31500, 32850, 34200, 35550, 36900],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [560, 570, 585, 600, 615, 630, 645, 660, 675, 690]
     },
     "talent": {
       "name": "Power of Water",
@@ -1087,10 +1162,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "A master of the unseen currents. Zaheer controls the flow of battle by sweeping enemies into chaotic vortexes and granting his allies the grace of the wind to avoid incoming threats.",
     "stats": {
-      "hp": 26500,
-      "defense": 175,
-      "attack": 980,
-      "collectionBonus": 11
+      "hp": { "min": 24750, "max": 33750 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 810, "max": 1170 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [24750, 25750, 26750, 27750, 28750, 29750, 30750, 31750, 32750, 33750],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [810, 850, 890, 930, 970, 1010, 1050, 1090, 1130, 1170]
     },
     "talent": {
       "name": "Wind Tamer",
@@ -1162,10 +1242,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "A frost-wielder who turns the tide by literally rolling over his enemies. Sigurd is a master of disruption, clearing lanes and creating opportunities for his allies to strike.",
     "stats": {
-      "hp": 29500,
-      "defense": 230,
-      "attack": 880,
-      "collectionBonus": 12
+      "hp": { "min": 25500, "max": 36750 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 800, "max": 1160 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [25500, 26750, 28000, 29250, 30500, 31750, 33000, 34250, 35500, 36750],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [800, 840, 880, 920, 960, 1000, 1040, 1080, 1120, 1160]
     },
     "talent": {
       "name": "Frost Armor",
@@ -1235,10 +1320,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "A skeletal titan of the skies. The Bone Dragon terrorizes the battlefield, raining destruction from above while bolstering the strength of the undead forces below.",
     "stats": {
-      "hp": 40000,
-      "defense": 300,
-      "attack": 950,
-      "collectionBonus": 14
+      "hp": { "min": 28000, "max": 64500 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 530, "max": 660 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [28000, 30500, 33000, 37500, 42000, 46500, 51000, 55500, 60000, 64500],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [530, 540, 555, 570, 585, 600, 615, 630, 645, 660]
     },
     "talent": {
       "name": "Death Aura",
@@ -1306,10 +1396,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "A master of forbidden necromancy. Morgana disrupts the battlefield with taunting monuments and bolsters her undead army by raising the fallen to fight at her side.",
     "stats": {
-      "hp": 27500,
-      "defense": 200,
-      "attack": 950,
-      "collectionBonus": 13
+      "hp": { "min": 22500, "max": 33750 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 760, "max": 1030 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [22500, 23750, 25000, 26250, 27500, 28750, 30000, 31250, 32500, 33750],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [760, 790, 820, 850, 880, 910, 940, 970, 1000, 1030]
     },
     "talent": {
       "name": "Unholy Alliance",
@@ -1375,10 +1470,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "A conduit for ancient and malevolent forces. Ophelia dominates the battlefield by unleashing forbidden spirits to empower herself and cursing those who dare to strike down her allies.",
     "stats": {
-      "hp": 31000,
-      "defense": 240,
-      "attack": 920,
-      "collectionBonus": 14
+      "hp": { "min": 22500, "max": 33750 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 350, "max": 570 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [22500, 23750, 25000, 26250, 27500, 28750, 30000, 31250, 32500, 33750],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [350, 370, 390, 410, 435, 460, 485, 510, 540, 570]
     },
     "talent": {
       "name": "Revenge of the Fallen",
@@ -1447,10 +1547,15 @@ const heroes = [
     "rarity": "legendary",
     "description": "A master of the skies who wields the cosmos as a weapon. Dragon Rider turns the battlefield into an inferno, raining celestial bodies upon her foes while empowering her human kin.",
     "stats": {
-      "hp": 33000,
-      "defense": 240,
-      "attack": 880,
-      "collectionBonus": 14
+      "hp": { "min": 27000, "max": 61000 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 375, "max": 560 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
+    },
+    "statLevels": {
+      "hp": [27000, 29125, 31250, 35500, 39750, 44000, 48250, 52500, 56750, 61000],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [375, 400, 420, 440, 460, 480, 500, 520, 540, 560]
     },
     "talent": {
       "name": "Aerial Support",
@@ -1517,10 +1622,10 @@ const heroes = [
     "rarity": "rare",
     "description": "A wealthy baron who pays generously for results. Baron Benua marks high-value targets and rewards their elimination with additional gold, making every kill more profitable for his allies.",
     "stats": {
-      "hp": 30000,
-      "defense": 425,
-      "attack": 505,
-      "collectionBonus": 9
+      "hp": { "min": 20000, "max": 31250 },
+      "defense": { "min": 85, "max": 425 },
+      "attack": { "min": 330, "max": 530 },
+      "collectionBonus": { "min": 0.2, "max": 2.0 }
     },
     "talent": null,
     "ability": {
@@ -1659,10 +1764,10 @@ const heroes = [
     "rarity": "legendary",
     "description": "A legendary mage whose music rallies the entire army. Lirael performs an inspiring composition that boosts allied attack and cuts incoming damage, while her passive scales every unit's damage with troop size.",
     "stats": {
-      "hp": 26250,
-      "defense": 100,
-      "attack": 555,
-      "collectionBonus": null
+      "hp": { "min": 24750, "max": 38250 },
+      "defense": { "min": 100, "max": 500 },
+      "attack": { "min": 540, "max": 675 },
+      "collectionBonus": { "min": 1.0, "max": 10.0 }
     },
     "statLevels": {
       "hp": [24750, 26250, 27750, 29250, 30750, 32250, 33750, 35250, 36750, 38250],
