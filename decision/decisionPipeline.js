@@ -5,9 +5,8 @@
  *   The central nervous system of the bot. Orchestrates the flow of data
  *   between engines to build the prompt, while ensuring maximum CPU
  *   efficiency, parallel database operations, and crash resistance.
- *   🚀 UPGRADE: Integrated Game Data passing, Database Timeout protections,
- *   Memory Isolation, and a Smart Game Fast-Lane that filters out casual 
- *   regional greetings to prevent false triggers from stale memory.
+ *   🚀 UPGRADE: Added "VS Banter Guard" to prevent general knowledge 
+ *   comparisons (e.g., Apple vs Android) from getting trapped in the game lane.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -23,21 +22,32 @@ const BOT_USER_ID = process.env.BOT_USER_ID;
 const DB_TIMEOUT_MS = 2500; // 🛡️ Max time to wait for memory fetches before moving on
 
 // ============================================================
-// 🚀 SMART EMBEDDED GAME TURN DETECTOR (With Casual Exclusions)
+// 🚀 SMART EMBEDDED GAME TURN DETECTOR
 // ============================================================
 const GAME_KEYWORD_FALLBACK = /\b(stats|hp|damage|hero|troop|game|clash|synergy|best with|use with)\b/i;
 const CASUAL_GREETINGS_REGEX = /\b(khabar|khana|kha liya|kya haal|hello|hi|hey|sup|wassup|gm|gn|kaise ho|batao)\b/i;
+const VS_FALSE_POSITIVE_REGEX = /\b(vs\.?|versus|compare)\b/i; // 🚀 ADDED TO CATCH VS TRAP
 
 function isGameTurn({ content = '', gameData = null, intent = null } = {}) {
-  // 🧠 High-IQ Check: If the message is a casual greeting/talk and lacks explicit game keywords, 
-  // reject fast-lane entry so stale memory or background data doesn't corrupt social chats.
   const hasGameKeywords = GAME_KEYWORD_FALLBACK.test(content);
+  const hasValidGameData = gameData !== null && Object.keys(gameData).length > 0;
+
+  // 🧠 1. Casual Greeting Guard: Reject fast-lane entry for pure greetings
   if (CASUAL_GREETINGS_REGEX.test(content) && !hasGameKeywords) {
     return false;
   }
 
-  if (gameData && hasGameKeywords) return true;
-  if (intent === intentClassifier.INTENTS.GAME) return true;
+  // 🧠 2. THE "VS" BANTER TRAP GUARD (Fix for Apple vs Android)
+  // If the query contains "vs" but has NO game keywords and NO valid game data 
+  // fetched by the router, it is a general knowledge comparison. Route to General AI.
+  if (VS_FALSE_POSITIVE_REGEX.test(content) && !hasGameKeywords && !hasValidGameData) {
+    return false;
+  }
+
+  // 3. Fast-lane approvals
+  if (hasValidGameData) return true;
+  if (['STRATEGY', 'CALC', 'FACT', 'GOLD', 'GEM'].includes(intent)) return true;
+
   return hasGameKeywords;
 }
 
@@ -94,7 +104,7 @@ async function planTurn({
         isModeration: classification.isModeration,
       }).catch(() => ({ current: 'neutral' }));
 
-      const isCasualChat = classification.intent === 'banter' || classification.intent === 'social';
+      const isCasualChat = classification.intent === 'banter' || classification.intent === 'social' || classification.intent === 'UNKNOWN';
 
       let workingMemory = [];
       let rankedMemories = [];
