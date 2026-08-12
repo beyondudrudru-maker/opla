@@ -7,6 +7,7 @@
  *   efficiency, parallel database operations, and crash resistance.
  *   🚀 UPGRADE: Added "VS Banter Guard" to prevent general knowledge 
  *   comparisons (e.g., Apple vs Android) from getting trapped in the game lane.
+ *   🚀 UPGRADE: Nullified gameData payload on non-game turns to prevent 413 errors.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -140,7 +141,8 @@ async function planTurn({
         behaviorDirective,
         rankedMemories,
         workingMemory,
-        gameData,
+        // 🚀 THE FIX: Nullify heavy game data for casual chat to prevent 413 Payload Errors!
+        gameData: gameTurn ? gameData : null, 
         userMessage: content,
         targetInfo,
         speakerName: displayName,
