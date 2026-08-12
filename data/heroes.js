@@ -1651,6 +1651,101 @@ const heroes = [
     "armor": null,
     "note": "No confirmed real gear data yet for the Support role family."
   }
+  },
+  {
+    "id": "LIREAL_01",
+    "name": "LIRAEL, ARIA OF TRIUMPH",
+    "faction": "Mages",
+    "rarity": "legendary",
+    "description": "A legendary mage whose music rallies the entire army. Lirael performs an inspiring composition that boosts allied attack and cuts incoming damage, while her passive scales every unit's damage with troop size.",
+    "stats": {
+      "hp": 26250,
+      "defense": 100,
+      "attack": 555,
+      "collectionBonus": null
+    },
+    "statLevels": {
+      "hp": [24750, 26250, 27750, 29250, 30750, 32250, 33750, 35250, 36750, 38250],
+      "defense": [100, 100, 200, 200, 300, 300, 400, 400, 500, 500],
+      "attack": [540, 555, 570, 585, 600, 615, 630, 645, 660, 675]
+    },
+    "talent": {
+      "name": "Power of Unity",
+      "description": "Enhances the damage of each allied unit depending on the number of units within it.",
+      "type": "Passive",
+      "effects": {
+        "Increased Damage per Unit in Troops (%)": "0.5 - 5"
+      },
+      "levelStats": {
+        "increasedDamagePerUnitPct": [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]
+      },
+      "targets": [
+        "All Allies"
+      ]
+    },
+    "ability": {
+      "name": "Song of Courage",
+      "description": "Lirael performs an inspiring composition that temporarily increases the attack of allied units and reduces damage received.",
+      "type": "Active",
+      "effects": {
+        "Cooldown (sec)": "17 - 14",
+        "AOE Radius": "8 - 16",
+        "Duration (sec)": "4 - 7",
+        "Increased Damage Dealt (%)": "2 - 20",
+        "Damage Reduction (%)": "10 - 55",
+        "Buff Duration (sec)": "4 - 7"
+      },
+      "levelStats": {
+        "cooldownSec": [17, 17, 17, 16, 16, 16, 15, 15, 14, 14],
+        "aoeRadius": [8, 8, 10, 10, 10, 12, 12, 12, 14, 16],
+        "durationSec": [4, 4, 4, 5, 5, 5, 6, 6, 6, 7],
+        "increasedDamageDealtPct": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+        "damageReductionPct": [10, 15, 20, 25, 30, 35, 40, 45, 50, 55],
+        "buffDurationSec": [4, 4, 4, 5, 5, 5, 6, 6, 6, 7]
+      },
+      "targets": [
+        "All Allies"
+      ]
+    },
+    "tags": [
+      "Mages",
+      "All Allies",
+      "Attack-Buff",
+      "Damage-Reduction",
+      "Troop-Scaling"
+    ],
+    "type": "Mage",
+    "analysis": {
+      "primaryRole": "Support",
+      "secondaryRoles": [
+        "Mage",
+        "Attack-Buff"
+      ],
+      "strengths": [
+        "Army-wide attack buff plus damage reduction on a relatively short cooldown (14s at max level)",
+        "Passive damage scaling rewards large troop counts, compounding with army size rather than requiring specific troop types"
+      ],
+      "weaknesses": [
+        "Below-average defense (100 at hero level 2)",
+        "Buff-based kit contributes no direct burst or DoT damage of her own"
+      ]
+    },
+    "supportFocus": "All Troops",
+    "recommendedTroops": [
+      "Phoenix",
+      "Lava Golem",
+      "Shaman",
+      "Stone Golem",
+      "Magic Archer",
+      "Storm Mistresses"
+    ],
+  "realGear": {
+    "roleFamily": "Mage",
+    "hasRealGearData": false,
+    "weapon": null,
+    "armor": null,
+    "note": "No confirmed real gear data yet for the Mage role family."
+  }
   }
 ];
 

@@ -51,8 +51,12 @@ const synergies = {
         {
           "heroId": "OPHELIA_01",
           "reason": "Hero buffs allied Mage troops (HP buff); Phoenix belongs to Mages."
+        },
+        {
+          "heroId": "LIREAL_01",
+          "reason": "Hero buffs All Allies (troop-scaling damage passive + attack/damage-reduction ability); Phoenix benefits like any troop in the army."
         }
-      ]
+            ]
     },
     {
       "troopId": "tr-alchemist",
@@ -89,8 +93,12 @@ const synergies = {
         {
           "heroId": "OPHELIA_01",
           "reason": "Hero buffs allied Mage troops (HP buff); Lava Golem belongs to Mages."
+        },
+        {
+          "heroId": "LIREAL_01",
+          "reason": "Hero buffs All Allies (troop-scaling damage passive + attack/damage-reduction ability); Lava Golem benefits like any troop in the army."
         }
-      ]
+            ]
     },
     {
       "troopId": "tr-shaman",
@@ -118,8 +126,12 @@ const synergies = {
         {
           "heroId": "OPHELIA_01",
           "reason": "Hero buffs allied Mage troops (HP buff); Shaman belongs to Mages."
+        },
+        {
+          "heroId": "LIREAL_01",
+          "reason": "Hero buffs All Allies (troop-scaling damage passive + attack/damage-reduction ability); Shaman benefits like any troop in the army."
         }
-      ]
+            ]
     },
     {
       "troopId": "tr-stone-golem",
@@ -147,8 +159,12 @@ const synergies = {
         {
           "heroId": "OPHELIA_01",
           "reason": "Hero buffs allied Mage troops (HP buff); Stone Golem belongs to Mages."
+        },
+        {
+          "heroId": "LIREAL_01",
+          "reason": "Hero buffs All Allies (troop-scaling damage passive + attack/damage-reduction ability); Stone Golem benefits like any troop in the army."
         }
-      ]
+            ]
     },
     {
       "troopId": "tr-bonebreaker",
@@ -198,8 +214,12 @@ const synergies = {
         {
           "heroId": "OPHELIA_01",
           "reason": "Hero buffs allied Mage troops (HP buff); Magic Archer belongs to Mages."
+        },
+        {
+          "heroId": "LIREAL_01",
+          "reason": "Hero buffs All Allies (troop-scaling damage passive + attack/damage-reduction ability); Magic Archer benefits like any troop in the army."
         }
-      ]
+            ]
     },
     {
       "troopId": "tr-monk",
@@ -245,8 +265,12 @@ const synergies = {
         {
           "heroId": "OPHELIA_01",
           "reason": "Hero buffs allied Mage troops (HP buff); Storm Mistresses belongs to Mages."
+        },
+        {
+          "heroId": "LIREAL_01",
+          "reason": "Hero buffs All Allies (troop-scaling damage passive + attack/damage-reduction ability); Storm Mistresses benefits like any troop in the army."
         }
-      ]
+            ]
     },
     {
       "troopId": "tr-cursed-catapult",
@@ -374,7 +398,8 @@ const synergies = {
       "ANAVIN_01",
       "ATREYA_01",
       "REMUS_01",
-      "TRISTAN_01"
+      "TRISTAN_01",
+      "LIREAL_01"
     ],
     "buffsTroopHP": [
       "CALYRA_01",
@@ -420,6 +445,9 @@ const synergies = {
       "DRAKE_01",
       "ZAHEER_01",
       "MORGANA_01"
+    ],
+    "damageReduction": [
+      "LIREAL_01"
     ]
   },
   "indexes": {
@@ -691,7 +719,8 @@ const synergies = {
         "KEYRA_01",
         "ZAHEER_01",
         "SIGURD_01",
-        "OPHELIA_01"
+        "OPHELIA_01",
+        "LIREAL_01"
       ],
       "DREADS": [
         "XANA_01",
@@ -730,7 +759,8 @@ const synergies = {
         "BONE_DRAGON_01",
         "MORGANA_01",
         "OPHELIA_01",
-        "DRAGON_RIDER_01"
+        "DRAGON_RIDER_01",
+        "LIREAL_01"
       ],
       "mythical": [
         "XANA_01",
@@ -757,7 +787,8 @@ const synergies = {
         "KEYRA_01",
         "BONE_DRAGON_01",
         "MORGANA_01",
-        "DRAGON_RIDER_01"
+        "DRAGON_RIDER_01",
+        "LIREAL_01"
       ],
       "Defense-Buff": [
         "ANAVIN_01",
@@ -783,6 +814,9 @@ const synergies = {
       "Evasion-Buff": [
         "BUMI_01",
         "ZAHEER_01"
+      ],
+      "Damage-Reduction": [
+        "LIREAL_01"
       ]
     },
     "heroesByDebuff": {
@@ -842,7 +876,8 @@ const synergies = {
         "REMUS_01",
         "TRISTAN_01",
         "DURAND_01",
-        "BUMI_01"
+        "BUMI_01",
+        "LIREAL_01"
       ],
       "All Troops (Utility)": [
         "BRUTALLUS_01"
@@ -901,7 +936,8 @@ const synergies = {
         "KEYRA_01",
         "ZAHEER_01",
         "SIGURD_01",
-        "OPHELIA_01"
+        "OPHELIA_01",
+        "LIREAL_01"
       ],
       "Tank": [
         "REMUS_01"
@@ -966,7 +1002,7 @@ const synergies = {
       }
     ],
     "gapsAwaitingData": [
-      "Mage weapon/armor (would benefit Anavin, Edelina, Keyra, Zaheer, Sigurd, Ophelia and their Mage troop synergies)",
+      "Mage weapon/armor (would benefit Anavin, Edelina, Keyra, Zaheer, Sigurd, Ophelia, Lirael and their Mage troop synergies)",
       "Ranger weapon/armor (would benefit Dragon Rider, Atreya and Ranger troops like Magic Archer, Axe Throwers, Pyrotechnician)",
       "Support weapon/armor (would benefit Durand, Tristan, Calyra and Support troops like Alchemist, Shaman, Necromancer)",
       "Aerial-specific gear (Phoenix, Imp currently fall under Tank/Ranger gearRoleFamily by their type, not a dedicated Aerial gear line)"
@@ -1025,7 +1061,8 @@ const synergies = {
         "Keyra",
         "Zaheer",
         "Sigurd",
-        "Ophelia"
+        "Ophelia",
+        "Lirael"
       ],
       "synergyCategories": [
         "Mages",
@@ -1033,7 +1070,7 @@ const synergies = {
         "Backline",
         "AoE"
       ],
-      "reasoning": "Magic Archer and Shaman both resolve to combatLine \"Backline\" with synergyCategories tagging \"Mages\"/\"Backline-DPS\". Every listed hero has supportFocus \"Mage Troops\", so their attack/HP/defense buffs stack directly onto this backline, while Lava Golem (Frontline) tanks hits so the casters stay alive to output damage."
+      "reasoning": "Magic Archer and Shaman both resolve to combatLine \"Backline\" with synergyCategories tagging \"Mages\"/\"Backline-DPS\". Every listed hero except Lirael has supportFocus \"Mage Troops\", so their attack/HP/defense buffs stack directly onto this backline, while Lava Golem (Frontline) tanks hits so the casters stay alive to output damage. Lirael's supportFocus is \"All Troops\" (Song of Courage hits All Allies), but her troop-count-scaling passive and attack/damage-reduction ability still buff this same lineup, adding army-wide burst windows on top of the faction-locked stacking."
     },
     {
       "id": "formation-undead-endless-swarm",

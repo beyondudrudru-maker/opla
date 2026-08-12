@@ -315,7 +315,8 @@ const troops = [
       "Keyra",
       "Zaheer",
       "Sigurd",
-      "Ophelia"
+      "Ophelia",
+      "Lirael"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -650,7 +651,8 @@ const troops = [
       "Keyra",
       "Zaheer",
       "Sigurd",
-      "Ophelia"
+      "Ophelia",
+      "Lirael"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -809,7 +811,8 @@ const troops = [
       "Keyra",
       "Zaheer",
       "Sigurd",
-      "Ophelia"
+      "Ophelia",
+      "Lirael"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -1045,7 +1048,8 @@ const troops = [
       "Keyra",
       "Zaheer",
       "Sigurd",
-      "Ophelia"
+      "Ophelia",
+      "Lirael"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -1478,7 +1482,8 @@ const troops = [
       "Keyra",
       "Zaheer",
       "Sigurd",
-      "Ophelia"
+      "Ophelia",
+      "Lirael"
     ],
   "realGear": {
     "roleFamily": "Ranger",
@@ -1900,7 +1905,8 @@ const troops = [
       "Keyra",
       "Zaheer",
       "Sigurd",
-      "Ophelia"
+      "Ophelia",
+      "Lirael"
     ],
   "realGear": {
     "roleFamily": "Trickster",
