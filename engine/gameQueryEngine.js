@@ -418,6 +418,75 @@ function getRosterSummary() {
   };
 }
 
+/**
+ * getGameTaxonomy()
+ *
+ * Dynamically scans every entry in troops[] and heroes[] and returns the
+ * full deduplicated set of classification values used across the game:
+ * factions, primary/secondary combat roles, and misc tags. This exists for
+ * macro/meta questions like "how many roles are there" or "what factions
+ * exist" — the caller gets raw, exact lists straight from the live data
+ * rather than a hand-maintained constant that can drift out of sync.
+ *
+ * ZERO-HALLUCINATION: every value here comes directly from troops.js /
+ * heroes.js at call time. Nothing is inferred or hardcoded.
+ *
+ * @returns {{
+ *   factions:      { list: string[], count: number },
+ *   combatRoles:   { list: string[], count: number },
+ *   specialTags:   { list: string[], count: number },
+ *   sourceTotals:  { troops: number, heroes: number }
+ * }}
+ */
+function getGameTaxonomy() {
+  const factionSet = new Set();
+  const roleSet     = new Set();
+  const tagSet      = new Set();
+
+  const collectFrom = (entry) => {
+    if (!entry) return;
+
+    // Factions live under `faction` on both troops and heroes.
+    if (entry.faction) factionSet.add(entry.faction);
+
+    // Troops additionally carry a `categories[]` array that functions as a
+    // faction/type descriptor (e.g. "Undead", "Human") — fold these in too.
+    if (Array.isArray(entry.categories)) {
+      entry.categories.forEach(c => { if (c) factionSet.add(c); });
+    }
+
+    // Combat roles: heroes have `type` + analysis.primaryRole/secondaryRoles;
+    // troops only have analysis.primaryRole/secondaryRoles.
+    if (entry.type) roleSet.add(entry.type);
+    if (entry.analysis) {
+      if (entry.analysis.primaryRole) roleSet.add(entry.analysis.primaryRole);
+      if (Array.isArray(entry.analysis.secondaryRoles)) {
+        entry.analysis.secondaryRoles.forEach(r => { if (r) roleSet.add(r); });
+      }
+    }
+
+    // Misc tags (buffs, mechanics flags, etc.) — kept separate from roles
+    // since they describe effects/mechanics rather than a combat archetype.
+    if (Array.isArray(entry.tags)) {
+      entry.tags.forEach(t => { if (t) tagSet.add(t); });
+    }
+  };
+
+  troops.forEach(collectFrom);
+  heroes.forEach(collectFrom);
+
+  const factionsList    = Array.from(factionSet).sort();
+  const combatRolesList = Array.from(roleSet).sort();
+  const specialTagsList = Array.from(tagSet).sort();
+
+  return {
+    factions:     { list: factionsList,    count: factionsList.length },
+    combatRoles:  { list: combatRolesList, count: combatRolesList.length },
+    specialTags:  { list: specialTagsList, count: specialTagsList.length },
+    sourceTotals: { troops: troops.length, heroes: heroes.length }
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Power calculation
 // ─────────────────────────────────────────────────────────────────────────────
@@ -701,6 +770,7 @@ module.exports = {
   getTroopsByCategory,
   getHeroesByRole,
   getRosterSummary,
+  getGameTaxonomy,             // NEW — flat deduplicated faction/role/tag lists for macro queries
 
   // Power calculation
   calculateHeroBonus,
