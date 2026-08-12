@@ -174,6 +174,20 @@ function resolveEntities(text) {
   const troopMentions = findTroopMentions(text);
   const heroMentions = findHeroMentions(text);
 
+  // 🛡️ FALSE-POSITIVE "VS" GUARD (Fix: "Bengali vs Vikings" banter trap)
+  // The raw presence of "vs"/"versus"/"compare" is NOT sufficient signal on
+  // its own — casual phrases like "Bengali vs Vikings" or "cats vs dogs"
+  // contain the word but reference nothing in the game. isComparison is now
+  // only true when the "vs"-style wording co-occurs with at least two
+  // recognized game entities (heroes or troops) OR two explicit level
+  // references, which is the only shape a *real* game comparison can take.
+  const hasVsWording = /\bvs\.?\b|versus|compare\b/i.test(text);
+  const levelsFound  = extractLevels(text);
+  const hasTwoKnownEntities =
+    heroMentions.length >= 2 ||
+    troopMentions.length >= 2 ||
+    levelsFound.length   >= 2;
+
   return {
     troopName: troopMentions[0] || null,
     troopNames: troopMentions,
@@ -181,13 +195,13 @@ function resolveEntities(text) {
     heroNames: heroMentions,
     category: findCategory(text),
     tags: [],
-    levels: extractLevels(text),
+    levels: levelsFound,
     stat: findStat(text),
     ability: /\bability\b/i.test(text),
     percentages: extractPercentages(text),
     counts: extractCounts(text),
     goldGemAmount: extractGoldGemAmount(text),
-    isComparison: /\bvs\.?\b|versus|compare\b/i.test(text)
+    isComparison: hasVsWording && hasTwoKnownEntities
   };
 }
 
