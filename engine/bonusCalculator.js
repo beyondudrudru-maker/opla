@@ -1,59 +1,53 @@
 /**
  * engine/bonusCalculator.js
  * 
- * PURPOSE: Manages the logic for dynamic game scaling, including
- * level-dependent gear passives and the cumulative Hero Bonus.
+ * PURPOSE: Manages the dynamic game scaling logic, specifically
+ * the Hero Collection Bonus and the Gear Ownership Bonus (0.20% per level).
  */
 
-// Define the global rules for the Hero Bonus based on game mechanics
+const { OWNERSHIP_BONUS_RATE_PER_LEVEL } = require('../data/gearData.js');
+
+// Define global Hero Collection Bonus rules
 const HERO_BONUS_RULES = {
-    description: "Every hero in your collection has a bonus that strengthens the army on the battlefield.",
+    description: "Every hero in your collection strengthens the army on the battlefield.",
     isCumulative: true,
-    scalingFactors: ["level", "rarity"],
-    affectedStats: ["HP", "basic attack", "abilities"],
+    affectedStats: ["HP", "Basic attack power", "Abilities"],
     activeModes: ["Arena", "Boss modes"]
 };
 
+// Define global Gear Ownership Bonus rules
+const GEAR_OWNERSHIP_RULES = {
+    description: "Ownership bonus boosts your army in the battlefield.",
+    ratePerLevel: OWNERSHIP_BONUS_RATE_PER_LEVEL, // 0.20%
+    affectedStats: ["HP", "Basic attack power", "Abilities"]
+};
+
 /**
- * Generates a standard disclaimer about the Hero Bonus to append to responses.
- * @returns {string} The formatted disclaimer.
+ * Generates a dynamic disclaimer to ensure the AI always notes that
+ * final game power is heavily dependent on levels and upgrades.
  */
-function getHeroBonusDisclaimer() {
-    return `💡 **Note on Power:** Overall army strength is heavily influenced by your cumulative Hero Bonus. This bonus scales with every hero's level and rarity, boosting HP, attack, and abilities for all units in Arena and Boss modes.`;
+function getDynamicScalingDisclaimer() {
+    return `💡 **Important Note on Power:** The exact stats and effects in battle depend heavily on multiple dynamic factors. \n- **Gear Ownership Bonus:** Every single level of your gear adds +${OWNERSHIP_BONUS_RATE_PER_LEVEL}% to your army's HP, Attack, and Abilities.\n- **Hero Collection Bonus:** Having more heroes and leveling them up cumulatively boosts your entire army's power in Arena and Boss modes.`;
 }
 
 /**
- * Safely fetches a gear's passive value based on its level.
- * @param {Object} gearItem - The gear object from your database.
- * @param {number} requestedLevel - The level the user is asking about.
- * @returns {string} The value at that level, or a dynamic range if level is unknown.
+ * Safely fetches a gear's passive value to show scaling ranges.
  */
-function getGearPassiveAtLevel(gearItem, requestedLevel) {
-    if (!gearItem || !gearItem.passive || !gearItem.passive.scaling) {
-        return "Data unavailable";
-    }
-
+function formatGearScalingNote(gearItem) {
+    if (!gearItem || !gearItem.passive || !gearItem.passive.scaling) return "Scaling data unavailable";
+    
     const scaling = gearItem.passive.scaling;
-    const levelIndex = scaling.level.indexOf(requestedLevel);
-
-    // If we have the exact level data, return it
-    if (levelIndex !== -1) {
-        // Find the specific stat array (e.g., damageIncreasePercent)
-        const statKey = Object.keys(scaling).find(key => key !== 'level');
-        return `${scaling[statKey][levelIndex]}% (at Level ${requestedLevel})`;
-    }
-
-    // If exact level isn't provided, return a dynamic range to show scaling
     const statKey = Object.keys(scaling).find(key => key !== 'level');
+    
     const minStat = scaling[statKey][0];
     const maxStat = scaling[statKey][scaling[statKey].length - 1];
-    const maxLevel = scaling.level[scaling.level.length - 1];
     
-    return `Scales from ${minStat}% (Lv. 1) to ${maxStat}% (Lv. ${maxLevel}). Exact value depends on your item level.`;
+    return `Passive effect scales based on item level (e.g., from ${minStat}% up to ${maxStat}%+ at higher levels).`;
 }
 
 module.exports = {
     HERO_BONUS_RULES,
-    getHeroBonusDisclaimer,
-    getGearPassiveAtLevel
+    GEAR_OWNERSHIP_RULES,
+    getDynamicScalingDisclaimer,
+    formatGearScalingNote
 };
