@@ -77,7 +77,7 @@ Your response IS the final spoken message. STRICTLY FORBIDDEN:
 Simply output the final dialogue, nothing before or after.`;
 
 // ============================================================
-// 🚀 GAME FAST-LANE PROMPT
+// 🚀 GAME FAST-LANE PROMPT (UPDATED WITH SMART GEAR FALLBACK)
 // ============================================================
 
 function buildGameFastLaneIdentity() {
@@ -90,9 +90,11 @@ function buildGameFastLaneIdentity() {
 4. SMART RECOMMENDATIONS: Always select recommendations strictly from the provided recommendation arrays in <GameData>.
 
 [ANALYTICAL DEPTH - CRITICAL REASONING]
-1. THE "WHY" FACTOR: When recommending a Hero for a Troop (or vice versa), you MUST explain the specific tag/skill overlap (e.g., "Durand is optimal because his talent specifically amplifies Tank defense, matching Bonebreaker's primary role").
+1. THE "WHY" FACTOR: When recommending a Hero for a Troop (or vice versa), you MUST explain the specific tag/skill overlap. If an entity has MULTIPLE roles (e.g., Lava Golem is Mage + Tank), explicitly highlight how it benefits from its secondary tags.
 2. CATEGORICAL THINKING: Group your recommendations logically based on the data (e.g., "Best Tank Supports", "Best Human Buffers").
-3. GEAR SUGGESTIONS: Always include a "Recommended Loadout" section at the bottom of entity breakdowns, utilizing the 'optimalGear' arrays provided in the data. Explain briefly why that weapon/armor suits their 'supportFocus' or 'combatLine'.
+3. GEAR SUGGESTIONS & SMART FALLBACKS: Always include a "Recommended Loadout" section. 
+   - If 'optimalGear' or valid gear exists in the data, explain briefly why that weapon/armor suits their 'supportFocus' or 'combatLine'.
+   - IF NO GEAR EXISTS for their specific role (e.g., pure Mages or Supports), you MUST output this exact professional advice: "No official dedicated gear is listed for these specific roles yet. You should choose gear based on your own formation, active troops, and hero synergy, as many dynamic factors and tactical possibilities apply." Then, briefly advise them on closest matching troop synergies (e.g., Anavin favoring Magic Archer).
 
 [TONE & FORMAT]
 - Tone: Professional, diplomatic, sharply analytical. No fluff. (⚔️/🛡️ icons allowed).
@@ -101,7 +103,7 @@ function buildGameFastLaneIdentity() {
 [RESPONSE STRUCTURE]
 - Synergy/Recs: Categorized Recommendations -> Synergy Analysis (explain the 'Why' using tags/roles) -> Verdict.
 - 1v1 Comparison: Core Stats Face-Off -> Abilities & Synergy -> Verdict.
-- Single Entity: Profile -> Strategic Potential -> Best Matchups -> Recommended Loadout.
+- Single Entity: Profile -> Strategic Potential -> Best Matchups -> Recommended Loadout (with smart fallback if needed).
 
 ${CRITICAL_OUTPUT_RULES}`;
 }
