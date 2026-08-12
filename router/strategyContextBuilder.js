@@ -89,8 +89,16 @@ function build(intent, entities, userCorrections = []) {
     heroNames = [];
   }
 
-  // 🚀 0. SAFETY GUARD: Check if comparison is a false positive (e.g., single entity mentioned with descriptive text)
-  const isActuallyComparing = isComparison || (rawText && /\b(vs|versus|compared to|better than)\b/i.test(rawText));
+  // 🛡️ FALSE-POSITIVE "VS" GUARD (Fix: "Bengali vs Vikings" banter trap)
+  // Previously this fell back to its own bare `/\b(vs|versus|...)\b/i` test
+  // against rawText, which reintroduced the false-positive bug even after
+  // gameIntentClassifier.js's entities.isComparison was fixed to require
+  // real game entities. That fallback regex has been removed — this builder
+  // now trusts entities.isComparison exactly as computed upstream, since
+  // that flag is already gated on 2+ recognized heroes/troops/levels.
+  // A bare "vs"/"versus" with no known entities must NOT be treated as a
+  // comparison here, or the "insufficient data" error resurfaces for banter.
+  const isActuallyComparing = isComparison === true;
 
   let result = null;
 
