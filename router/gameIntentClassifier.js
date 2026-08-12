@@ -55,13 +55,75 @@ function extractPercentages(text) {
   return pcts;
 }
 
+// 🚀 TROOP ALIASES — catches singular/plural and spacing variants that don't
+// literally appear inside the official (usually plural or compound) DB name.
+// Mirrors the hero alias dictionary below. Only entries where the natural
+// way a player would type the name differs from the exact DB string need to
+// be listed here — exact-name matches are still handled by the raw scan.
+const TROOP_ALIASES = {
+  'axe thrower': 'Axe Throwers',
+  'axethrower': 'Axe Throwers',
+  'axethrowers': 'Axe Throwers',
+  'bone breaker': 'Bonebreaker',
+  'bonebreakers': 'Bonebreaker',
+  'storm mistress': 'Storm Mistresses',
+  'assassin': 'Assassins',
+  'cursed catapults': 'Cursed Catapult',
+  'night hunters': 'Night Hunter',
+  'magic archers': 'Magic Archer',
+  'lava golems': 'Lava Golem',
+  'stone golems': 'Stone Golem',
+  'steel revenants': 'Steel Revenant'
+};
+
+// Strips a single trailing "s" for a lightweight, generic singular/plural
+// fallback — deliberately conservative (no stemming library, no "es"/"ies"
+// handling) so it can't accidentally over-match unrelated short words.
+function _stripTrailingS(str) {
+  return str.replace(/s\b/gi, '');
+}
+
 function _troopMentionsWithIndex(text) {
   const found = [];
+  const seen = new Set();
+
+  // 1. Exact DB-name scan (unchanged behavior for names typed as-is).
   for (const t of gameLibrary.troops) {
     const re = new RegExp(`\\b${t.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
     const m = re.exec(text);
-    if (m) found.push({ name: t.name, index: m.index });
+    if (m) {
+      found.push({ name: t.name, index: m.index });
+      seen.add(t.name);
+    }
   }
+
+  // 2. Alias dictionary — explicit spacing/pluralization variants.
+  for (const [alias, canonicalName] of Object.entries(TROOP_ALIASES)) {
+    if (seen.has(canonicalName)) continue;
+    const re = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    const m = re.exec(text);
+    if (m) {
+      found.push({ name: canonicalName, index: m.index });
+      seen.add(canonicalName);
+    }
+  }
+
+  // 3. Generic trailing-"s" fallback safety net — handles any troop name not
+  // explicitly aliased above (e.g. a future roster addition) by comparing
+  // the singularized forms of both the DB name and each word/phrase in the
+  // query. Only applies to multi-character names to avoid short-word noise.
+  for (const t of gameLibrary.troops) {
+    if (seen.has(t.name)) continue;
+    const singularName = _stripTrailingS(t.name);
+    if (singularName.length < 4) continue;
+    const re = new RegExp(`\\b${singularName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}s?\\b`, 'i');
+    const m = re.exec(text);
+    if (m) {
+      found.push({ name: t.name, index: m.index });
+      seen.add(t.name);
+    }
+  }
+
   found.sort((a, b) => a.index - b.index);
   return found;
 }
