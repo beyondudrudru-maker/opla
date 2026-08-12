@@ -119,12 +119,55 @@ const gearSets = [
 ];
 
 // ---------------------------------------------------------------------
-// 5. Sync Helpers (Only matching valid role families now)
+// 5. Multi-Tag Sync Helpers & Smart Fallback
 // ---------------------------------------------------------------------
+const SMART_GEAR_FALLBACK = "No official dedicated gear is listed for these specific roles yet. You should choose gear based on your own formation, active frontline troops, and hero synergy, as many dynamic factors and tactical possibilities apply.";
+
 function recommendGearForTroop(troop) {
-  const roleFamily = troop.type === "Tank" ? "Tank" : (troop.tags || []).includes("Trickster") ? "Trickster" : null;
-  if (!roleFamily) return [];
-  return gearCatalog.filter(g => g.roleFamily === roleFamily);
+  if (!troop) return { matchedGear: [], fallbackNote: SMART_GEAR_FALLBACK };
+
+  // Gather ALL possible tags/roles into one array and convert to lowercase for safe checking
+  const allTags = [
+    troop.type,
+    troop.combatLine,
+    ...(troop.tags || []),
+    ...(troop.synergyCategories || [])
+  ].filter(Boolean).map(tag => tag.toLowerCase());
+
+  let matchedRoles = [];
+  // If ANY tag contains 'tank', they can use Tank gear
+  if (allTags.some(t => t.includes("tank"))) matchedRoles.push("Tank");
+  // If ANY tag contains 'trickster', they can use Trickster gear
+  if (allTags.some(t => t.includes("trickster"))) matchedRoles.push("Trickster");
+
+  if (matchedRoles.length === 0) {
+    return { matchedGear: [], fallbackNote: SMART_GEAR_FALLBACK };
+  }
+
+  const gear = gearCatalog.filter(g => matchedRoles.includes(g.roleFamily));
+  return { matchedGear: gear, fallbackNote: null };
+}
+
+function recommendGearForHero(hero) {
+  if (!hero) return { matchedGear: [], fallbackNote: SMART_GEAR_FALLBACK };
+
+  // Gather ALL possible hero tags and support focuses
+  const allTags = [
+    hero.type,
+    hero.supportFocus,
+    ...(hero.tags || [])
+  ].filter(Boolean).map(tag => tag.toLowerCase());
+
+  let matchedRoles = [];
+  if (allTags.some(t => t.includes("tank"))) matchedRoles.push("Tank");
+  if (allTags.some(t => t.includes("trickster"))) matchedRoles.push("Trickster");
+
+  if (matchedRoles.length === 0) {
+    return { matchedGear: [], fallbackNote: SMART_GEAR_FALLBACK };
+  }
+
+  const gear = gearCatalog.filter(g => matchedRoles.includes(g.roleFamily));
+  return { matchedGear: gear, fallbackNote: null };
 }
 
 module.exports = {
@@ -132,5 +175,7 @@ module.exports = {
   getOwnershipBonus,
   gearCatalog,
   gearSets,
-  recommendGearForTroop
+  recommendGearForTroop,
+  recommendGearForHero,
+  SMART_GEAR_FALLBACK
 };
