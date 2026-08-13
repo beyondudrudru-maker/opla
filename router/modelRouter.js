@@ -23,7 +23,7 @@
  * PUBLIC CONTRACT (unchanged — required by gemini.js)
  *   const { result, modelUsed } = await modelRouter.generate({
  *     classification, prompt, userMessage, systemInstruction,
- *     geminiKeys, groqClient, hasGroq
+ *     geminiKeys, groqKeys
  *   });
  *   modelRouter.getRouterHealth()
  *
@@ -323,6 +323,22 @@ function getOpenRouterClient() {
     }
   });
   return openRouterClient;
+}
+
+// Groq clients are built internally from the raw API keys the caller
+// passes in (groqKeys), the same way Gemini clients are built from
+// geminiKeys — callers should never need to construct an SDK client
+// themselves. Cached per-key so repeated calls don't re-instantiate.
+const groqClientCache = new Map();
+function getGroqClient(apiKey) {
+  if (!apiKey) return null;
+  if (!groqClientCache.has(apiKey)) {
+    groqClientCache.set(apiKey, new OpenAI({
+      apiKey,
+      baseURL: 'https://api.groq.com/openai/v1'
+    }));
+  }
+  return groqClientCache.get(apiKey);
 }
 
 let cloudflareInitAttempted = false;
@@ -838,30 +854,39 @@ async function execGemini({ apiKey, modelName, prompt, systemInstruction, temp, 
 
 async function execOpenAICompatible(client, { modelName, prompt, systemInstruction, maxTokens, temp }) {
   let data, headers = null;
-  try {
-    const withResp = await client.chat.completions.create({
-      model: modelName,
-      messages: [
-        { role: 'system', content: systemInstruction },
-        { role: 'user', content: prompt }
-      ],
-      temperature: temp,
-      max_tokens: maxTokens
-    }).withResponse();
-    data = withResp.data;
-    headers = withResp.response ? withResp.response.headers : null;
-  } catch (e) {
-    // .withResponse() unsupported on this SDK path/version — plain call fallback.
-    if (e && e.__isRouterFallbackMarker) throw e;
-    data = await client.chat.completions.create({
-      model: modelName,
-      messages: [
-        { role: 'system', content: systemInstruction },
-        { role: 'user', content: prompt }
-      ],
-      temperature: temp,
-      max_tokens: maxTokens
-    });
+  const payload = {
+    model: modelName,
+    messages: [
+      { role: 'system', content: systemInstruction },
+      { role: 'user', content: prompt }
+    ],
+    temperature: temp,
+    max_tokens: maxTokens
+  };
+
+  // Some SDK versions/paths return a plain Promise from .create() (no
+  // .withResponse() chain method) instead of the APIPromise this prefers.
+  // Distinguish "this SDK doesn't support .withResponse()" from "the
+  // request itself failed" by checking BEFORE awaiting — chaining
+  // .withResponse() onto an already-in-flight promise and only checking
+  // in the catch block double-fires the request on every real failure
+  // (doubling quota burn) and can also surface as an unhandled rejection
+  // on the un-awaited first promise.
+  const initial = client.chat.completions.create(payload);
+  if (typeof initial.withResponse === 'function') {
+    try {
+      const withResp = await initial.withResponse();
+      data = withResp.data;
+      headers = withResp.response ? withResp.response.headers : null;
+    } catch (e) {
+      // withResponse() exists but the request itself failed — propagate,
+      // do NOT re-issue the request.
+      throw e;
+    }
+  } else {
+    // No .withResponse() support on this SDK path/version — the plain
+    // call IS the real request; let its rejection propagate naturally.
+    data = await initial;
   }
 
   const text = data.choices?.[0]?.message?.content || '';
@@ -909,7 +934,7 @@ async function execCloudflare({ modelName, prompt, systemInstruction, maxTokens,
 // ============================================================
 async function runCandidate(candidate, ctx) {
   const { provider, model: modelName } = candidate;
-  const { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqClient, hasGroq, openRouterFreeOnly } = ctx;
+  const { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqKeys, openRouterFreeOnly } = ctx;
 
   if (provider === 'gemini') {
     if (!ENABLE_GEMINI || !geminiKeys || geminiKeys.length === 0) return null;
@@ -933,20 +958,31 @@ async function runCandidate(candidate, ctx) {
   }
 
   if (provider === 'groq') {
-    if (!ENABLE_GROQ || !hasGroq || !groqClient) return null;
-    const id = breakerId('groq', modelName, process.env.GROQ_API_KEY || process.env.OPLA);
-    if (isBreakerOpen(id)) return null;
-    const start = Date.now();
-    try {
-      const { text, quota } = await withRetry(() => execOpenAICompatible(groqClient, { modelName, prompt, systemInstruction, maxTokens, temp }));
-      recordSuccess(id, Date.now() - start, quota);
-      return { result: text, modelUsed: `${modelName} (groq)`, provider: 'groq', metadata: { latencyMs: Date.now() - start, quota } };
-    } catch (error) {
-      const type = classifyFailure(error);
-      wlog(`groq/${modelName} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
-      if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
-      return null;
+    if (!ENABLE_GROQ || !groqKeys || groqKeys.length === 0) return null;
+    // Rotate through both configured Groq keys (opla/OPLA/GROQ_API_KEY/
+    // GROQ_API_KEY_2, deduped upstream by the caller) the same way Gemini
+    // rotates through its keys, so a rate-limited/quota-exhausted key
+    // doesn't take the whole Groq tier down with it.
+    const order = nextKeyOrder(`groq:${modelName}`, groqKeys);
+    for (const { key, index } of order) {
+      const id = breakerId('groq', modelName, key);
+      if (isBreakerOpen(id)) continue;
+
+      const client = getGroqClient(key);
+      if (!client) continue;
+
+      const start = Date.now();
+      try {
+        const { text, quota } = await withRetry(() => execOpenAICompatible(client, { modelName, prompt, systemInstruction, maxTokens, temp }));
+        recordSuccess(id, Date.now() - start, quota);
+        return { result: text, modelUsed: `${modelName} (groq, key ${index + 1})`, provider: 'groq', metadata: { latencyMs: Date.now() - start, quota } };
+      } catch (error) {
+        const type = classifyFailure(error);
+        wlog(`groq/${modelName} key=${index + 1} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
+        if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
+      }
     }
+    return null;
   }
 
   if (provider === 'openrouter') {
@@ -1007,12 +1043,12 @@ function isProviderLikelyDown(provider) {
   return sawAny && allOpen;
 }
 
-function buildCandidates({ category, isLong, geminiKeys, hasGroq, openRouterFreeOnly, cloudflareEnabled }) {
+function buildCandidates({ category, isLong, geminiKeys, groqKeys, openRouterFreeOnly, cloudflareEnabled }) {
   const candidates = [];
 
   for (const entry of allRegistryEntries()) {
     if (entry.provider === 'gemini' && (!ENABLE_GEMINI || !geminiKeys || geminiKeys.length === 0)) continue;
-    if (entry.provider === 'groq' && (!ENABLE_GROQ || !hasGroq)) continue;
+    if (entry.provider === 'groq' && (!ENABLE_GROQ || !groqKeys || groqKeys.length === 0)) continue;
     if (entry.provider === 'openrouter' && (!ENABLE_OPENROUTER || !getOpenRouterClient())) continue;
     if (entry.provider === 'cloudflare' && (!ENABLE_CLOUDFLARE || !cloudflareEnabled)) continue;
     if (entry.costTier === 'paid') continue;
@@ -1021,16 +1057,17 @@ function buildCandidates({ category, isLong, geminiKeys, hasGroq, openRouterFree
     const score = scoreModel(entry, category, { isLong });
     if (score === -Infinity) continue;
 
-    // Fold in live quota risk using the most-likely credential fingerprint;
-    // for Gemini this is approximate since keys round-robin, so we skip it
-    // there and rely on per-key breakers instead.
+    // Fold in live quota risk using the most-likely credential fingerprint.
+    // Gemini and Groq both round-robin across multiple keys, so the exact
+    // key used per-request isn't known here — skip the approximate lookup
+    // for both and rely on per-key circuit breakers (checked in
+    // runCandidate) instead. Only single-credential providers get the
+    // upfront penalty folded into ranking.
     let riskAdjusted = score;
-    if (entry.provider !== 'gemini') {
-      const cred = entry.provider === 'groq'
-        ? (process.env.GROQ_API_KEY || process.env.OPLA)
-        : entry.provider === 'openrouter'
-          ? process.env.OPENROUTER_API_KEY
-          : (getCloudflareConfig() || {}).apiToken;
+    if (entry.provider === 'openrouter' || entry.provider === 'cloudflare') {
+      const cred = entry.provider === 'openrouter'
+        ? process.env.OPENROUTER_API_KEY
+        : (getCloudflareConfig() || {}).apiToken;
       riskAdjusted -= quotaRiskPenalty(breakerId(entry.provider, entry.model, cred));
     }
 
@@ -1047,7 +1084,7 @@ function buildCandidates({ category, isLong, geminiKeys, hasGroq, openRouterFree
 let lastDiscoveryAt = 0;
 let discoveryInFlight = false;
 
-async function maybeRunDiscovery({ groqClient, hasGroq }) {
+async function maybeRunDiscovery({ groqKeys }) {
   const now = Date.now();
   if (discoveryInFlight) return;
   if (now - lastDiscoveryAt < MODEL_DISCOVERY_TTL_MS) return;
@@ -1055,8 +1092,11 @@ async function maybeRunDiscovery({ groqClient, hasGroq }) {
   lastDiscoveryAt = now;
 
   try {
-    if (ENABLE_GROQ && hasGroq && groqClient) {
-      await discoverGroqModels(groqClient).catch((e) => dlog('groq discovery failed (non-fatal):', e.message));
+    if (ENABLE_GROQ && groqKeys && groqKeys.length > 0) {
+      const groqClient = getGroqClient(groqKeys[0]);
+      if (groqClient) {
+        await discoverGroqModels(groqClient).catch((e) => dlog('groq discovery failed (non-fatal):', e.message));
+      }
     }
     const orClient = getOpenRouterClient();
     if (orClient) {
@@ -1112,7 +1152,7 @@ async function discoverOpenRouterModels(orClient) {
 // ============================================================
 // 14. MAIN GENERATOR
 // ============================================================
-async function generate({ classification, prompt, userMessage, systemInstruction, geminiKeys = [], groqClient, hasGroq }) {
+async function generate({ classification, prompt, userMessage, systemInstruction, geminiKeys = [], groqKeys = [] }) {
   const { category, isLong, intent } = classifyRequest({ classification, prompt, userMessage });
   const temp = getDynamicTemp(intent);
   const cloudflareEnabled = !!getCloudflareConfig();
@@ -1121,10 +1161,10 @@ async function generate({ classification, prompt, userMessage, systemInstruction
 
   // Fire-and-forget cache refresh; never awaited beyond the cheap
   // TTL/in-flight checks above, so it never adds latency to a request.
-  maybeRunDiscovery({ groqClient, hasGroq }).catch(() => {});
+  maybeRunDiscovery({ groqKeys }).catch(() => {});
 
   const candidates = buildCandidates({
-    category, isLong, geminiKeys, hasGroq, openRouterFreeOnly, cloudflareEnabled
+    category, isLong, geminiKeys, groqKeys, openRouterFreeOnly, cloudflareEnabled
   });
 
   if (candidates.length === 0) {
@@ -1133,7 +1173,7 @@ async function generate({ classification, prompt, userMessage, systemInstruction
 
   dlog(`intent=${category} maxTokens=${maxTokens} candidates=${candidates.map(c => `${c.provider}/${c.model}(${c.score.toFixed(1)})`).join(', ')}`);
 
-  const ctx = { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqClient, hasGroq, openRouterFreeOnly };
+  const ctx = { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqKeys, openRouterFreeOnly };
   let lastError = null;
   let lastProviderTried = null;
 
@@ -1166,8 +1206,8 @@ async function generate({ classification, prompt, userMessage, systemInstruction
   // since the emergency path already means we're compressing the prompt
   // and want the cheapest, most-likely-to-succeed rung.
   const emergencyOrder = [
-    (ENABLE_GROQ && hasGroq) ? { provider: 'groq', model: 'openai/gpt-oss-20b' } : null,
-    (ENABLE_GROQ && hasGroq) ? { provider: 'groq', model: 'llama-3.1-8b-instant' } : null,
+    (ENABLE_GROQ && groqKeys.length) ? { provider: 'groq', model: 'openai/gpt-oss-20b' } : null,
+    (ENABLE_GROQ && groqKeys.length) ? { provider: 'groq', model: 'llama-3.1-8b-instant' } : null,
     (ENABLE_GEMINI && geminiKeys.length) ? { provider: 'gemini', model: 'gemini-3.5-flash-lite' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'openrouter/free' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free' } : null,
