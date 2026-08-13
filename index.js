@@ -23,6 +23,11 @@ const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/g
 
 // 🚀 IMPORT THE GAME ROUTER
 const gameDomainRouter = require('./router/gameDomainRouter');
+// 🗜️ Same compression used everywhere else GameData gets injected — this
+// file was building its own [GAME DATA] block independently with
+// JSON.stringify(..., null, 2), bypassing compression entirely and
+// contributing to 413 Request Entity Too Large errors from Groq/Gemini.
+const { compressGameData } = require('./promptBuilder/promptAssembler');
 
 // 🛡️ DEDUPLICATION SET (Global)
 const processedMessages = new Set();
@@ -359,9 +364,12 @@ client.on(Events.MessageCreate, async (message) => {
             // 🚀 AGGRESSIVE STRATEGY CONTEXT INJECTION FOR THE AI
             let aiPromptContent = cleanText;
             if (gameResult.context) {
-                const contextStr = typeof gameResult.context === 'object' 
-                    ? JSON.stringify(gameResult.context, null, 2) 
+                const compressedContext = typeof gameResult.context === 'object'
+                    ? compressGameData(gameResult.context)
                     : gameResult.context;
+                const contextStr = typeof compressedContext === 'object'
+                    ? JSON.stringify(compressedContext)
+                    : compressedContext;
 
                 aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question. Compare the stats directly and provide strategic advice based ONLY on these numbers. Do not invent abilities or stats.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${cleanText}`;
             }
