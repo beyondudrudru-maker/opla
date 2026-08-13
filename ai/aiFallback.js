@@ -1,3 +1,25 @@
+/**
+ * ai/aiFallback.js
+ *
+ * PURPOSE: The authoritative AI strategy layer. Enforces strict formatting,
+ * zero hallucination, and professional diplomatic tone before passing context.
+ * 🚀 UPGRADE: Phase 3 - The "Why" Factor, Categorical Grouping, Gear Loadouts,
+ * Talent Unlocks, and Mythical Formation Limits.
+ */
+
+const modelRouter = require('../router/modelRouter.js');
+const { stripLeakedReasoning, gatekeeperLint } = require('../postProcessor/leakFilter');
+
+const CRITICAL_OUTPUT_RULES = `
+[CRITICAL OUTPUT RULES — ABSOLUTE]
+Your response IS the final message shown to the user. STRICTLY FORBIDDEN, with zero exceptions:
+- NO internal monologue, reasoning, planning steps, or self-evaluations of any kind (e.g., "Let's see...", "Here's a thinking process:", "Thinking Process:", "Let me think about this").
+- NO numbered or bulleted PLANNING lists that describe what you are about to do before you do it (e.g., "1. Analyze User Input", "Step 1:", "First, I will..."). Go straight to the analysis — do not narrate your approach.
+- NO meta-commentary about the task, the prompt, your instructions, or your own process (e.g., "Based on the instructions", "As requested").
+- NO XML/pseudo tags of any kind (<think>, <plan>, <reasoning>, <reflection>, <analysis>, <scratchpad>).
+- NO parenthetical private notes or self-corrections aimed at yourself rather than the user.
+Output ONLY the final, formatted strategic breakdown — nothing before it, nothing after it, and no visible trace of how you arrived at it.`;
+
 const STRATEGY_SYSTEM_INSTRUCTION = `[MASTERCLASS GAME STRATEGY & DIPLOMATIC FORMATTING]
 You are Melody, an elite, highly intelligent strategist for "Kingdom Clash".
 <GameData> is your absolute, authoritative database.
@@ -40,3 +62,53 @@ You are Melody, an elite, highly intelligent strategist for "Kingdom Clash".
   • **Final Verdict:** Give contextual advice (e.g., "Choose X for Bosses, Choose Y for PvP swarms"). Never just say "X wins because it has more HP" if they serve different roles.
 - SINGLE ENTITY: Profile (vertical stats) -> Strategic Potential -> Optimal Matchups -> Recommended Loadout (Utilize 'optimalGear' from <GameData> and briefly explain why that weapon/armor suits their 'supportFocus' or 'combatLine').
 ${CRITICAL_OUTPUT_RULES}`;
+
+/**
+ * askAI({ userMessage, intent, context, geminiKeys, groqKeys, classification })
+ * -> Promise<string>
+ */
+async function askAI({ userMessage, intent, context, geminiKeys = [], groqKeys = [], classification }) {
+  
+  const prompt = `
+<UserQuestion>${userMessage || 'Provide a strategic breakdown.'}</UserQuestion>
+<UserIntent>${intent || 'strategy'}</UserIntent>
+
+<GameData>
+${context ? JSON.stringify(context, null, 2) : 'No exact data found in database.'}
+</GameData>
+
+[INSTRUCTION: Analyze <GameData>. Format using vertical bullet points. EVERY stat on a new line. Bold highlights. Provide a comprehensive, highly logical breakdown. NO MARKDOWN TABLES.]`;
+
+  const MAX_RETRIES = 2;
+  let currentPrompt = prompt;
+  let cleanResult = '';
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const { result } = await modelRouter.generate({
+      classification: classification || { intent: intent || 'strategy' },
+      prompt: currentPrompt,
+      userMessage,
+      systemInstruction: STRATEGY_SYSTEM_INSTRUCTION,
+      geminiKeys,
+      groqKeys
+    });
+
+    const scrubbed = stripLeakedReasoning(result || '');
+
+    if (scrubbed !== '' && gatekeeperLint(scrubbed).ok) {
+      cleanResult = scrubbed;
+      break;
+    } else if (attempt < MAX_RETRIES) {
+      console.warn(`[RETRY] aiFallback attempt ${attempt} blocked by Gatekeeper (leaked reasoning). Retrying...`);
+      currentPrompt += `\n\n[SYSTEM WARNING: Your previous output leaked internal reasoning/thinking-process text. Output ONLY the final strategic breakdown — no planning steps, no "Thinking Process" header.]`;
+    } else {
+      // Exhausted retries — fall back to whatever we scrubbed rather than
+      // dropping the response entirely.
+      cleanResult = scrubbed;
+    }
+  }
+
+  return cleanResult;
+}
+
+module.exports = { askAI, STRATEGY_SYSTEM_INSTRUCTION };
