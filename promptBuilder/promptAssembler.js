@@ -229,6 +229,74 @@ function compressGameData(data) {
 const FULL_DB_LIST_KEYS = ['heroes', 'troops', 'bosses'];
 const MIN_FULL_DB_LENGTH = 5; // below this, treat as an already-small/curated list, not a full dump
 
+// 🛡️ Defensive require — gearData.js lives in a sibling data/ directory.
+// Guarded so a missing file or path mismatch just skips gear recommendations
+// instead of crashing prompt assembly entirely.
+let gearData = null;
+try {
+  gearData = require('../data/gearData.js');
+} catch (e) {
+  gearData = null;
+}
+
+// Collapses a gear piece's 20+ entry per-level scaling arrays down to just
+// the highest observed level + value, same 413-prevention pattern as
+// compressStatValue/compressEntityStats above.
+function compressGearEntry(gear) {
+  if (!gear || typeof gear !== 'object') return gear;
+
+  const compressed = { ...gear };
+  if (compressed.passive && typeof compressed.passive === 'object' && compressed.passive.scaling) {
+    const scaling = compressed.passive.scaling;
+    const levels = Array.isArray(scaling.level) ? scaling.level : [];
+    const maxLevel = levels.length ? levels[levels.length - 1] : null;
+
+    const compressedScaling = { maxLevel };
+    for (const key of Object.keys(scaling)) {
+      if (key === 'level') continue;
+      const arr = scaling[key];
+      if (Array.isArray(arr) && arr.length) {
+        compressedScaling[key] = arr[arr.length - 1];
+      }
+    }
+
+    compressed.passive = { ...compressed.passive, scaling: compressedScaling };
+  }
+  return compressed;
+}
+
+// Cross-references matched heroes/troops against gearData.js and returns one
+// entry per entity: either its matched gear (compressed) or the exact
+// SMART_GEAR_FALLBACK advice, so the AI never has to guess when no dedicated
+// gear exists for a role yet.
+function buildGearRecommendations(matchedHeroes, matchedTroops) {
+  if (!gearData) return [];
+
+  const recs = [];
+
+  matchedTroops.forEach(troop => {
+    const { matchedGear, fallbackNote } = gearData.recommendGearForTroop(troop) || {};
+    recs.push({
+      entity: troop.name,
+      entityType: 'troop',
+      matchedGear: (matchedGear || []).map(compressGearEntry),
+      fallbackNote: fallbackNote || null
+    });
+  });
+
+  matchedHeroes.forEach(hero => {
+    const { matchedGear, fallbackNote } = gearData.recommendGearForHero(hero) || {};
+    recs.push({
+      entity: hero.name,
+      entityType: 'hero',
+      matchedGear: (matchedGear || []).map(compressGearEntry),
+      fallbackNote: fallbackNote || null
+    });
+  });
+
+  return recs;
+}
+
 const GENERIC_BOSS_MODIFIERS = {
   note: 'Generic boss-fight modifiers (no specific boss entity matched, but the message referenced a boss).',
   rules: [
@@ -261,29 +329,187 @@ function findMentionedEntities(userMessage, list) {
   });
 }
 
-// Pulls direct synergy links for a matched hero/troop out of gameData.synergies,
-// matched loosely by id (troopHeroSynergy is keyed by troopId/heroId) so this
-// stays resilient to minor shape drift instead of hard-failing on a mismatch.
-function findSynergyLinks(entity, synergies) {
-  if (!entity || !synergies || !Array.isArray(synergies.troopHeroSynergy)) return [];
+// ─────────────────────────────────────────────────────────────────────────────
+// 🚀 Indexed Synergy Lookups (O(1) instead of O(n) per call)
+// ─────────────────────────────────────────────────────────────────────────────
+// The previous findSynergyLinks() re-scanned the entire troopHeroSynergy
+// array on every single call — for a busy bot resolving many messages, that's
+// a full-array walk per matched entity per message. Since the caller passes
+// a `synergies` object in on every request (rather than this module always
+// seeing the exact same one from a top-level require), a plain
+// module-load-time index would silently go stale if a different/updated
+// synergies object were ever passed in. A WeakMap keyed by the synergies
+// object itself gets the best of both: the index is built ONCE per distinct
+// synergies object (first call pays the O(n) cost, every subsequent call
+// against that same object is O(1)), and if a different synergies object is
+// ever passed (e.g. hot-reloaded data), it transparently gets its own fresh
+// index instead of returning stale results.
+const _synergyIndexCache = new WeakMap();
 
-  const links = [];
-  const entityId = entity.id;
+function _buildSynergyIndex(synergies) {
+  const byTroopId = new Map(); // troopId -> [{ heroId, reason }]
+  const byHeroId = new Map();  // heroId  -> [{ troopId, reason }]
 
-  for (const record of synergies.troopHeroSynergy) {
-    // Entity is the troop side of this record.
-    if (entityId && record.troopId === entityId && Array.isArray(record.heroSynergies)) {
-      record.heroSynergies.forEach(h => links.push({ heroId: h.heroId, reason: h.reason }));
-      continue;
-    }
-    // Entity is one of the hero side matches for some other troop.
-    if (Array.isArray(record.heroSynergies)) {
-      const match = record.heroSynergies.find(h => h.heroId === entityId);
-      if (match) links.push({ troopId: record.troopId, reason: match.reason });
+  if (Array.isArray(synergies.troopHeroSynergy)) {
+    for (const record of synergies.troopHeroSynergy) {
+      if (!record || !Array.isArray(record.heroSynergies)) continue;
+
+      const heroLinks = record.heroSynergies.map(h => ({ heroId: h.heroId, reason: h.reason }));
+      if (record.troopId) {
+        const existing = byTroopId.get(record.troopId) || [];
+        byTroopId.set(record.troopId, existing.concat(heroLinks));
+      }
+
+      for (const h of record.heroSynergies) {
+        if (!h || !h.heroId) continue;
+        const existing = byHeroId.get(h.heroId) || [];
+        existing.push({ troopId: record.troopId, reason: h.reason });
+        byHeroId.set(h.heroId, existing);
+      }
     }
   }
 
-  return links.slice(0, 8); // keep the bundle lean
+  return { byTroopId, byHeroId };
+}
+
+function _getSynergyIndex(synergies) {
+  let index = _synergyIndexCache.get(synergies);
+  if (!index) {
+    index = _buildSynergyIndex(synergies);
+    _synergyIndexCache.set(synergies, index);
+  }
+  return index;
+}
+
+// Pulls direct synergy links for a matched hero/troop out of gameData.synergies
+// via the cached reverse index above — O(1) lookup after the first call for a
+// given synergies object, instead of an O(n) scan of troopHeroSynergy every
+// time. Output shape/order is unchanged from the original scan-based version.
+function findSynergyLinks(entity, synergies) {
+  if (!entity || !synergies || !Array.isArray(synergies.troopHeroSynergy)) return [];
+
+  const entityId = entity.id;
+  if (!entityId) return [];
+
+  const { byTroopId, byHeroId } = _getSynergyIndex(synergies);
+
+  const asTroop = byTroopId.get(entityId) || [];
+  const asHero = byHeroId.get(entityId) || [];
+
+  return [...asTroop, ...asHero].slice(0, 8); // keep the bundle lean
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔗 Tag-Overlap Synergy Fallback
+// ─────────────────────────────────────────────────────────────────────────────
+// findSynergyLinks() above only returns curated troopHeroSynergy entries. Not
+// every troop/hero in the roster has a curated entry (synergies.js only lists
+// entries that were manually written), so an uncurated entity currently gets
+// an empty synergyLinks array even though synergies.js's own indexes already
+// contain enough tag/category data to derive a reasonable generic link.
+// This fallback is driven entirely by shared tags/category — never by an
+// entity's specific name — so it works identically for any troop or hero.
+//
+// Mapping used: indexes.heroesBySupportFocusPrimary is keyed by phrases like
+// "Mage Troops" / "Undead Troops" / "Human Troops" — each of those embeds a
+// troop faction/category name. A troop whose own tags/category/type include
+// that faction name is a tag-overlap match for every hero listed under that
+// key. This mirrors the exact reasoning pattern already used by hand-written
+// troopHeroSynergy entries (e.g. "Hero buffs allied Undead troops; troop
+// belongs to Undead"), just derived generically instead of authored by hand.
+// Strips one trailing "s" for a lightweight, conservative singular/plural
+// normalization — mirrors the same deliberately-simple approach already used
+// by gameIntentClassifier.js's _stripTrailingS, so "Mages" (troop tag) and
+// "Mage" (inside the "Mage Troops" index key) compare equal without pulling
+// in a stemming library.
+function _singularize(str) {
+  return String(str).toLowerCase().replace(/s$/, '');
+}
+
+function _entityCategoryTags(entity) {
+  if (!entity || typeof entity !== 'object') return [];
+  const raw = [
+    entity.type,
+    entity.category,
+    entity.faction,
+    entity.combatLine,
+    ...(Array.isArray(entity.tags) ? entity.tags : []),
+    ...(Array.isArray(entity.synergyCategories) ? entity.synergyCategories : [])
+  ].filter(Boolean);
+  return raw.map(t => String(t).toLowerCase());
+}
+
+function findTagOverlapSynergyLinks(entity, synergies) {
+  if (!entity || !synergies || !synergies.indexes) return [];
+
+  const entityTags = _entityCategoryTags(entity);
+  const links = [];
+
+  // Troop side: find heroes whose supportFocus phrase embeds one of this
+  // troop's own category tags (e.g. troop tag "Undead"/"Mages" -> key
+  // "Undead Troops"/"Mage Troops"). Compared on singularized forms so plural
+  // tags ("Mages") still match a singular phrase word ("Mage"). Skipped
+  // entirely (not an early-return from the whole function) when the entity
+  // has no category tags of its own — the independent hero-side block below
+  // must still get a chance to run for hero entities.
+  if (entityTags.length > 0) {
+    const supportFocusIndex = synergies.indexes.heroesBySupportFocusPrimary || {};
+    const focusLowerSingularCache = new Map();
+    for (const [focusPhrase, heroIds] of Object.entries(supportFocusIndex)) {
+      if (!focusLowerSingularCache.has(focusPhrase)) {
+        focusLowerSingularCache.set(
+          focusPhrase,
+          focusPhrase.toLowerCase().split(/\s+/).map(_singularize)
+        );
+      }
+      const focusWordsSingular = focusLowerSingularCache.get(focusPhrase);
+      const matchedTag = entityTags.find(tag => {
+        if (tag.length <= 2) return false;
+        const tagSingular = _singularize(tag);
+        return focusWordsSingular.includes(tagSingular);
+      });
+      if (matchedTag && Array.isArray(heroIds)) {
+        heroIds.forEach(heroId => links.push({
+          heroId,
+          reason: `Derived from shared tag "${matchedTag}": hero's supportFocus is "${focusPhrase}", which this entity's own category/tags match.`,
+          derived: true
+        }));
+      }
+    }
+  }
+
+  // Hero side: if this entity IS a hero (has a supportFocus of its own),
+  // find troops tagged with the category embedded in that supportFocus phrase.
+  const heroFocusPhrase = entity.supportFocus || (entity.analysis && entity.analysis.supportFocus);
+  if (heroFocusPhrase && synergies.indexes.troopsByTag) {
+    const focusWordsSingular = String(heroFocusPhrase).toLowerCase().split(/\s+/).map(_singularize);
+    for (const [tag, troopIds] of Object.entries(synergies.indexes.troopsByTag)) {
+      const tagSingular = _singularize(tag);
+      if (tag.length > 2 && focusWordsSingular.includes(tagSingular) && Array.isArray(troopIds)) {
+        troopIds.forEach(troopId => links.push({
+          troopId,
+          reason: `Derived from shared tag "${tag}": this hero's supportFocus is "${heroFocusPhrase}", which matches the troop's own category tag.`,
+          derived: true
+        }));
+      }
+    }
+  }
+
+  return links.slice(0, 8); // keep the bundle lean, same cap as curated links
+}
+
+/**
+ * resolveSynergyLinks(entity, synergies)
+ * Tries the curated troopHeroSynergy lookup first (authoritative, hand-
+ * verified reasons). Only if that comes back empty does it fall back to the
+ * generic tag-overlap derivation above — so curated data always wins when
+ * it exists, and no entity is ever left with zero synergy context just
+ * because nobody has hand-written an entry for it yet.
+ */
+function resolveSynergyLinks(entity, synergies) {
+  const curated = findSynergyLinks(entity, synergies);
+  if (curated.length > 0) return curated;
+  return findTagOverlapSynergyLinks(entity, synergies);
 }
 
 /**
@@ -313,7 +539,15 @@ function extractTargetedContext(userMessage, gameData) {
   const matchedBosses = findMentionedEntities(userMessage, gameData.bosses);
 
   const synergyLinks = [...matchedHeroes, ...matchedTroops]
-    .flatMap(entity => findSynergyLinks(entity, gameData.synergies));
+    .flatMap(entity => resolveSynergyLinks(entity, gameData.synergies));
+
+  // Gear cross-reference runs against the ORIGINAL (uncompressed) matches so
+  // gearData.js's tag/type lookups see the real fields, not the "Max: N"
+  // strings compressEntityStats produces.
+  const gearRecommendations = buildGearRecommendations(
+    findMentionedEntities(userMessage, gameData.heroes),
+    findMentionedEntities(userMessage, gameData.troops)
+  );
 
   const mentionsBossGenerically = /\bboss(es)?\b/i.test(String(userMessage || ''));
   const bossModifiers = matchedBosses.length > 0
@@ -325,6 +559,7 @@ function extractTargetedContext(userMessage, gameData) {
     matchedTroops,
     matchedBosses,
     synergyLinks,
+    gearRecommendations,
     bossModifiers
   };
 
@@ -411,4 +646,5 @@ module.exports = {
   assemble,
   compressGameData,       // exported for unit testing / reuse in gameDomainRouter.js if needed
   extractTargetedContext, // exported for unit testing / reuse elsewhere in the pipeline
+  resolveSynergyLinks,    // exported for unit testing / reuse — curated lookup + tag-overlap fallback
 };
