@@ -188,6 +188,23 @@ function compressGameData(data) {
     }
   }
 
+  // Single-entity keys — strategyContextBuilder.js embeds full hero/troop
+  // records directly under these names rather than in a list.
+  const KNOWN_ENTITY_SINGLES = ['recognizedHero', 'recognizedTroop', 'hero1', 'hero2', 'troop1', 'troop2', 'troop', 'entityA', 'entityB'];
+  for (const key of KNOWN_ENTITY_SINGLES) {
+    if (cloned[key] && typeof cloned[key] === 'object' && !Array.isArray(cloned[key])) {
+      cloned[key] = compressEntityStats(cloned[key]);
+    }
+  }
+
+  // Array-of-candidates keys (e.g. findBestHeroesForTroop's compatibleHeroes).
+  const KNOWN_CANDIDATE_LISTS = ['compatibleHeroes'];
+  for (const key of KNOWN_CANDIDATE_LISTS) {
+    if (Array.isArray(cloned[key])) {
+      cloned[key] = compressCollection(cloned[key]);
+    }
+  }
+
   // Single hero/troop object passed directly (not wrapped in a list key).
   if (STAT_KEYS.some(k => k in cloned) || cloned.statLevels || cloned.stats) {
     return compressEntityStats(cloned);
