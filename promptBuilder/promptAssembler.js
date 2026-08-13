@@ -1,277 +1,181 @@
 /**
- * promptBuilder/promptAssembler.js
- *
+ * postProcessor/styleLinter.js
+ * 
  * PURPOSE
- *   Final lightweight prompt composer.
- *   Acts purely as a "dumb" assembler snapping pre-rendered blocks together.
- *   🚀 UPGRADE: Advanced XML escaping, Game Data injection, stricter behavioral
- *   mapping, and a `leanMode` path for the Game Fast-Lane (drops memory/history/
- *   emotional/target blocks entirely so game queries get a minimal, high-signal
- *   prompt with zero persona bleed).
- *   🗜️ UPGRADE: GameData compression — 10-level stat arrays / {min,max} range
- *   objects on heroes & troops are collapsed to Level-10/max-only values before
- *   injection, and the block is minified (no pretty-print) to fix 413 Request
- *   Entity Too Large errors from Groq/Gemini once full stat curves were added.
+ *   Cleans and formats the raw AI text before it is sent to Discord.
+ *   Enforces emoji limits, prevents repetitive AI loops, and ensures perfect grammar.
+ *   🚀 UPGRADE: Deep reasoning stripper added to catch rogue model drafts.
+ *   🐛 FIX: enforceEmojiBudget now counts each visual emoji separately instead
+ *   of globbing adjacent-but-distinct emojis (e.g. "🌸✨") into a single match,
+ *   which let budgets get silently exceeded whenever the model produced two+
+ *   emojis back-to-back with no separating space/text.
  */
 
-// 🛡️ SECURITY & STABILITY: Escapes XML tags while preserving newlines and spacing.
-// This prevents prompt injection while ensuring code snippets or text formatting aren't destroyed!
-function sanitize(text) {
-  if (typeof text !== 'string') return '';
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+const RECENT_REPLY_LIMIT = 8;
+const MAX_TRACKED_CHANNELS = 100; // 🛡️ Memory leak protection limit
+
+// Expanded list of LLM conversational crutches
+const BANNED_OPENERS = /^(oh[,.]?|well[,.]?|hmm[,.]?|umm[,.]?|honestly[,.]?|anyway[,.]?|so[,.]?|ah[,.]?|alright[,.]?|look[,.]?|basically[,.]?|actually[,.]?|okay[,.]?)\s+/i;
+const recentRepliesByChannel = new Map();
+
+/**
+ * Gets the recent replies for a channel.
+ */
+function getRecent(channelId) {
+  return recentRepliesByChannel.get(channelId) || [];
 }
 
-function renderRelationshipFraming(relationship = {}) {
-  const tierMap = {
-    creator: 'Creator',
-    vip: 'VIP',
-    admin: 'Admin',
-    moderator: 'Moderator',
-    troublemaker: 'Reserved',
-    regular: 'Regular',
-    unknown: 'Polite',
-  };
-
-  const tier = tierMap[relationship.tier] || 'Member';
-  const familiarity = relationship.familiarity > 50 ? 'High' : 'Low';
-
-  return `<UserContext tier="${tier}" familiarity="${familiarity}" />`;
-}
-
-function renderMemoryBlock(memories) {
-  if (!Array.isArray(memories) || memories.length === 0) return '';
-
-  const content = memories
-    .slice(0, 10)
-    .map(m => sanitize(m?.content))
-    .filter(Boolean)
-    .join(' | ');
-
-  return content ? `<LongTermMemory>\n${content}\n</LongTermMemory>` : '';
-}
-
-function renderWorkingMemory(workingMemory) {
-  if (!Array.isArray(workingMemory) || workingMemory.length === 0) return '';
-
-  const lines = workingMemory
-    .slice(-10)
-    .map(t => {
-      const role = t.role === 'melody' ? 'Melody' : 'User';
-      return `[${role}]: ${sanitize(t.content)}`;
-    })
-    .join('\n');
-
-  return lines ? `<ChatHistory>\n${lines}\n</ChatHistory>` : '';
-}
-
-function renderTargetBlock(targetInfo) {
-  if (!targetInfo) return '';
-
-  if (targetInfo.addressingEveryone) {
-    return '<AudienceTarget>Group (Everyone)</AudienceTarget>';
+/**
+ * Records a reply and maintains the channel memory limit.
+ */
+function recordReply(channelId, text) {
+  if (!recentRepliesByChannel.has(channelId) && recentRepliesByChannel.size >= MAX_TRACKED_CHANNELS) {
+      const oldestChannelId = recentRepliesByChannel.keys().next().value;
+      recentRepliesByChannel.delete(oldestChannelId);
   }
 
-  if (targetInfo.hasThirdPartyTarget) {
-    const targets = (targetInfo.targets || [])
-      .slice(0, 5)
-      .map(t => sanitize(t.name))
-      .filter(Boolean)
-      .join(', ');
-
-    return targets ? `<AudienceTarget>${targets}</AudienceTarget>` : '';
+  const list = getRecent(channelId);
+  list.push(text);
+  
+  if (list.length > RECENT_REPLY_LIMIT) {
+      list.shift();
   }
-
-  return '';
+  
+  recentRepliesByChannel.set(channelId, list);
 }
 
-function renderTaskDirective(behavior = {}) {
-  const directives = [];
-
-  if (behavior.targetLength) directives.push(`Target Length: ${behavior.targetLength}`);
-  if (behavior.mode) directives.push(`Operational Mode: ${behavior.mode}`);
-  if (Array.isArray(behavior.tone) && behavior.tone.length) directives.push(`Required Tone: ${behavior.tone.join(', ')}`);
-  if (behavior.emojiBudget !== undefined) directives.push(`Max Emojis: ${behavior.emojiBudget}`);
-  if (behavior.preferReact) directives.push(`Action: Acknowledge politely`);
-  if (behavior.askFollowUp) directives.push(`Action: End with an engaging follow-up question`);
-  if (Array.isArray(behavior.forbidTraits) && behavior.forbidTraits.length) directives.push(`STRICTLY AVOID: ${behavior.forbidTraits.join(', ')}`);
-
-  return directives.length ? `<BehaviorDirectives>\n${directives.join('\n')}\n</BehaviorDirectives>` : '';
+/**
+ * Isolates the exact opener word safely, ignoring punctuation variations.
+ */
+function openerRepeated(channelId, text) {
+  const match = text.match(BANNED_OPENERS);
+  if (!match) return false;
+  
+  const openerWord = match[1].toLowerCase().replace(/[^a-z]/g, ''); // Strip punctuation for a pure match
+  
+  return getRecent(channelId).some((r) => {
+      const pastMatch = r.match(BANNED_OPENERS);
+      return pastMatch && pastMatch[1].toLowerCase().replace(/[^a-z]/g, '') === openerWord;
+  });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 🗜️ GameData Compression
-// ─────────────────────────────────────────────────────────────────────────────
-// Strategy routing only needs the Level-10 ceiling for hp/defense/attack, not
-// the full leveling curve. This collapses both known stat shapes:
-//   - Array of per-level values: [lvl1, lvl2, ..., lvl10]  -> "Max: <lvl10>"
-//   - Range object: { min, max }                            -> "Max: <max>"
-// down to a single string, cutting payload size substantially once full stat
-// arrays were added to heroes.js/troops.js. Non-stat fields (synergies, gear,
-// boss records, talents, etc.) pass through untouched.
-const STAT_KEYS = ['hp', 'defense', 'attack'];
-
-function compressStatValue(stat) {
-  if (Array.isArray(stat)) {
-    if (stat.length === 0) return stat;
-    const max = stat[stat.length - 1];
-    return `Max: ${typeof max === 'number' ? max.toLocaleString() : max}`;
+/**
+ * Strips crutches and fixes capitalization safely, even if wrapped in Markdown.
+ */
+function stripBannedOpenerIfRepeated(channelId, text) {
+  if (openerRepeated(channelId, text)) {
+    let strippedText = text.replace(BANNED_OPENERS, '').trim();
+    
+    // Smart capitalize: handles cases where text starts with markdown e.g., "**hello**" -> "**Hello**"
+    strippedText = strippedText.replace(/^([*`_~]*)([a-z])/i, (match, markdown, letter) => {
+        return markdown + letter.toUpperCase();
+    });
+    
+    return strippedText;
   }
-
-  if (stat && typeof stat === 'object' && 'max' in stat) {
-    const max = stat.max;
-    return `Max: ${typeof max === 'number' ? max.toLocaleString() : max}`;
-  }
-
-  // Already a scalar (single number/string) — leave as-is.
-  return stat;
+  return text;
 }
 
-function compressEntityStats(entity) {
-  if (!entity || typeof entity !== 'object') return entity;
+/**
+ * Advanced Regex handles complex emojis and cleans up leftover horizontal whitespace 
+ * while strictly preserving vertical line breaks (\n).
+ *
+ * 🐛 FIX: previously used a single `+`-quantified class match, which globbed
+ * ADJACENT-BUT-DISTINCT emojis (e.g. "🌸✨", no separating space/text) into
+ * one regex match — so two visually separate emojis were counted and
+ * budgeted as if they were one, letting the actual on-screen emoji count
+ * exceed the budget. This now matches one emoji cluster at a time: a base
+ * pictograph optionally followed by a variation selector, optionally chained
+ * via ZWJ (\u200D) into a legitimate multi-codepoint FAMILY emoji (which
+ * correctly still counts as a single emoji) — without silently absorbing a
+ * second, unrelated emoji that just happens to sit next to it.
+ */
+function enforceEmojiBudget(text, budget) {
+  const emojiClusterRegex = /(?:\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])\u{FE0F}?(?:\u{200D}(?:\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])\u{FE0F}?)*/gu;
+  let count = 0;
 
-  const compressed = { ...entity };
+  let processedText = text.replace(emojiClusterRegex, (match) => {
+    count += 1;
+    return count <= budget ? match : '';
+  });
+  
+  // Clean up structural weirdness left by removed emojis
+  processedText = processedText
+    .replace(/ {2,}/g, ' ')               // Only collapse horizontal spaces, NOT new lines!
+    .replace(/ +([.,!?])/g, '$1')         // Fix spaces before punctuation (e.g., "Hello ," -> "Hello,")
+    .trim();
+    
+  return processedText;
+}
 
-  for (const key of STAT_KEYS) {
-    if (key in compressed) {
-      compressed[key] = compressStatValue(compressed[key]);
+/**
+ * 🚀 UPGRADE: Removes internal AI thinking, drafts, and numbering
+ */
+function stripReasoning(text) {
+    let cleanText = text;
+    
+    // If the model leaked its "Draft:" section, grab ONLY what comes after "Draft:"
+    const draftMatch = cleanText.match(/\bDraft:\s*([\s\S]*)$/i);
+    if (draftMatch) {
+        cleanText = draftMatch[1];
     }
-  }
+    
+    // Just in case it uses "Final Response:" or similar wording
+    const responseMatch = cleanText.match(/\b(?:Final )?Response:\s*([\s\S]*)$/i);
+    if (responseMatch) {
+        cleanText = responseMatch[1];
+    }
 
-  // Some records nest per-level stats under statLevels/stats rather than
-  // flat top-level fields — handle that shape too.
-  for (const nestKey of ['statLevels', 'stats']) {
-    if (compressed[nestKey] && typeof compressed[nestKey] === 'object') {
-      const nested = { ...compressed[nestKey] };
-      for (const key of STAT_KEYS) {
-        if (key in nested) {
-          nested[key] = compressStatValue(nested[key]);
-        }
+    return cleanText.trim();
+}
+
+/**
+ * Structural Cleanup (Quotes, Giant Gaps, Reasoning)
+ */
+function structuralCleanup(text) {
+    let cleanText = text;
+    
+    // 🚀 Step 1: Strip out rogue AI reasoning first!
+    cleanText = stripReasoning(cleanText);
+
+    // Remove surrounding quotes if the AI accidentally wrapped its entire response in them
+    if (cleanText.startsWith('"') && cleanText.endsWith('"')) {
+        cleanText = cleanText.substring(1, cleanText.length - 1).trim();
+    }
+    
+    // Limit excessive empty lines to a maximum of 2 (preserves paragraphs, kills giant gaps)
+    cleanText = cleanText.replace(/\n{3,}/g, '\n\n');
+    
+    return cleanText;
+}
+
+/**
+ * Main execution function for the style linter.
+ */
+function process({ channelId, responseText, emojiBudget = 1 }) {
+  try {
+      if (!responseText || typeof responseText !== 'string') {
+          return { text: '', wasTrimmed: false };
       }
-      compressed[nestKey] = nested;
-    }
-  }
 
-  return compressed;
+      // 1. Fix massive gaps, rogue thinking blocks, and stray quotes
+      let text = structuralCleanup(responseText);
+      
+      // 2. Prevent AI repetition loops
+      text = stripBannedOpenerIfRepeated(channelId, text);
+      const wasTrimmed = text !== responseText;
+      
+      // 3. Enforce emoji budgets and polish punctuation spacing
+      text = enforceEmojiBudget(text, emojiBudget);
+      
+      // 4. Record to memory
+      recordReply(channelId, text);
+      
+      return { text, wasTrimmed };
+  } catch (error) {
+      console.error('⚠️ [STYLE LINTER ERROR]', error);
+      return { text: responseText, wasTrimmed: false }; // Failsafe return
+  }
 }
 
-function compressCollection(list) {
-  if (!Array.isArray(list)) return list;
-  return list.map(compressEntityStats);
-}
-
-/**
- * compressGameData(data)
- * Deep-clones the incoming game data (never mutates the original in-memory
- * database) and replaces bulky per-level stat data on heroes/troops with a
- * single max-value string. Handles both a top-level array of entities and an
- * object wrapping known list keys (heroes, troops, mentionedHeroes,
- * mentionedTroops, bossRecords) or a single entity object. Anything without a
- * recognizable stat shape passes through unchanged.
- */
-function compressGameData(data) {
-  if (!data || typeof data !== 'object') return data;
-
-  const cloned = JSON.parse(JSON.stringify(data));
-
-  if (Array.isArray(cloned)) {
-    return compressCollection(cloned);
-  }
-
-  const KNOWN_ENTITY_LISTS = ['heroes', 'troops', 'mentionedHeroes', 'mentionedTroops', 'bossRecords'];
-
-  for (const key of KNOWN_ENTITY_LISTS) {
-    if (Array.isArray(cloned[key])) {
-      cloned[key] = compressCollection(cloned[key]);
-    }
-  }
-
-  // Single-entity keys — strategyContextBuilder.js embeds full hero/troop
-  // records directly under these names rather than in a list.
-  const KNOWN_ENTITY_SINGLES = ['recognizedHero', 'recognizedTroop', 'hero1', 'hero2', 'troop1', 'troop2', 'troop', 'entityA', 'entityB'];
-  for (const key of KNOWN_ENTITY_SINGLES) {
-    if (cloned[key] && typeof cloned[key] === 'object' && !Array.isArray(cloned[key])) {
-      cloned[key] = compressEntityStats(cloned[key]);
-    }
-  }
-
-  // Array-of-candidates keys (e.g. findBestHeroesForTroop's compatibleHeroes).
-  const KNOWN_CANDIDATE_LISTS = ['compatibleHeroes'];
-  for (const key of KNOWN_CANDIDATE_LISTS) {
-    if (Array.isArray(cloned[key])) {
-      cloned[key] = compressCollection(cloned[key]);
-    }
-  }
-
-  // Single hero/troop object passed directly (not wrapped in a list key).
-  if (STAT_KEYS.some(k => k in cloned) || cloned.statLevels || cloned.stats) {
-    return compressEntityStats(cloned);
-  }
-
-  return cloned;
-}
-
-function renderGameContext(gameData) {
-  if (!gameData) return '';
-  const compressed = typeof gameData === 'string' ? gameData : compressGameData(gameData);
-  // 🗜️ Minified — no `null, 2` pretty-print — to keep GameData block as
-  // token-lean as possible on top of the stat compression above.
-  const content = typeof compressed === 'string' ? compressed : JSON.stringify(compressed);
-  return `<GameData>\n${content}\n</GameData>`;
-}
-
-/**
- * 🚀 GAME FAST-LANE: minimal assembly path.
- * Only relationship framing (cheap, no memory lookups) + the deterministic
- * game data + the current message. No LongTermMemory, no ChatHistory, no
- * EmotionalState, no AudienceTarget, no BehaviorDirectives — those are the
- * blocks that dilute model attention and cause troop/hero name mixups.
- */
-function assembleLean({ relationship, gameData, userMessage, speakerName }) {
-  const blocks = [
-    renderRelationshipFraming(relationship || {}),
-    renderGameContext(gameData),
-    `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`,
-  ];
-
-  return blocks.filter(Boolean).join('\n');
-}
-
-function assemble({
-  leanMode,
-  emotionalBrief,
-  relationship,
-  behaviorDirective,
-  rankedMemories,
-  workingMemory,
-  gameData,
-  userMessage,
-  targetInfo,
-  speakerName
-}) {
-  if (leanMode) {
-    return assembleLean({ relationship, gameData, userMessage, speakerName });
-  }
-
-  // Assemble the blocks using clean XML structures that modern LLMs parse perfectly
-  const promptBlocks = [
-    emotionalBrief ? `<EmotionalState>${sanitize(emotionalBrief)}</EmotionalState>` : '',
-    renderRelationshipFraming(relationship),
-    renderTargetBlock(targetInfo),
-    renderTaskDirective(behaviorDirective),
-    renderGameContext(gameData),
-    renderMemoryBlock(rankedMemories),
-    renderWorkingMemory(workingMemory),
-    `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`
-  ];
-
-  // Instantly removes any empty blocks to save tokens, and joins with newlines
-  return promptBlocks.filter(Boolean).join('\n');
-}
-
-module.exports = {
-  assemble,
-  compressGameData, // exported for unit testing / reuse in gameDomainRouter.js if needed
-};
+module.exports = { process, openerRepeated, recordReply };
