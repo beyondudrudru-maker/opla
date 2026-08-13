@@ -8,6 +8,10 @@
  *   mapping, and a `leanMode` path for the Game Fast-Lane (drops memory/history/
  *   emotional/target blocks entirely so game queries get a minimal, high-signal
  *   prompt with zero persona bleed).
+ *   🗜️ UPGRADE: GameData compression — 10-level stat arrays / {min,max} range
+ *   objects on heroes & troops are collapsed to Level-10/max-only values before
+ *   injection, and the block is minified (no pretty-print) to fix 413 Request
+ *   Entity Too Large errors from Groq/Gemini once full stat curves were added.
  */
 
 // 🛡️ SECURITY & STABILITY: Escapes XML tags while preserving newlines and spacing.
@@ -97,9 +101,107 @@ function renderTaskDirective(behavior = {}) {
   return directives.length ? `<BehaviorDirectives>\n${directives.join('\n')}\n</BehaviorDirectives>` : '';
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🗜️ GameData Compression
+// ─────────────────────────────────────────────────────────────────────────────
+// Strategy routing only needs the Level-10 ceiling for hp/defense/attack, not
+// the full leveling curve. This collapses both known stat shapes:
+//   - Array of per-level values: [lvl1, lvl2, ..., lvl10]  -> "Max: <lvl10>"
+//   - Range object: { min, max }                            -> "Max: <max>"
+// down to a single string, cutting payload size substantially once full stat
+// arrays were added to heroes.js/troops.js. Non-stat fields (synergies, gear,
+// boss records, talents, etc.) pass through untouched.
+const STAT_KEYS = ['hp', 'defense', 'attack'];
+
+function compressStatValue(stat) {
+  if (Array.isArray(stat)) {
+    if (stat.length === 0) return stat;
+    const max = stat[stat.length - 1];
+    return `Max: ${typeof max === 'number' ? max.toLocaleString() : max}`;
+  }
+
+  if (stat && typeof stat === 'object' && 'max' in stat) {
+    const max = stat.max;
+    return `Max: ${typeof max === 'number' ? max.toLocaleString() : max}`;
+  }
+
+  // Already a scalar (single number/string) — leave as-is.
+  return stat;
+}
+
+function compressEntityStats(entity) {
+  if (!entity || typeof entity !== 'object') return entity;
+
+  const compressed = { ...entity };
+
+  for (const key of STAT_KEYS) {
+    if (key in compressed) {
+      compressed[key] = compressStatValue(compressed[key]);
+    }
+  }
+
+  // Some records nest per-level stats under statLevels/stats rather than
+  // flat top-level fields — handle that shape too.
+  for (const nestKey of ['statLevels', 'stats']) {
+    if (compressed[nestKey] && typeof compressed[nestKey] === 'object') {
+      const nested = { ...compressed[nestKey] };
+      for (const key of STAT_KEYS) {
+        if (key in nested) {
+          nested[key] = compressStatValue(nested[key]);
+        }
+      }
+      compressed[nestKey] = nested;
+    }
+  }
+
+  return compressed;
+}
+
+function compressCollection(list) {
+  if (!Array.isArray(list)) return list;
+  return list.map(compressEntityStats);
+}
+
+/**
+ * compressGameData(data)
+ * Deep-clones the incoming game data (never mutates the original in-memory
+ * database) and replaces bulky per-level stat data on heroes/troops with a
+ * single max-value string. Handles both a top-level array of entities and an
+ * object wrapping known list keys (heroes, troops, mentionedHeroes,
+ * mentionedTroops, bossRecords) or a single entity object. Anything without a
+ * recognizable stat shape passes through unchanged.
+ */
+function compressGameData(data) {
+  if (!data || typeof data !== 'object') return data;
+
+  const cloned = JSON.parse(JSON.stringify(data));
+
+  if (Array.isArray(cloned)) {
+    return compressCollection(cloned);
+  }
+
+  const KNOWN_ENTITY_LISTS = ['heroes', 'troops', 'mentionedHeroes', 'mentionedTroops', 'bossRecords'];
+
+  for (const key of KNOWN_ENTITY_LISTS) {
+    if (Array.isArray(cloned[key])) {
+      cloned[key] = compressCollection(cloned[key]);
+    }
+  }
+
+  // Single hero/troop object passed directly (not wrapped in a list key).
+  if (STAT_KEYS.some(k => k in cloned) || cloned.statLevels || cloned.stats) {
+    return compressEntityStats(cloned);
+  }
+
+  return cloned;
+}
+
 function renderGameContext(gameData) {
   if (!gameData) return '';
-  const content = typeof gameData === 'string' ? gameData : JSON.stringify(gameData, null, 2);
+  const compressed = typeof gameData === 'string' ? gameData : compressGameData(gameData);
+  // 🗜️ Minified — no `null, 2` pretty-print — to keep GameData block as
+  // token-lean as possible on top of the stat compression above.
+  const content = typeof compressed === 'string' ? compressed : JSON.stringify(compressed);
   return `<GameData>\n${content}\n</GameData>`;
 }
 
@@ -154,4 +256,5 @@ function assemble({
 
 module.exports = {
   assemble,
+  compressGameData, // exported for unit testing / reuse in gameDomainRouter.js if needed
 };
