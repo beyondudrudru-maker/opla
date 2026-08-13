@@ -225,8 +225,7 @@ ${CRITICAL_OUTPUT_RULES}
         prompt: currentPrompt,
         systemInstruction: safeSystemInstruction,
         geminiKeys,
-        groqKeys, 
-        hasGroq: groqKeys.length > 0
+        groqKeys
       });
 
       finalModelUsed = modelUsed;
