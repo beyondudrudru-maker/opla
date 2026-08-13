@@ -12,18 +12,12 @@
  *   dead providers. Optional periodic model discovery keeps the registry
  *   honest without ever calling out to a provider on every Discord message.
  *
- * PUBLIC CONTRACT (updated — required by gemini.js)
+ * PUBLIC CONTRACT (unchanged — required by gemini.js)
  *   const { result, modelUsed } = await modelRouter.generate({
  *     classification, prompt, userMessage, systemInstruction,
- *     geminiKeys, groqKeys
+ *     geminiKeys, groqClient, hasGroq
  *   });
  *   modelRouter.getRouterHealth()
- *
- *   groqKeys is an array of Groq API key strings (mirrors geminiKeys).
- *   The router owns per-key OpenAI-compatible client construction, per-key
- *   round-robin ordering, and per-key circuit breakers — a rate-limited or
- *   quota-exhausted key is skipped in favor of the next key in the array,
- *   exactly like the Gemini key failover.
  *
  * DESIGN NOTES
  *   - Gemini is the soft-preferred provider for normal conversation, Hindi/
@@ -147,20 +141,12 @@ const MODEL_REGISTRY = {
       gameStrategy: 6, longContext: 6, toolUse: 6, reliability: 8,
       costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
     },
-    // qwen/qwen3.6-27b REMOVED (2026-08-10): it's a preview reasoning model
-    // that intermittently leaks its raw chain-of-thought / scratchpad
-    // ("Here's a thinking process: 1. Analyze User Input...") straight into
-    // the user-facing reply, ignoring "NO internal thoughts, DIRECT response
-    // only" persona instructions. Groq itself documents it as
-    // eval-only, not production. Replaced with Kimi K2 0905 — a
-    // non-thinking instruct model with comparable multilingual/Hindi
-    // strength and no scratchpad-leak behavior observed.
-    'moonshotai/kimi-k2-instruct-0905': {
-      provider: 'groq', model: 'moonshotai/kimi-k2-instruct-0905',
-      quality: 8, speed: 7, reasoning: 7, coding: 8, math: 6, casualChat: 7,
-      creativeWriting: 7, multilingual: 8, hindi: 7, structuredOutput: 7,
-      gameStrategy: 6, longContext: 7, toolUse: 7, reliability: 7,
-      costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
+    'qwen/qwen3.6-27b': {
+      provider: 'groq', model: 'qwen/qwen3.6-27b',
+      quality: 7, speed: 8, reasoning: 7, coding: 7, math: 6, casualChat: 7,
+      creativeWriting: 6, multilingual: 9, hindi: 8, structuredOutput: 6,
+      gameStrategy: 6, longContext: 6, toolUse: 5, reliability: 6,
+      costTier: 'free-limited', preview: true, maxOutputTokens: 4096, status: 'active'
     },
     'groq/compound': {
       provider: 'groq', model: 'groq/compound',
@@ -249,19 +235,6 @@ function getGeminiClient(apiKey) {
   return genAiClientCache.get(apiKey);
 }
 
-// Groq uses the OpenAI SDK pointed at Groq's baseURL. One client per key,
-// cached — never rebuilt per-request. Mirrors getGeminiClient() above.
-const groqClientCache = new Map();
-function getGroqClient(apiKey) {
-  if (!groqClientCache.has(apiKey)) {
-    groqClientCache.set(apiKey, new OpenAI({
-      apiKey,
-      baseURL: 'https://api.groq.com/openai/v1'
-    }));
-  }
-  return groqClientCache.get(apiKey);
-}
-
 let openRouterClient = null;
 let openRouterInitAttempted = false;
 function getOpenRouterClient() {
@@ -316,6 +289,7 @@ const FAILURE = {
   TIMEOUT: 'TIMEOUT',
   NETWORK: 'NETWORK',
   UNSUPPORTED_FEATURE: 'UNSUPPORTED_FEATURE',
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   OUTAGE: 'OUTAGE',
   UNKNOWN: 'UNKNOWN'
 };
@@ -342,6 +316,9 @@ function classifyFailure(error) {
   if (status === 400 && /(unsupported|not supported|capability|does not support)/.test(msg)) {
     return FAILURE.UNSUPPORTED_FEATURE;
   }
+  if (status === 413 || /request entity too large|payload too large|request too large/.test(msg)) {
+    return FAILURE.PAYLOAD_TOO_LARGE;
+  }
   if (status === 429 || /rate.?limit/.test(msg)) {
     if (/quota|daily limit|billing|exceeded your current/.test(msg)) return FAILURE.QUOTA_EXHAUSTED;
     return FAILURE.RATE_LIMIT;
@@ -364,6 +341,7 @@ const COOLDOWN_MS = {
   [FAILURE.TIMEOUT]: 5 * 1000,
   [FAILURE.NETWORK]: 5 * 1000,
   [FAILURE.UNSUPPORTED_FEATURE]: 60 * 60 * 1000,
+  [FAILURE.PAYLOAD_TOO_LARGE]: 3 * 60 * 1000,  // same prompt will fail again; not quota-scarce, just needs the emergency-compressed path
   [FAILURE.OUTAGE]: 20 * 1000,
   [FAILURE.UNKNOWN]: 10 * 1000
 };
@@ -556,7 +534,8 @@ function releaseProbe(id) {
 function isHardLimitError(error) {
   const t = classifyFailure(error);
   return t === FAILURE.RATE_LIMIT || t === FAILURE.QUOTA_EXHAUSTED || t === FAILURE.OVERLOADED
-    || t === FAILURE.INVALID_MODEL || t === FAILURE.AUTH || t === FAILURE.UNSUPPORTED_FEATURE;
+    || t === FAILURE.INVALID_MODEL || t === FAILURE.AUTH || t === FAILURE.UNSUPPORTED_FEATURE
+    || t === FAILURE.PAYLOAD_TOO_LARGE;
 }
 
 // Quota risk penalty derived from last observed headers (0 if unknown).
@@ -597,10 +576,6 @@ const GAME_INTENTS = new Set(['FACT', 'STRATEGY', 'CALC', 'GOLD', 'GEM', 'game-q
 const CODE_REGEX = /```|code|script|debug|function|python|javascript|java\b|c\+\+|sql|json|regex|api|stack ?trace|error:|exception/i;
 const MATH_REGEX = /\b(calculate|equation|solve|integral|derivative|algebra|geometry|probability|matrix)|[0-9]\s*[+\-*/^]\s*[0-9]|=\s*0\b/i;
 const REASONING_REGEX = /deep analysis|quantum|architecture|complex breakdown|thesis|geopolitics|explain in detail|analyze/i;
-// Catches "explain / summary / detailed / describe / batao / samjhao" style asks —
-// these need a bigger token budget + a stronger model, same as REASONING_REGEX,
-// even when the sentence isn't phrased as "explain in detail" or "analyze".
-const EXPLANATION_REGEX = /\b(explain|explanation|summary|summarize|summery|detail|detailed|elaborate|describe|batao|samjhao|samjhaiye)\b/i;
 const CREATIVE_REGEX = /\b(poem|story|essay|lyrics|write a|creative|stotram|mantra)\b/i;
 const HINDI_DEVANAGARI_REGEX = /[\u0900-\u097F]/;
 const HINGLISH_REGEX = /\b(kya|hai|nahi|kaise|kyu|bhai|yaar|acha|theek|kar|raha|rahi|tum|aap|mera|tera)\b/i;
@@ -614,7 +589,7 @@ function classifyRequest({ classification, prompt, userMessage }) {
   const isGame = GAME_INTENTS.has(intent) || /\b(stats|hp|damage|hero|troop|game|clash)\b/i.test(text) || /\[GAME DATA\]/i.test(text);
   const isCode = CODE_REGEX.test(text);
   const isMath = MATH_REGEX.test(text);
-  const isReasoningHeavy = intent === (INTENTS && INTENTS.HEAVY_TASK) || REASONING_REGEX.test(text) || EXPLANATION_REGEX.test(text);
+  const isReasoningHeavy = intent === (INTENTS && INTENTS.HEAVY_TASK) || REASONING_REGEX.test(text);
   const isCreative = CREATIVE_REGEX.test(text);
   const isDevanagari = HINDI_DEVANAGARI_REGEX.test(text);
   const isHinglish = !isDevanagari && HINGLISH_REGEX.test(text);
@@ -656,7 +631,7 @@ const MAX_TOKENS_BY_CATEGORY = {
   gameStrategy: 1536,
   coding: 3072,
   math: 2048,
-  reasoning: 6144
+  reasoning: 4096
 };
 
 function scoreModel(entry, category, opts = {}) {
@@ -686,14 +661,27 @@ function scoreModel(entry, category, opts = {}) {
 // 8. TOKEN COMPRESSION (Emergency Tier)
 // ============================================================
 const EMERGENCY_MEMORY_CHAR_CAP = 300;
+const EMERGENCY_GAMEDATA_CHAR_CAP = 800;
 function compressForEmergency(prompt) {
   if (!prompt) return prompt;
   let compressed = prompt;
   compressed = compressed.replace(/<LongTermMemory>[\s\S]*?<\/LongTermMemory>/i, '');
+  compressed = compressed.replace(/<ChatHistory>[\s\S]*?<\/ChatHistory>/i, '');
   compressed = compressed.replace(/<RecentChatHistory>([\s\S]*?)<\/RecentChatHistory>/i, (match, inner) => {
     if (inner.length <= EMERGENCY_MEMORY_CHAR_CAP) return match;
     const truncated = inner.slice(-EMERGENCY_MEMORY_CHAR_CAP);
     return `<RecentChatHistory>\n...[truncated for emergency]...\n${truncated}\n</RecentChatHistory>`;
+  });
+  // 🆕 GameData is now frequently the largest block (full hero/troop stat
+  // sets, formations, boss records). It's already minified JSON by the time
+  // it reaches here, so truncate rather than trying to re-parse/re-shrink it —
+  // keep the head (entity names/ids matter more than trailing fields for the
+  // model to stay on-topic) and flag it as truncated.
+  compressed = compressed.replace(/<GameData>([\s\S]*?)<\/GameData>/i, (match, inner) => {
+    const trimmedInner = inner.trim();
+    if (trimmedInner.length <= EMERGENCY_GAMEDATA_CHAR_CAP) return match;
+    const truncated = trimmedInner.slice(0, EMERGENCY_GAMEDATA_CHAR_CAP);
+    return `<GameData>\n${truncated}...[truncated for emergency]\n</GameData>`;
   });
   compressed = compressed.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   return compressed;
@@ -715,7 +703,7 @@ async function withRetry(fn, { retries = 1 } = {}) {
       return await fn();
     } catch (error) {
       const type = classifyFailure(error);
-      const noRetryTypes = [FAILURE.INVALID_MODEL, FAILURE.AUTH, FAILURE.UNSUPPORTED_FEATURE, FAILURE.QUOTA_EXHAUSTED];
+      const noRetryTypes = [FAILURE.INVALID_MODEL, FAILURE.AUTH, FAILURE.UNSUPPORTED_FEATURE, FAILURE.QUOTA_EXHAUSTED, FAILURE.PAYLOAD_TOO_LARGE];
       if (noRetryTypes.includes(type) || attempt >= retries) throw error;
       const delay = backoffDelay(attempt);
       dlog(`transient error [${type}], retrying in ${Math.round(delay)}ms`);
@@ -834,7 +822,7 @@ async function execCloudflare({ modelName, prompt, systemInstruction, maxTokens,
 // ============================================================
 async function runCandidate(candidate, ctx) {
   const { provider, model: modelName } = candidate;
-  const { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqKeys, openRouterFreeOnly } = ctx;
+  const { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqClient, hasGroq, openRouterFreeOnly } = ctx;
 
   if (provider === 'gemini') {
     if (!ENABLE_GEMINI || !geminiKeys || geminiKeys.length === 0) return null;
@@ -858,27 +846,20 @@ async function runCandidate(candidate, ctx) {
   }
 
   if (provider === 'groq') {
-    if (!ENABLE_GROQ || !groqKeys || groqKeys.length === 0) return null;
-    const order = nextKeyOrder(`groq:${modelName}`, groqKeys);
-    for (const { key, index } of order) {
-      const id = breakerId('groq', modelName, key);
-      if (isBreakerOpen(id)) continue;
-
-      const start = Date.now();
-      try {
-        const client = getGroqClient(key);
-        const { text, quota } = await withRetry(() => execOpenAICompatible(client, { modelName, prompt, systemInstruction, maxTokens, temp }));
-        recordSuccess(id, Date.now() - start, quota);
-        return { result: text, modelUsed: `${modelName} (groq, key ${index + 1})`, provider: 'groq', metadata: { latencyMs: Date.now() - start, quota } };
-      } catch (error) {
-        const type = classifyFailure(error);
-        wlog(`groq/${modelName} key=${index + 1} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
-        if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
-        // RATE_LIMIT / QUOTA_EXHAUSTED (429) and other hard-limit failures
-        // fall through to try the next key in groqKeys, exactly like Gemini.
-      }
+    if (!ENABLE_GROQ || !hasGroq || !groqClient) return null;
+    const id = breakerId('groq', modelName, process.env.GROQ_API_KEY || process.env.OPLA);
+    if (isBreakerOpen(id)) return null;
+    const start = Date.now();
+    try {
+      const { text, quota } = await withRetry(() => execOpenAICompatible(groqClient, { modelName, prompt, systemInstruction, maxTokens, temp }));
+      recordSuccess(id, Date.now() - start, quota);
+      return { result: text, modelUsed: `${modelName} (groq)`, provider: 'groq', metadata: { latencyMs: Date.now() - start, quota } };
+    } catch (error) {
+      const type = classifyFailure(error);
+      wlog(`groq/${modelName} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
+      if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
+      return null;
     }
-    return null;
   }
 
   if (provider === 'openrouter') {
@@ -939,12 +920,12 @@ function isProviderLikelyDown(provider) {
   return sawAny && allOpen;
 }
 
-function buildCandidates({ category, isLong, geminiKeys, groqKeys, openRouterFreeOnly, cloudflareEnabled }) {
+function buildCandidates({ category, isLong, geminiKeys, hasGroq, openRouterFreeOnly, cloudflareEnabled }) {
   const candidates = [];
 
   for (const entry of allRegistryEntries()) {
     if (entry.provider === 'gemini' && (!ENABLE_GEMINI || !geminiKeys || geminiKeys.length === 0)) continue;
-    if (entry.provider === 'groq' && (!ENABLE_GROQ || !groqKeys || groqKeys.length === 0)) continue;
+    if (entry.provider === 'groq' && (!ENABLE_GROQ || !hasGroq)) continue;
     if (entry.provider === 'openrouter' && (!ENABLE_OPENROUTER || !getOpenRouterClient())) continue;
     if (entry.provider === 'cloudflare' && (!ENABLE_CLOUDFLARE || !cloudflareEnabled)) continue;
     if (entry.costTier === 'paid') continue;
@@ -954,13 +935,15 @@ function buildCandidates({ category, isLong, geminiKeys, groqKeys, openRouterFre
     if (score === -Infinity) continue;
 
     // Fold in live quota risk using the most-likely credential fingerprint;
-    // for Gemini and Groq this is approximate since keys round-robin, so we
-    // skip it there and rely on per-key breakers instead.
+    // for Gemini this is approximate since keys round-robin, so we skip it
+    // there and rely on per-key breakers instead.
     let riskAdjusted = score;
-    if (entry.provider !== 'gemini' && entry.provider !== 'groq') {
-      const cred = entry.provider === 'openrouter'
-        ? process.env.OPENROUTER_API_KEY
-        : (getCloudflareConfig() || {}).apiToken;
+    if (entry.provider !== 'gemini') {
+      const cred = entry.provider === 'groq'
+        ? (process.env.GROQ_API_KEY || process.env.OPLA)
+        : entry.provider === 'openrouter'
+          ? process.env.OPENROUTER_API_KEY
+          : (getCloudflareConfig() || {}).apiToken;
       riskAdjusted -= quotaRiskPenalty(breakerId(entry.provider, entry.model, cred));
     }
 
@@ -977,7 +960,7 @@ function buildCandidates({ category, isLong, geminiKeys, groqKeys, openRouterFre
 let lastDiscoveryAt = 0;
 let discoveryInFlight = false;
 
-async function maybeRunDiscovery({ groqKeys }) {
+async function maybeRunDiscovery({ groqClient, hasGroq }) {
   const now = Date.now();
   if (discoveryInFlight) return;
   if (now - lastDiscoveryAt < MODEL_DISCOVERY_TTL_MS) return;
@@ -985,8 +968,7 @@ async function maybeRunDiscovery({ groqKeys }) {
   lastDiscoveryAt = now;
 
   try {
-    if (ENABLE_GROQ && groqKeys && groqKeys.length > 0) {
-      const groqClient = getGroqClient(groqKeys[0]);
+    if (ENABLE_GROQ && hasGroq && groqClient) {
       await discoverGroqModels(groqClient).catch((e) => dlog('groq discovery failed (non-fatal):', e.message));
     }
     const orClient = getOpenRouterClient();
@@ -1024,10 +1006,6 @@ async function discoverGroqModels(groqClient) {
   const ids = (list?.data || []).map((m) => m.id).filter(Boolean);
   for (const id of ids) {
     if (/whisper|tts|guard/i.test(id)) continue;
-    // Explicitly blocked from auto-(re)discovery: leaks raw chain-of-thought
-    // into user-facing replies (see registry comment above). Do not remove
-    // this line without confirming the leak behavior is fixed upstream.
-    if (/^qwen\//i.test(id)) continue;
     upsertDiscovered('groq', id, { costTier: 'free-limited' });
   }
 }
@@ -1047,7 +1025,7 @@ async function discoverOpenRouterModels(orClient) {
 // ============================================================
 // 14. MAIN GENERATOR
 // ============================================================
-async function generate({ classification, prompt, userMessage, systemInstruction, geminiKeys = [], groqKeys = [] }) {
+async function generate({ classification, prompt, userMessage, systemInstruction, geminiKeys = [], groqClient, hasGroq }) {
   const { category, isLong, intent } = classifyRequest({ classification, prompt, userMessage });
   const temp = getDynamicTemp(intent);
   const cloudflareEnabled = !!getCloudflareConfig();
@@ -1056,10 +1034,10 @@ async function generate({ classification, prompt, userMessage, systemInstruction
 
   // Fire-and-forget cache refresh; never awaited beyond the cheap
   // TTL/in-flight checks above, so it never adds latency to a request.
-  maybeRunDiscovery({ groqKeys }).catch(() => {});
+  maybeRunDiscovery({ groqClient, hasGroq }).catch(() => {});
 
   const candidates = buildCandidates({
-    category, isLong, geminiKeys, groqKeys, openRouterFreeOnly, cloudflareEnabled
+    category, isLong, geminiKeys, hasGroq, openRouterFreeOnly, cloudflareEnabled
   });
 
   if (candidates.length === 0) {
@@ -1068,7 +1046,7 @@ async function generate({ classification, prompt, userMessage, systemInstruction
 
   dlog(`intent=${category} maxTokens=${maxTokens} candidates=${candidates.map(c => `${c.provider}/${c.model}(${c.score.toFixed(1)})`).join(', ')}`);
 
-  const ctx = { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqKeys, openRouterFreeOnly };
+  const ctx = { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqClient, hasGroq, openRouterFreeOnly };
   let lastError = null;
   let lastProviderTried = null;
 
@@ -1098,8 +1076,8 @@ async function generate({ classification, prompt, userMessage, systemInstruction
 
   const emergencyOrder = [
     (ENABLE_GEMINI && geminiKeys.length) ? { provider: 'gemini', model: 'gemini-3.5-flash-lite' } : null,
-    (ENABLE_GROQ && groqKeys.length) ? { provider: 'groq', model: 'openai/gpt-oss-20b' } : null,
-    (ENABLE_GROQ && groqKeys.length) ? { provider: 'groq', model: 'llama-3.1-8b-instant' } : null,
+    (ENABLE_GROQ && hasGroq) ? { provider: 'groq', model: 'openai/gpt-oss-20b' } : null,
+    (ENABLE_GROQ && hasGroq) ? { provider: 'groq', model: 'llama-3.1-8b-instant' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'openrouter/free' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free' } : null,
     cloudflareEnabled ? { provider: 'cloudflare', model: '@cf/meta/llama-3.1-8b-instruct' } : null
