@@ -24,6 +24,30 @@ const groqKeys = [
   process.env.GROQ_API_KEY_2
 ].filter(key => key && typeof key === 'string' && key.trim().length > 0);
 
+// 🛠️ FIX: modelRouter.generate() expects a pre-built `groqClient` (a single
+// OpenAI-SDK instance pointed at Groq's OpenAI-compatible endpoint), not the
+// raw `groqKeys` array — that mismatch meant `groqClient` always arrived as
+// `undefined` inside modelRouter.js, which silently disabled every Groq
+// candidate (see `if (!ENABLE_GROQ || !hasGroq || !groqClient) return null;`)
+// and every request fell straight through Gemini -> OpenRouter, never once
+// trying Groq even when Groq keys were configured and healthy.
+//
+// Since Groq keys don't need per-request client rebuilding (the key just
+// sits in the client's auth header), we build one cached client per key up
+// front and round-robin across them per-request here — this keeps all
+// configured Groq keys in rotation instead of only ever using the first one.
+const groqClientCache = groqKeys.map((key) => new OpenAI({
+  apiKey: key,
+  baseURL: 'https://api.groq.com/openai/v1'
+}));
+let groqClientPointer = 0;
+function getNextGroqClient() {
+  if (groqClientCache.length === 0) return null;
+  const client = groqClientCache[groqClientPointer % groqClientCache.length];
+  groqClientPointer = (groqClientPointer + 1) % groqClientCache.length;
+  return client;
+}
+
 const COMPLEX_TASK_REGEX = /explain|detail|history|analyze|code|script|story|essay|poem|stotram|mantra|lyrics/i;
 const CONFLICT_REGEX = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser|pagal|roast)\b/i;
 const IDENTITY_REGEX = /\b(ai|bot|robot|gpt|npc)\b/i;
@@ -244,7 +268,7 @@ ${CRITICAL_OUTPUT_RULES}
         prompt: currentPrompt,
         systemInstruction: safeSystemInstruction,
         geminiKeys,
-        groqKeys, 
+        groqClient: getNextGroqClient(),
         hasGroq: groqKeys.length > 0
       });
 
