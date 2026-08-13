@@ -136,7 +136,7 @@ const GAME_TAGS = ['tank', 'mage', 'archer', 'undead', 'human', 'beast', 'suppor
 const HEURISTIC_FALLBACKS = {
   boss: {
     summary: 'Specific boss data is unavailable for this target.',
-    generalRule: 'Prioritize high single-target DPS and sustain (healing/shields). Bosses typically punish squishy backlines, so front-load tank/defense units and stagger cooldown-based burst rather than committing it all at once.'
+    generalRule: 'Prioritize high single-target DPS and sustain (healing/shields). Bosses typically punish squishy backlines, so front-load tank/defense units and stagger cooldown-based burst rather than committing it all at once. Hero abilities/persistent effects matter far more than raw stats for bosses. Never recommend Harkon, Fire Fury Xana, or Pyrotechnician for boss fights — their kits are disabled or non-functional in boss battles. Every boss resists either Melee or Ranged damage (30% protection), but which type is active ROTATES each season — never assume which one; ask the player to check the boss\'s in-game passive card, then deploy the opposite damage type as primary DPS.'
   },
   hero: {
     summary: 'This hero could not be found in the local database.',
@@ -574,7 +574,11 @@ function route(text, recentContext = '', userCorrections = []) {
   const isExplicitVs       = INTENT_PATTERNS.explicitVs.test(text) && hasKnownGameEntity;
   const isExactlyTwoHeroes = entities.heroNames && entities.heroNames.length === 2;
 
-  if ((isExplicitVs || isExactlyTwoHeroes) && !isSynergyQuery && !isCounterQuery) {
+  // 🐉 BOSS GUARD: Boss Battle queries never trigger an unsolicited 1v1 comparison.
+  // Two heroes simply being mentioned together in a boss query (e.g. "best heroes
+  // for Dagon: Lireal, Calyra?") is a squad question, not a face-off request.
+  // Only an explicit "X vs Y" phrasing is honored during a boss query.
+  if ((isExplicitVs || (isExactlyTwoHeroes && !isBossQuery)) && !isSynergyQuery && !isCounterQuery) {
     let nameA, nameB;
 
     if (isExactlyTwoHeroes) {
@@ -878,6 +882,20 @@ function route(text, recentContext = '', userCorrections = []) {
         // Inject the raw boss record so the AI has ability/strategy data directly
         if (matchedBossRecords.length > 0) {
           strategyData.context.bossRecords = matchedBossRecords;
+          // 🎯 RESISTANCE-BASED DEPLOYMENT: surface any resistance field explicitly
+          // (e.g. "Ranged-Resistant" / "Melee-Resistant") so the AI can adapt troop
+          // recommendations to this specific boss instead of a generic loadout.
+          const resistanceNotes = matchedBossRecords
+            .filter(b => b.resistance || b.resistances)
+            .map(b => ({ boss: b.name, resistance: b.resistance || b.resistances }));
+          if (resistanceNotes.length > 0) {
+            strategyData.context.bossResistance = resistanceNotes;
+          }
+        }
+        // Always attach the Boss Troop Meta tier list so recommendations stay
+        // anchored to the approved priority order (Legendary > Epic > Rare > Common).
+        if (strategiesData.bossTroopMeta) {
+          strategyData.context.bossTroopMeta = strategiesData.bossTroopMeta;
         }
         enrichmentAdded        = true;
         strategyData.sufficient = true;   // guaranteed — never falls through to "no data found"
@@ -887,6 +905,9 @@ function route(text, recentContext = '', userCorrections = []) {
         // Inject general boss-fighting heuristic instead of an empty context.
         strategyData.context.detectedBoss     = matchedBossKeywords.join(', ');
         strategyData.context.heuristicFallback = HEURISTIC_FALLBACKS.boss;
+        if (strategiesData.bossTroopMeta) {
+          strategyData.context.bossTroopMeta = strategiesData.bossTroopMeta;
+        }
         enrichmentAdded        = true;
         strategyData.sufficient = true;
       }
