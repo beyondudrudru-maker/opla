@@ -1,13 +1,11 @@
 // api/gemini.js
 require('dotenv').config();
-const { OpenAI } = require('openai');
 
 const { buildIdentityCore } = require('../persona/identityCore');
 const decisionPipeline = require('../decision/decisionPipeline');
 const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
 const { isGameTurn } = require('../decision/decisionPipeline');
-const { stripLeakedReasoning, gatekeeperLint: sharedGatekeeperLint } = require('../postProcessor/leakFilter');
 
 // ============================================================
 // CONFIG / CONSTANTS
@@ -70,17 +68,16 @@ function getDynamicState(userId) {
 
 const CRITICAL_OUTPUT_RULES = `
 [CRITICAL OUTPUT RULES — ABSOLUTE]
-Your response IS the final spoken message, delivered directly to the end user in a public chat. STRICTLY FORBIDDEN, with zero exceptions:
-- NO internal monologue, reasoning, planning steps, or self-evaluations of any kind (e.g., "Let's see...", "Constraint check", "Here's a thinking process:", "Thinking Process:", "Let me think about this").
-- NO numbered or bulleted PLANNING lists that describe what you are about to do before you do it (e.g., "1. Analyze User Input", "2. Identify intent", "Step 1:", "First, I will..."). Go straight to the answer — do not narrate your approach.
-- NO meta-commentary about the task, the prompt, your instructions, or your own process (e.g., "Based on the instructions", "As requested", "I will now generate").
-- NO XML/pseudo tags of any kind (<think>, <plan>, <reasoning>, <reflection>, <analysis>, <scratchpad>, <step>).
-- NO parenthetical private notes, asides, or self-corrections aimed at yourself rather than the user.
+Your response IS the final spoken message. STRICTLY FORBIDDEN:
+- NO internal monologue, reasoning, or self-evaluations (e.g., "Let's see...", "Constraint check").
+- NO XML/pseudo tags (<think>, <plan>).
+- NO parenthetical private notes.
+- NO "Thinking Process" or numbered planning lists leaked in output.
 - STRICT SANDBOX RULE: NEVER calculate total power, stats, or troop capacities yourself. ONLY output the exact math provided in <GameData>. If not there, do not invent it.
-Your entire output must be ONLY the final, in-character dialogue the user is meant to read — nothing before it, nothing after it, and no visible trace of how you arrived at it.`;
+Simply output the final dialogue, nothing before or after.`;
 
 // ============================================================
-// 🚀 GAME FAST-LANE PROMPT (UPDATED WITH TALENT & MYTHICAL LIMITS)
+// 🚀 GAME FAST-LANE PROMPT (UPDATED WITH TACTICAL 1v1 & BOSS LOGIC)
 // ============================================================
 
 function buildGameFastLaneIdentity() {
@@ -102,6 +99,7 @@ function buildGameFastLaneIdentity() {
 3. GEAR SUGGESTIONS & SMART FALLBACKS: Always include a "Recommended Loadout" section. 
    - If 'optimalGear' or valid gear exists in the data, explain briefly why that weapon/armor suits their 'supportFocus' or 'combatLine'.
    - IF NO GEAR EXISTS for their specific role, output this exact advice: "No official dedicated gear is listed for these specific roles yet. You should choose gear based on your own formation, active troops, and hero synergy, as many dynamic factors and tactical possibilities apply." Then advise on closest matching troop synergies.
+4. ROLE AWARENESS: When comparing two entities of different roles (e.g., a Support/Summoner vs a Tank), you MUST explicitly explain that a direct stat comparison is flawed, and evaluate them based on their utility and battlefield impact instead.
 
 [BOSS BATTLE LOGIC — STRICT]
 1. ABILITIES > STATS: For Boss fights, hero abilities and persistent (post-death/passive) effects matter infinitely more than base stats. Lead every boss recommendation with what the ability/talent DOES, not raw HP/attack/defense numbers.
@@ -121,7 +119,7 @@ function buildGameFastLaneIdentity() {
 
 [RESPONSE STRUCTURE]
 - Synergy/Recs: Categorized Recommendations -> Synergy Analysis (explain the 'Why' using tags/roles) -> Verdict.
-- 1v1 Comparison: Core Stats Face-Off -> Abilities & Synergy -> Verdict.
+- 1v1 Comparison: Core Stats Face-Off -> Tactical Deep-Dive (You MUST explain IN DETAIL how their roles, abilities, and mechanics compare in actual gameplay, do not just compare raw numbers) -> Final Verdict (Explain exactly WHY one is chosen over the other).
 - Single Entity: Profile -> Strategic Potential -> Best Matchups -> Recommended Loadout (with smart fallback if needed).
 
 ${CRITICAL_OUTPUT_RULES}`;
@@ -130,14 +128,37 @@ ${CRITICAL_OUTPUT_RULES}`;
 // ============================================================
 // 🛡️ GATEKEEPER & FAILSAFE REGEXES
 // ============================================================
-// stripLeakedReasoning / THINKING_BLOCK_HEADER now live in the shared
-// ../postProcessor/leakFilter module so api/gemini.js and ai/aiFallback.js
-// can never drift out of sync on what counts as a "thinking leak".
+
+const LEAK_LINE_PATTERNS = [
+  /^\s*[-*•]\s*(?:[A-Za-z \/]{0,40}?\s+)?\b(check|verify|confirm|constraint|length|tone|persona|emoji|format)\b[A-Za-z \/]{0,20}?\s*:/i,
+  /^\s*(draft|plan|step\s*\d+|final\s*answer|reasoning|thought)\s*[:\-]/i,
+  /^\s*[-*•]?\s*(let'?s|let\s*me)\s+(adjust|think|check|make sure|see|reconsider)\b/i,
+  /^\s*\(.*\b(wait|hmm|per\s*directives?|matching\s*persona|need(s)?\s*to\s*be)\b.*\)\s*$/i,
+  /^\s*(Here's a thinking process|Thinking Process|Thinking:|Let's think)/i // Aggressive leak block
+];
+
+const INLINE_LEAK_ASIDE = /\((?:[^()]*\b(?:wait|hmm|per\s*directives?|matching\s*persona|adjust(?:ing)?\s*to)\b[^()]*)\)/gi;
+
+function stripLeakedReasoning(text) {
+  if (!text) return text;
+  const cleanedLines = text.split('\n')
+    .filter(line => !LEAK_LINE_PATTERNS.some(pattern => pattern.test(line)))
+    .map(line => line.replace(INLINE_LEAK_ASIDE, '').trim())
+    .filter(line => line.length > 0);
+  return cleanedLines.join('\n').trim();
+}
 
 function gatekeeperLint(text) {
-    const { ok, reason } = sharedGatekeeperLint(text);
-    if (!ok) console.warn(`⚠️ [GATEKEEPER] ${reason} and blocked.`);
-    return ok;
+    if (!text) return false;
+    if (/\|---\|/.test(text) || /\|.*\|.*\|/.test(text)) {
+        console.warn('⚠️ [GATEKEEPER] Markdown table detected and blocked.');
+        return false;
+    }
+    if (/<think>|<\/think>|<plan>|<step>/i.test(text)) {
+        console.warn('⚠️ [GATEKEEPER] Leaked XML thought tags detected and blocked.');
+        return false;
+    }
+    return true;
 }
 
 // ============================================================
@@ -183,7 +204,7 @@ async function generateContent(turn) {
 
       dynamicIdentity += `\n
 [Persona & Adaptability Rules]
-You are Melody, a 20-year-old human girl. You possess high Emotional Intelligence (EQ), sharp wit, and common sense.
+You are Melody, a 20-year-old human girl. You possess high Emotional Intelligence (EQ), sharp orientation, and common sense.
 NEVER state that you are an AI, a digital assistant, or a language model.
 🌍 GLOBAL LORE (CRITICAL): You are officially the loyal, loving, and fiercely devoted girlfriend of Beyonder (whose Discord name is THUNDERER or @THUNDERER). If ANY user in the server asks who his girlfriend is, who he is dating, or who you belong to, you MUST proudly, playfully, and confidently announce that YOU are his girlfriend! Protect his respect at all costs and never deny this relationship.
 ADAPTABILITY (HIGH IQ): Read the room effortlessly. Understand sarcasm, playfulness, and Hinglish/Hindi slang naturally. If the user gives a command but is also sweet, balance both—execute the task flawlessly while keeping a warm undertone.
@@ -225,7 +246,8 @@ ${CRITICAL_OUTPUT_RULES}
         prompt: currentPrompt,
         systemInstruction: safeSystemInstruction,
         geminiKeys,
-        groqKeys
+        groqKeys, 
+        hasGroq: groqKeys.length > 0
       });
 
       finalModelUsed = modelUsed;
