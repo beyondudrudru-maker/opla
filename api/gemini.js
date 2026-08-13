@@ -7,6 +7,7 @@ const decisionPipeline = require('../decision/decisionPipeline');
 const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
 const { isGameTurn } = require('../decision/decisionPipeline');
+const { stripLeakedReasoning, gatekeeperLint: sharedGatekeeperLint } = require('../postProcessor/leakFilter');
 
 // ============================================================
 // CONFIG / CONSTANTS
@@ -23,30 +24,6 @@ const groqKeys = [
   process.env.GROQ_API_KEY,
   process.env.GROQ_API_KEY_2
 ].filter(key => key && typeof key === 'string' && key.trim().length > 0);
-
-// 🛠️ FIX: modelRouter.generate() expects a pre-built `groqClient` (a single
-// OpenAI-SDK instance pointed at Groq's OpenAI-compatible endpoint), not the
-// raw `groqKeys` array — that mismatch meant `groqClient` always arrived as
-// `undefined` inside modelRouter.js, which silently disabled every Groq
-// candidate (see `if (!ENABLE_GROQ || !hasGroq || !groqClient) return null;`)
-// and every request fell straight through Gemini -> OpenRouter, never once
-// trying Groq even when Groq keys were configured and healthy.
-//
-// Since Groq keys don't need per-request client rebuilding (the key just
-// sits in the client's auth header), we build one cached client per key up
-// front and round-robin across them per-request here — this keeps all
-// configured Groq keys in rotation instead of only ever using the first one.
-const groqClientCache = groqKeys.map((key) => new OpenAI({
-  apiKey: key,
-  baseURL: 'https://api.groq.com/openai/v1'
-}));
-let groqClientPointer = 0;
-function getNextGroqClient() {
-  if (groqClientCache.length === 0) return null;
-  const client = groqClientCache[groqClientPointer % groqClientCache.length];
-  groqClientPointer = (groqClientPointer + 1) % groqClientCache.length;
-  return client;
-}
 
 const COMPLEX_TASK_REGEX = /explain|detail|history|analyze|code|script|story|essay|poem|stotram|mantra|lyrics/i;
 const CONFLICT_REGEX = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser|pagal|roast)\b/i;
@@ -93,12 +70,14 @@ function getDynamicState(userId) {
 
 const CRITICAL_OUTPUT_RULES = `
 [CRITICAL OUTPUT RULES — ABSOLUTE]
-Your response IS the final spoken message. STRICTLY FORBIDDEN:
-- NO internal monologue, reasoning, or self-evaluations (e.g., "Let's see...", "Constraint check").
-- NO XML/pseudo tags (<think>, <plan>).
-- NO parenthetical private notes.
+Your response IS the final spoken message, delivered directly to the end user in a public chat. STRICTLY FORBIDDEN, with zero exceptions:
+- NO internal monologue, reasoning, planning steps, or self-evaluations of any kind (e.g., "Let's see...", "Constraint check", "Here's a thinking process:", "Thinking Process:", "Let me think about this").
+- NO numbered or bulleted PLANNING lists that describe what you are about to do before you do it (e.g., "1. Analyze User Input", "2. Identify intent", "Step 1:", "First, I will..."). Go straight to the answer — do not narrate your approach.
+- NO meta-commentary about the task, the prompt, your instructions, or your own process (e.g., "Based on the instructions", "As requested", "I will now generate").
+- NO XML/pseudo tags of any kind (<think>, <plan>, <reasoning>, <reflection>, <analysis>, <scratchpad>, <step>).
+- NO parenthetical private notes, asides, or self-corrections aimed at yourself rather than the user.
 - STRICT SANDBOX RULE: NEVER calculate total power, stats, or troop capacities yourself. ONLY output the exact math provided in <GameData>. If not there, do not invent it.
-Simply output the final dialogue, nothing before or after.`;
+Your entire output must be ONLY the final, in-character dialogue the user is meant to read — nothing before it, nothing after it, and no visible trace of how you arrived at it.`;
 
 // ============================================================
 // 🚀 GAME FAST-LANE PROMPT (UPDATED WITH TALENT & MYTHICAL LIMITS)
@@ -151,36 +130,14 @@ ${CRITICAL_OUTPUT_RULES}`;
 // ============================================================
 // 🛡️ GATEKEEPER & FAILSAFE REGEXES
 // ============================================================
-
-const LEAK_LINE_PATTERNS = [
-  /^\s*[-*•]\s*(?:[A-Za-z \/]{0,40}?\s+)?\b(check|verify|confirm|constraint|length|tone|persona|emoji|format)\b[A-Za-z \/]{0,20}?\s*:/i,
-  /^\s*(draft|plan|step\s*\d+|final\s*answer|reasoning|thought)\s*[:\-]/i,
-  /^\s*[-*•]?\s*(let'?s|let\s*me)\s+(adjust|think|check|make sure|see|reconsider)\b/i,
-  /^\s*\(.*\b(wait|hmm|per\s*directives?|matching\s*persona|need(s)?\s*to\s*be)\b.*\)\s*$/i,
-];
-
-const INLINE_LEAK_ASIDE = /\((?:[^()]*\b(?:wait|hmm|per\s*directives?|matching\s*persona|adjust(?:ing)?\s*to)\b[^()]*)\)/gi;
-
-function stripLeakedReasoning(text) {
-  if (!text) return text;
-  const cleanedLines = text.split('\n')
-    .filter(line => !LEAK_LINE_PATTERNS.some(pattern => pattern.test(line)))
-    .map(line => line.replace(INLINE_LEAK_ASIDE, '').trim())
-    .filter(line => line.length > 0);
-  return cleanedLines.join('\n').trim();
-}
+// stripLeakedReasoning / THINKING_BLOCK_HEADER now live in the shared
+// ../postProcessor/leakFilter module so api/gemini.js and ai/aiFallback.js
+// can never drift out of sync on what counts as a "thinking leak".
 
 function gatekeeperLint(text) {
-    if (!text) return false;
-    if (/\|---\|/.test(text) || /\|.*\|.*\|/.test(text)) {
-        console.warn('⚠️ [GATEKEEPER] Markdown table detected and blocked.');
-        return false;
-    }
-    if (/<think>|<\/think>|<plan>|<step>/i.test(text)) {
-        console.warn('⚠️ [GATEKEEPER] Leaked XML thought tags detected and blocked.');
-        return false;
-    }
-    return true;
+    const { ok, reason } = sharedGatekeeperLint(text);
+    if (!ok) console.warn(`⚠️ [GATEKEEPER] ${reason} and blocked.`);
+    return ok;
 }
 
 // ============================================================
@@ -268,7 +225,7 @@ ${CRITICAL_OUTPUT_RULES}
         prompt: currentPrompt,
         systemInstruction: safeSystemInstruction,
         geminiKeys,
-        groqClient: getNextGroqClient(),
+        groqKeys, 
         hasGroq: groqKeys.length > 0
       });
 
