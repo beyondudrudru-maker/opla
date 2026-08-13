@@ -51,11 +51,11 @@ You are Melody, an elite, highly intelligent strategist for "Kingdom Clash".
 - SINGLE ENTITY: Profile (vertical stats) -> Strategic Potential -> Optimal Matchups -> Recommended Loadout (Utilize 'optimalGear' from <GameData> and briefly explain why that weapon/armor suits their 'supportFocus' or 'combatLine').`;
 
 /**
- * askAI({ userMessage, intent, context, geminiKeys, groqKeys, classification })
+ * askAI({ userMessage, intent, context, geminiKeys, groqClient, hasGroq, classification })
  * -> Promise<string>
  */
-async function askAI({ userMessage, intent, context, geminiKeys = [], groqKeys = [], classification }) {
-  
+async function askAI({ userMessage, intent, context, geminiKeys = [], groqClient, hasGroq, classification }) {
+
   const compressedContext = context ? compressGameData(context) : null;
 
   const prompt = `
@@ -74,7 +74,8 @@ ${compressedContext ? JSON.stringify(compressedContext) : 'No exact data found i
     userMessage,
     systemInstruction: STRATEGY_SYSTEM_INSTRUCTION,
     geminiKeys,
-    groqKeys
+    groqClient,
+    hasGroq
   });
 
   let cleanResult = result || '';
