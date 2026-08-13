@@ -213,12 +213,148 @@ function compressGameData(data) {
   return cloned;
 }
 
-function renderGameContext(gameData) {
+// ─────────────────────────────────────────────────────────────────────────────
+// 🎯 Targeted Context Extraction (413-prevention, pass 2)
+// ─────────────────────────────────────────────────────────────────────────────
+// gameDomainRouter.js already does the heavy lifting of resolving entities per
+// message. This second pass exists as a backstop for callers that hand
+// promptAssembler a raw/full-size data dump (e.g. `heroes`/`troops`/`bosses`
+// arrays straight from the database) instead of an already-curated context
+// object. When that shape is detected, we scan the raw userMessage for name
+// mentions and rebuild a minimal bundle: matched entity + its direct synergy
+// links + generic boss modifiers if relevant. Anything already curated
+// (no full top-level `heroes`/`troops` arrays) passes straight through to the
+// existing compression path untouched.
+
+const FULL_DB_LIST_KEYS = ['heroes', 'troops', 'bosses'];
+const MIN_FULL_DB_LENGTH = 5; // below this, treat as an already-small/curated list, not a full dump
+
+const GENERIC_BOSS_MODIFIERS = {
+  note: 'Generic boss-fight modifiers (no specific boss entity matched, but the message referenced a boss).',
+  rules: [
+    'Every boss resists either Melee or Ranged damage (~30% protection); the active type rotates each season and must be confirmed in-game before committing to a comp.',
+    'Prioritize high single-target DPS and sustain (healing/shields); bosses punish squishy backlines.',
+    'Front-load tank/defense units and stagger cooldown-based burst rather than spending it all at once.'
+  ]
+};
+
+function escapeForRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isFullDatabaseShape(gameData) {
+  return FULL_DB_LIST_KEYS.some(
+    key => Array.isArray(gameData[key]) && gameData[key].length > MIN_FULL_DB_LENGTH
+  );
+}
+
+// Finds entities in `list` whose `name` appears as a whole word in userMessage.
+function findMentionedEntities(userMessage, list) {
+  if (!Array.isArray(list) || !userMessage) return [];
+  const text = String(userMessage).toLowerCase();
+
+  return list.filter(entity => {
+    const name = entity && typeof entity.name === 'string' ? entity.name.trim() : '';
+    if (!name) return false;
+    const re = new RegExp(`\\b${escapeForRegex(name.toLowerCase())}\\b`);
+    return re.test(text);
+  });
+}
+
+// Pulls direct synergy links for a matched hero/troop out of gameData.synergies,
+// matched loosely by id (troopHeroSynergy is keyed by troopId/heroId) so this
+// stays resilient to minor shape drift instead of hard-failing on a mismatch.
+function findSynergyLinks(entity, synergies) {
+  if (!entity || !synergies || !Array.isArray(synergies.troopHeroSynergy)) return [];
+
+  const links = [];
+  const entityId = entity.id;
+
+  for (const record of synergies.troopHeroSynergy) {
+    // Entity is the troop side of this record.
+    if (entityId && record.troopId === entityId && Array.isArray(record.heroSynergies)) {
+      record.heroSynergies.forEach(h => links.push({ heroId: h.heroId, reason: h.reason }));
+      continue;
+    }
+    // Entity is one of the hero side matches for some other troop.
+    if (Array.isArray(record.heroSynergies)) {
+      const match = record.heroSynergies.find(h => h.heroId === entityId);
+      if (match) links.push({ troopId: record.troopId, reason: match.reason });
+    }
+  }
+
+  return links.slice(0, 8); // keep the bundle lean
+}
+
+/**
+ * extractTargetedContext(userMessage, gameData)
+ *
+ * Scans userMessage for troop/hero/boss name mentions inside a full-size
+ * gameData dump and returns a minimal Context Bundle:
+ *   {
+ *     matchedHeroes:  [ ...compressed entity records... ],
+ *     matchedTroops:  [ ... ],
+ *     matchedBosses:  [ ... ],
+ *     synergyLinks:   [ { heroId|troopId, reason } ... ],
+ *     bossModifiers:  GENERIC_BOSS_MODIFIERS | null
+ *   }
+ *
+ * Returns null if gameData isn't a full-database shape (nothing to trim) or
+ * if no entities were matched (caller should fall back to whatever curated
+ * context it already has rather than injecting an empty bundle).
+ */
+function extractTargetedContext(userMessage, gameData) {
+  if (!gameData || typeof gameData !== 'object' || !isFullDatabaseShape(gameData)) {
+    return null;
+  }
+
+  const matchedHeroes = findMentionedEntities(userMessage, gameData.heroes).map(compressEntityStats);
+  const matchedTroops = findMentionedEntities(userMessage, gameData.troops).map(compressEntityStats);
+  const matchedBosses = findMentionedEntities(userMessage, gameData.bosses);
+
+  const synergyLinks = [...matchedHeroes, ...matchedTroops]
+    .flatMap(entity => findSynergyLinks(entity, gameData.synergies));
+
+  const mentionsBossGenerically = /\bboss(es)?\b/i.test(String(userMessage || ''));
+  const bossModifiers = matchedBosses.length > 0
+    ? null // real boss record already carries its own specific rules/resistance
+    : (mentionsBossGenerically ? GENERIC_BOSS_MODIFIERS : null);
+
+  const bundle = {
+    matchedHeroes,
+    matchedTroops,
+    matchedBosses,
+    synergyLinks,
+    bossModifiers
+  };
+
+  const isEmpty =
+    matchedHeroes.length === 0 &&
+    matchedTroops.length === 0 &&
+    matchedBosses.length === 0 &&
+    !bossModifiers;
+
+  return isEmpty ? null : bundle;
+}
+
+function renderGameContext(gameData, userMessage) {
   if (!gameData) return '';
-  const compressed = typeof gameData === 'string' ? gameData : compressGameData(gameData);
+
+  if (typeof gameData === 'string') {
+    return `<GameData>\n${gameData}\n</GameData>`;
+  }
+
+  // 🎯 Backstop: if this looks like a raw/full database dump, narrow it down
+  // to just what the current message actually references before compressing
+  // further. Curated context objects (the normal case, built upstream by
+  // gameDomainRouter/strategyContextBuilder) are left to the existing
+  // compression path since they're already targeted.
+  const targeted = extractTargetedContext(userMessage, gameData);
+  const compressed = compressGameData(targeted || gameData);
+
   // 🗜️ Minified — no `null, 2` pretty-print — to keep GameData block as
   // token-lean as possible on top of the stat compression above.
-  const content = typeof compressed === 'string' ? compressed : JSON.stringify(compressed);
+  const content = JSON.stringify(compressed);
   return `<GameData>\n${content}\n</GameData>`;
 }
 
@@ -232,7 +368,7 @@ function renderGameContext(gameData) {
 function assembleLean({ relationship, gameData, userMessage, speakerName }) {
   const blocks = [
     renderRelationshipFraming(relationship || {}),
-    renderGameContext(gameData),
+    renderGameContext(gameData, userMessage),
     `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`,
   ];
 
@@ -261,7 +397,7 @@ function assemble({
     renderRelationshipFraming(relationship),
     renderTargetBlock(targetInfo),
     renderTaskDirective(behaviorDirective),
-    renderGameContext(gameData),
+    renderGameContext(gameData, userMessage),
     renderMemoryBlock(rankedMemories),
     renderWorkingMemory(workingMemory),
     `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`
@@ -273,5 +409,6 @@ function assemble({
 
 module.exports = {
   assemble,
-  compressGameData, // exported for unit testing / reuse in gameDomainRouter.js if needed
+  compressGameData,       // exported for unit testing / reuse in gameDomainRouter.js if needed
+  extractTargetedContext, // exported for unit testing / reuse elsewhere in the pipeline
 };
