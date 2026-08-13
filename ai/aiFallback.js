@@ -7,7 +7,12 @@
  * Talent Unlocks, and Mythical Formation Limits.
  */
 
-const modelRouter = require('../router/modelRouter.js'); 
+const modelRouter = require('../router/modelRouter.js');
+// 🗜️ Reuse the same compression used by the main prompt path — this file
+// builds its own <GameData> block independently and was bypassing that
+// compression entirely, sending full pretty-printed stat arrays straight to
+// the model and contributing to 413 Request Entity Too Large errors.
+const { compressGameData } = require('../promptBuilder/promptAssembler.js');
 
 const STRATEGY_SYSTEM_INSTRUCTION = `[MASTERCLASS GAME STRATEGY & DIPLOMATIC FORMATTING]
 You are Melody, an elite, highly intelligent strategist for "Kingdom Clash".
@@ -51,12 +56,14 @@ You are Melody, an elite, highly intelligent strategist for "Kingdom Clash".
  */
 async function askAI({ userMessage, intent, context, geminiKeys = [], groqKeys = [], classification }) {
   
+  const compressedContext = context ? compressGameData(context) : null;
+
   const prompt = `
 <UserQuestion>${userMessage || 'Provide a strategic breakdown.'}</UserQuestion>
 <UserIntent>${intent || 'strategy'}</UserIntent>
 
 <GameData>
-${context ? JSON.stringify(context, null, 2) : 'No exact data found in database.'}
+${compressedContext ? JSON.stringify(compressedContext) : 'No exact data found in database.'}
 </GameData>
 
 [INSTRUCTION: Analyze <GameData>. Format using vertical bullet points. EVERY stat on a new line. Bold highlights. Provide a comprehensive, highly logical breakdown. NO MARKDOWN TABLES.]`;
