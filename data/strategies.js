@@ -7,8 +7,27 @@
  */
 
 const strategies = {
-  version: "1.1.0",
+  version: "1.2.0",
   maxHeroesPerFormation: 2,
+
+  // 0. BOSS BATTLE TROOP META (ranked priority tiers for Boss fights specifically)
+  bossTroopMeta: {
+    _dataNote: "Priority tiers for troop selection in Boss Battles. Abilities/persistent effects matter more than raw stats for bosses — troop choice should be resistance-aware (e.g., prefer Melee troops vs Ranged-Resistant bosses, and vice versa). IMPORTANT: every boss's protection type (Melee or Ranged) ROTATES each season rather than being fixed — confirm the currently active type (from bosses.js resistance data or the player) before recommending a comp, never assume.",
+    legendary: ["Bone Breaker", "Axe Thrower", "Headless", "Stone Golem"],
+    epic: {
+      tier: ["Alchemist", "Storm Mistress", "Lava Golem", "Paladin"],
+      notes: "Alchemist is the highest-priority Epic pick for boss fights. Paladin is strictly for defending/shielding melee troops, not for offensive output."
+    },
+    rare: {
+      tier: ["Imp", "Assassin", "Gravedigger"],
+      notes: "Imp is the highly preferred Rare pick for boss fights. Gravedigger is best used for close-combat engagement."
+    },
+    common: ["Archers", "Bone Sphere Thrower"],
+    hardExclusions: {
+      heroes: ["Harkon", "Fire Fury Xana", "Pyrotechnician"],
+      reason: "These heroes' talents/abilities do not function or are explicitly disabled during Boss battles. Never recommend them for Boss fights."
+    }
+  },
 
   // 1. OPTIMAL FORMATIONS
   optimalFormations: [
@@ -43,10 +62,15 @@ const strategies = {
       id: "form-boss-burst",
       name: "Elite Boss Burst Squad",
       heroes: ["REMUS_01", "TRISTAN_01", "LIREAL_01", "CALYRA_01"],
+      f2pAlternative: {
+        replaces: "REMUS_01",
+        note: "Remus is a Mythical (premium/spin-wheel) hero. For F2P-accessible players, pair Tristan, Lireal, or Calyra with a more accessible boss-damage hero instead of Remus, and lean on the Legendary/Epic troop tiers (Bone Breaker, Axe Thrower, Headless, Alchemist) to make up the damage gap."
+      },
       troopArchetype: "Mixed DPS",
       recommendedTroops: ["tr-imp", "tr-alchemist", "tr-bonebreaker", "tr-headless", "tr-storm-mistresses", "tr-assassin", "tr-bone-thrower", "tr-archer", "tr-paladin", "tr-axe-throwers"],
+      troopDeploymentNote: "Adapt troop composition to the specific boss's CURRENTLY ACTIVE resistance for this season (it rotates — never assume): deploy Melee troops (Bone Breaker, Headless, Gravedigger) if the boss is Ranged-Resistant this season, and Ranged troops (Axe Thrower, Archer, Bone Sphere Thrower) if it is Melee-Resistant this season.",
       synergyRating: "S",
-      reasoning: "For maximum boss damage, stick strictly to the approved roster. Remus provides massive boss-specific damage buffs. Pair him with sustain/utility heroes like Tristan, Lireal, or Calyra. WARNING: Never use Harkon in this formation, as his talent does not function in boss battles."
+      reasoning: "For maximum boss damage, stick strictly to the approved roster. Remus provides massive boss-specific damage buffs, and abilities/persistent effects matter far more than raw stats here. Pair him with sustain/utility heroes like Tristan, Lireal, or Calyra. WARNING: Never use Harkon, Fire Fury Xana, or Pyrotechnician in this formation — their talents/abilities do not function in boss battles."
     },
     {
       id: "form-swarm-lockdown",
@@ -73,8 +97,16 @@ const strategies = {
     {
       scenario: "General Boss Fights (Kalidor, Balthazar, Ashira)",
       recommendedHeroes: ["Lireal", "Calyra", "Remus", "Tristan", "Anavin", "Drake", "Dragon Rider", "Bone Dragon"],
+      f2pAlternative: "Remus is a premium/spin-wheel Mythical hero. F2P players should lean on Lireal, Calyra, Tristan, Drake, or Bone Dragon for sustain/damage instead, and prioritize the Legendary troop tier (Bone Breaker, Axe Thrower, Headless, Stone Golem) to close the gap.",
       recommendedTroops: ["Imp", "Alchemist", "Bone Breaker", "Headless", "Storm Mistress", "Assassin", "Bone Thrower", "Archer", "Paladin", "Axe Thrower"],
-      notes: "For maximum efficiency against bosses, stick strictly to the approved roster above. Heroes like Remus provide massive boss-damage buffs, while Calyra and Tristan provide the necessary sustain. WARNING: Do not use Harkon, his talent is disabled during boss fights."
+      troopMetaTiers: {
+        legendary: ["Bone Breaker", "Axe Thrower", "Headless", "Stone Golem"],
+        epic: ["Alchemist (highest priority)", "Storm Mistress", "Lava Golem", "Paladin (melee-defense only)"],
+        rare: ["Imp (highly preferred)", "Assassin", "Gravedigger (close combat)"],
+        common: ["Archers", "Bone Sphere Thrower"]
+      },
+      troopDeploymentNote: "Adapt troop choice to the boss's CURRENTLY ACTIVE resistance for this season (it rotates between Melee and Ranged — never assume which one is active): Melee troops if it's Ranged-Resistant this season, Ranged troops if it's Melee-Resistant this season.",
+      notes: "For maximum efficiency against bosses, stick strictly to the approved roster above. Heroes like Remus provide massive boss-damage buffs, while Calyra and Tristan provide the necessary sustain. Abilities and persistent effects matter far more than raw stats for boss fights. WARNING: Do not use Harkon, Fire Fury Xana, or Pyrotechnician — their talents/abilities are disabled or non-functional during boss fights."
     },
     {
       scenario: "Kraken Boss / Dagon: Max Score Timings",

@@ -1,21 +1,45 @@
 /**
  * MELODY Game Knowledge Library — Bosses
  * Boss kits and fight strategy notes, enriched with strict hero/troop roster rules.
+ *
+ * ⚠️ RESISTANCE MECHANIC — IMPORTANT:
+ * Every boss's passive ("Wind Mantle", "Sharp Growths", "Speed and Agility",
+ * "Thick Skin" etc.) grants damage protection to whichever damage TYPE
+ * (Melee or Ranged) is currently "active" for that boss THIS SEASON. This is
+ * NOT a fixed, permanent trait — the active protection type ROTATES between
+ * seasons (confirmed: Dagon has shown up as both Ranged-Resistant in one
+ * season and Melee-Resistant in a later season, per in-game verification).
+ *
+ * Each boss therefore lists `possibleResistanceTypes: ["Melee", "Ranged"]`
+ * plus `protectionPct`, but does NOT hardcode a single locked-in `type`.
+ * The AI must NOT assume which type is active for the current season unless
+ * the user tells it (e.g. "this season Dagon resists melee") or a live
+ * data source confirms it — otherwise it should ask the player to check the
+ * boss's in-game passive-ability card before recommending a Melee-heavy or
+ * Ranged-heavy composition.
  */
 
-const bossRosterWarning = "\n\n[UNIVERSAL BOSS ROSTER & WARNING]: Do NOT use Harkon. His talent is disabled in boss battles. Recommended Heroes: Lireal, Calyra, Remus, Tristan, Anavin, Drake, Dragon Rider, Bone Dragon. Recommended Troops: Imp, Alchemist, Bone Breaker, Headless, Storm Mistress, Assassin, Bone Thrower, Archer, Paladin, Axe Thrower.";
+const bossRosterWarning = "\n\n[UNIVERSAL BOSS ROSTER & WARNING]: Do NOT use Harkon, Fire Fury Xana, or Pyrotechnician. Their talents/abilities do not function or are disabled in boss battles. Recommended Heroes: Lireal, Calyra, Remus, Tristan, Anavin, Drake, Dragon Rider, Bone Dragon. (Remus is a Mythical/premium hero — F2P players should lean on Lireal, Calyra, Tristan, Drake, or Bone Dragon instead.) Recommended Troops: Imp, Alchemist, Bone Breaker, Headless, Storm Mistress, Assassin, Bone Thrower, Archer, Paladin, Axe Thrower.";
 
 const bosses = [
   {
     "name": "KALIDOR",
     "tier": "Lord of the Dunes",
     "zone": "Glorious Hunting",
+    "resistance": {
+      "possibleTypes": ["Melee", "Ranged"],
+      "protectionPct": 30,
+      "source": "Wind Mantle (Passive)",
+      "rotatesPerSeason": true,
+      "note": "Wind Mantle grants 30% protection against whichever damage type is active this season. Confirm the current season's active type from the boss's in-game passive card before committing to a Melee-heavy or Ranged-heavy comp.",
+      "deploymentRule": "Deploy the damage type OPPOSITE the currently active protection type as primary DPS (e.g. if Ranged is active this season, lean Melee/Tank; if Melee is active, lean Ranged)."
+    },
     "abilities": [
       {
         "type": "PASSIVE",
         "name": "Wind Mantle",
         "cooldown": null,
-        "description": "Increased resistance to ranged attacks. Ranged Damage Protection: 30%."
+        "description": "Increased resistance to the currently active protection type (Melee or Ranged, rotates each season). Damage Protection: 30%."
       },
       {
         "type": "ACTIVE",
@@ -37,18 +61,26 @@ const bosses = [
         "description": "Throws a spear into the center unleashing an explosive wave dealing 6000 DMG."
       }
     ],
-    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Kalidor has 30% Ranged Protection. Use high HP melee/tanks and heavy healers to survive the massive 6000 DMG Explosive Spear." + bossRosterWarning
+    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Kalidor's Wind Mantle grants 30% protection against whichever damage type (Melee or Ranged) is active this season — check the boss's passive card in-game and deploy the OPPOSITE damage type as your primary DPS. Bring high HP frontline and heavy healers to survive the massive 6000 DMG Explosive Spear." + bossRosterWarning
   },
   {
     "name": "BALTHAZAR",
     "tier": "Fire Dragon",
     "zone": "Glorious Hunting",
+    "resistance": {
+      "possibleTypes": ["Melee", "Ranged"],
+      "protectionPct": 30,
+      "source": "Sharp Growths (Passive)",
+      "rotatesPerSeason": true,
+      "note": "Sharp Growths grants 30% protection against whichever damage type is active this season. Confirm the current season's active type from the boss's in-game passive card before committing to a Melee-heavy or Ranged-heavy comp.",
+      "deploymentRule": "Deploy the damage type OPPOSITE the currently active protection type as primary DPS (e.g. if Melee is active this season, lean Ranged; if Ranged is active, lean Melee/Tank)."
+    },
     "abilities": [
       {
         "type": "PASSIVE",
         "name": "Sharp Growths",
         "cooldown": null,
-        "description": "Balthazar has increased resistance to melee unit attacks. Melee Damage Protection: 30%."
+        "description": "Balthazar has increased resistance to the currently active protection type (Melee or Ranged, rotates each season). Damage Protection: 30%."
       },
       {
         "type": "ACTIVE",
@@ -72,12 +104,20 @@ const bosses = [
         "damage": 7200
       }
     ],
-    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Balthazar has 30% Melee Protection. Rely heavily on Ranged units for your primary DPS. Bring strong healers to sustain your troops through his massive, battlefield-wide AoE attacks like Fury from the Deep." + bossRosterWarning
+    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Balthazar's Sharp Growths grants 30% protection against whichever damage type (Melee or Ranged) is active this season — check the boss's passive card in-game and deploy the OPPOSITE damage type as your primary DPS. Bring strong healers to sustain your troops through his massive, battlefield-wide AoE attacks like Fury from the Deep." + bossRosterWarning
   },
   {
     "name": "ASHIRA",
     "tier": "Spider Queen",
     "zone": "Glorious Hunting",
+    "resistance": {
+      "possibleTypes": ["Melee", "Ranged"],
+      "protectionPct": 30,
+      "source": "Speed and Agility (Passive)",
+      "rotatesPerSeason": true,
+      "note": "Speed and Agility grants 30% protection against whichever damage type is active this season. Confirm the current season's active type from the boss's in-game passive card before committing to a Melee-heavy or Ranged-heavy comp.",
+      "deploymentRule": "Deploy the damage type OPPOSITE the currently active protection type as primary DPS. If deploying Melee, bring heavy healers/shield-bearers — Chitin Carapace reflects 20% of basic attack damage back at melee attackers regardless of which protection type is active."
+    },
     "abilities": [
       {
         "type": "PASSIVE",
@@ -89,7 +129,7 @@ const bosses = [
         "type": "PASSIVE",
         "name": "Speed and Agility",
         "cooldown": null,
-        "description": "Ashira has increased resistance to ranged unit attacks. Ranged Damage Protection: 30%."
+        "description": "Ashira has increased resistance to the currently active protection type (Melee or Ranged, rotates each season). Damage Protection: 30%."
       },
       {
         "type": "ACTIVE",
@@ -113,18 +153,26 @@ const bosses = [
         "damage": 550
       }
     ],
-    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Ashira has 30% Ranged Protection, so you should prioritize **Melee units** for your primary DPS. However, be careful—her **Chitin Carapace** reflects 20% of basic attack damage back at your melee units, so bring heavy healers or shield-bearers to keep your frontline alive against both the reflected damage and the constant swarms of explosive spiders!" + bossRosterWarning
+    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Ashira's Speed and Agility grants 30% protection against whichever damage type (Melee or Ranged) is active this season — check the boss's passive card in-game and deploy the OPPOSITE damage type as your primary DPS. Be careful either way—her **Chitin Carapace** reflects 20% of basic attack damage back at attackers, so bring heavy healers or shield-bearers to keep your frontline alive against both the reflected damage and the constant swarms of explosive spiders!" + bossRosterWarning
   },
   {
     "name": "DAGON",
     "tier": "Ancient Kraken",
     "zone": "Glorious Hunting",
+    "resistance": {
+      "possibleTypes": ["Melee", "Ranged"],
+      "protectionPct": 30,
+      "source": "Thick Skin / Slimy Scales (Passive)",
+      "rotatesPerSeason": true,
+      "note": "Dagon's passive grants 30% protection against whichever damage type is active this season — confirmed in-game as Melee Protection ('Thick Skin') during season 466, but has also appeared as Ranged Protection ('Slimy Scales') in other seasons. Confirm the current season's active type from the boss's in-game passive card before committing to a Melee-heavy or Ranged-heavy comp.",
+      "deploymentRule": "Deploy the damage type OPPOSITE the currently active protection type as primary DPS (e.g. if this season shows Melee Protection, lean Ranged; if it shows Ranged Protection, lean Melee/Tank). High-HP frontline is needed either way to survive Tentacle Smash."
+    },
     "abilities": [
       {
         "type": "PASSIVE",
-        "name": "Slimy Scales",
+        "name": "Thick Skin / Slimy Scales",
         "cooldown": null,
-        "description": "Dagon has increased resistance to ranged unit attacks. Ranged Damage Protection: 30%."
+        "description": "Dagon has increased resistance to the currently active protection type (Melee or Ranged, rotates each season). Damage Protection: 30%."
       },
       {
         "type": "ACTIVE",
@@ -147,7 +195,7 @@ const bosses = [
         "damage": 8000
       }
     ],
-    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Dagon has 30% Ranged Protection, so rely heavily on your strongest Melee/Tank units. Be extremely vigilant with the Hungry Jaws mechanic—keep your finger ready on the ship's cannon to interrupt him and save your 15 units. High-health troops are required to survive the massive 18,000 DMG Tentacle Smash!\n\n[KRAKEN BOSS MAX SCORE TIMINGS]: Turn OFF Auto Hero Ability! Place Bone Dragon at the RIGHT of the formation. Target Timings: Minute 4 (4:51 Mouth, 4:39 Barrel, 4:24 Tentacles, 4:13 Barrel, 4:03 Tentacles), Minute 3 (3:40 Tentacles, 3:21 Tentacles, 3:10 Mouth, 3:00 Tentacles), Minute 2 (2:37 Tentacles, 2:18 Tentacles, 2:07 Mouth), Minute 1 (1:56 Tentacles, 1:34 Tentacles, 1:15 Tentacles, 1:04 Mouth), Minute 0 (0:54 Tentacles, 0:31 Tentacles, 0:21 Mouth, 0:11 Tentacles)." + bossRosterWarning
+    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Dagon's passive grants 30% protection against whichever damage type (Melee or Ranged) is active this season — check the boss's passive card in-game and deploy the OPPOSITE damage type as your primary DPS. Be extremely vigilant with the Hungry Jaws mechanic—keep your finger ready on the ship's cannon to interrupt him and save your 15 units. High-health troops are required to survive the massive 18,000 DMG Tentacle Smash!\n\n[KRAKEN BOSS MAX SCORE TIMINGS]: Turn OFF Auto Hero Ability! Place Bone Dragon at the RIGHT of the formation. Target Timings: Minute 4 (4:51 Mouth, 4:39 Barrel, 4:24 Tentacles, 4:13 Barrel, 4:03 Tentacles), Minute 3 (3:40 Tentacles, 3:21 Tentacles, 3:10 Mouth, 3:00 Tentacles), Minute 2 (2:37 Tentacles, 2:18 Tentacles, 2:07 Mouth), Minute 1 (1:56 Tentacles, 1:34 Tentacles, 1:15 Tentacles, 1:04 Mouth), Minute 0 (0:54 Tentacles, 0:31 Tentacles, 0:21 Mouth, 0:11 Tentacles)." + bossRosterWarning
   }
 ];
 
