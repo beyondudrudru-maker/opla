@@ -8,11 +8,17 @@
  */
 
 const modelRouter = require('../router/modelRouter.js');
-// 🗜️ Reuse the same compression used by the main prompt path — this file
-// builds its own <GameData> block independently and was bypassing that
-// compression entirely, sending full pretty-printed stat arrays straight to
-// the model and contributing to 413 Request Entity Too Large errors.
-const { compressGameData } = require('../promptBuilder/promptAssembler.js');
+const { stripLeakedReasoning, gatekeeperLint } = require('../postProcessor/leakFilter');
+
+const CRITICAL_OUTPUT_RULES = `
+[CRITICAL OUTPUT RULES — ABSOLUTE]
+Your response IS the final message shown to the user. STRICTLY FORBIDDEN, with zero exceptions:
+- NO internal monologue, reasoning, planning steps, or self-evaluations of any kind (e.g., "Let's see...", "Here's a thinking process:", "Thinking Process:", "Let me think about this").
+- NO numbered or bulleted PLANNING lists that describe what you are about to do before you do it (e.g., "1. Analyze User Input", "Step 1:", "First, I will..."). Go straight to the analysis — do not narrate your approach.
+- NO meta-commentary about the task, the prompt, your instructions, or your own process (e.g., "Based on the instructions", "As requested").
+- NO XML/pseudo tags of any kind (<think>, <plan>, <reasoning>, <reflection>, <analysis>, <scratchpad>).
+- NO parenthetical private notes or self-corrections aimed at yourself rather than the user.
+Output ONLY the final, formatted strategic breakdown — nothing before it, nothing after it, and no visible trace of how you arrived at it.`;
 
 const STRATEGY_SYSTEM_INSTRUCTION = `[MASTERCLASS GAME STRATEGY & DIPLOMATIC FORMATTING]
 You are Melody, an elite, highly intelligent strategist for "Kingdom Clash".
@@ -48,38 +54,53 @@ You are Melody, an elite, highly intelligent strategist for "Kingdom Clash".
 [RESPONSE STRUCTURE BY QUERY TYPE]
 - SYNERGY/RECOMMENDATION: Categorized Recommendations -> Synergy Analysis (explain the 'Why' using tags/roles) -> Final Verdict.
 - 1v1 COMPARISON: Core Stats Face-Off (Vertical list) -> Abilities & Synergy -> Final Verdict.
-- SINGLE ENTITY: Profile (vertical stats) -> Strategic Potential -> Optimal Matchups -> Recommended Loadout (Utilize 'optimalGear' from <GameData> and briefly explain why that weapon/armor suits their 'supportFocus' or 'combatLine').`;
+- SINGLE ENTITY: Profile (vertical stats) -> Strategic Potential -> Optimal Matchups -> Recommended Loadout (Utilize 'optimalGear' from <GameData> and briefly explain why that weapon/armor suits their 'supportFocus' or 'combatLine').
+${CRITICAL_OUTPUT_RULES}`;
 
 /**
- * askAI({ userMessage, intent, context, geminiKeys, groqClient, hasGroq, classification })
+ * askAI({ userMessage, intent, context, geminiKeys, groqKeys, classification })
  * -> Promise<string>
  */
-async function askAI({ userMessage, intent, context, geminiKeys = [], groqClient, hasGroq, classification }) {
-
-  const compressedContext = context ? compressGameData(context) : null;
-
+async function askAI({ userMessage, intent, context, geminiKeys = [], groqKeys = [], classification }) {
+  
   const prompt = `
 <UserQuestion>${userMessage || 'Provide a strategic breakdown.'}</UserQuestion>
 <UserIntent>${intent || 'strategy'}</UserIntent>
 
 <GameData>
-${compressedContext ? JSON.stringify(compressedContext) : 'No exact data found in database.'}
+${context ? JSON.stringify(context, null, 2) : 'No exact data found in database.'}
 </GameData>
 
 [INSTRUCTION: Analyze <GameData>. Format using vertical bullet points. EVERY stat on a new line. Bold highlights. Provide a comprehensive, highly logical breakdown. NO MARKDOWN TABLES.]`;
 
-  const { result } = await modelRouter.generate({
-    classification: classification || { intent: intent || 'strategy' },
-    prompt,
-    userMessage,
-    systemInstruction: STRATEGY_SYSTEM_INSTRUCTION,
-    geminiKeys,
-    groqClient,
-    hasGroq
-  });
+  const MAX_RETRIES = 2;
+  let currentPrompt = prompt;
+  let cleanResult = '';
 
-  let cleanResult = result || '';
-  cleanResult = cleanResult.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const { result } = await modelRouter.generate({
+      classification: classification || { intent: intent || 'strategy' },
+      prompt: currentPrompt,
+      userMessage,
+      systemInstruction: STRATEGY_SYSTEM_INSTRUCTION,
+      geminiKeys,
+      groqKeys
+    });
+
+    const scrubbed = stripLeakedReasoning(result || '');
+
+    if (scrubbed !== '' && gatekeeperLint(scrubbed).ok) {
+      cleanResult = scrubbed;
+      break;
+    } else if (attempt < MAX_RETRIES) {
+      console.warn(`[RETRY] aiFallback attempt ${attempt} blocked by Gatekeeper (leaked reasoning). Retrying...`);
+      currentPrompt += `\n\n[SYSTEM WARNING: Your previous output leaked internal reasoning/thinking-process text. Output ONLY the final strategic breakdown — no planning steps, no "Thinking Process" header.]`;
+    } else {
+      // Exhausted retries — fall back to whatever we scrubbed rather than
+      // dropping the response entirely.
+      cleanResult = scrubbed;
+    }
+  }
 
   return cleanResult;
 }
