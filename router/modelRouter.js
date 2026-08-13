@@ -2,15 +2,23 @@
  * router/modelRouter.js
  *
  * PURPOSE
- *   Intelligent Multi-Provider Model Router — v6 (Gemini-Primary Edition)
+ *   Intelligent Multi-Provider Model Router — v7 (Groq-Primary, Intent-Weighted Edition)
  *
- *   Providers: Gemini (primary), Groq, OpenRouter, Cloudflare Workers AI.
- *   Every request is classified into a task profile, scored against a
- *   capability registry with a soft Gemini-primary bonus, and routed to the
- *   best currently-healthy free model. Unhealthy/quota-exhausted/invalid
- *   models are cooled down per-failure-type and skipped without hammering
- *   dead providers. Optional periodic model discovery keeps the registry
- *   honest without ever calling out to a provider on every Discord message.
+ *   Providers, in strict fallback priority order: Groq -> Gemini ->
+ *   OpenRouter -> Cloudflare Workers AI. Every request is classified into a
+ *   task category, that category is bucketed into a task WEIGHT CLASS
+ *   ('heavy' for gameStrategy/reasoning/coding, 'light' for casual/
+ *   shortFactual/hinglish), and candidates are scored against a capability
+ *   registry with (a) a large fixed per-provider tier bonus enforcing the
+ *   Groq > Gemini > OpenRouter > Cloudflare order, and (b) a weight-class
+ *   match bonus that pulls big models (openai/gpt-oss-120b,
+ *   llama-3.3-70b-versatile, meta-llama/llama-3.3-70b-instruct:free) to the
+ *   front for heavy tasks, and small/fast models (openai/gpt-oss-20b,
+ *   llama-3.1-8b-instant, openrouter/free) to the front for light tasks.
+ *   Unhealthy/quota-exhausted/invalid models are cooled down per-failure-
+ *   type and skipped without hammering dead providers. Optional periodic
+ *   model discovery keeps the registry honest without ever calling out to
+ *   a provider on every Discord message.
  *
  * PUBLIC CONTRACT (unchanged — required by gemini.js)
  *   const { result, modelUsed } = await modelRouter.generate({
@@ -20,13 +28,19 @@
  *   modelRouter.getRouterHealth()
  *
  * DESIGN NOTES
- *   - Gemini is the soft-preferred provider for normal conversation, Hindi/
- *     Hinglish, and creative writing. This is a scoring BONUS, not a hard
- *     rule — a clearly stronger healthy specialist can still win.
+ *   - Provider order is a HARD priority tier (PROVIDER_TIER_BONUS = 100 per
+ *     rung), not a soft nudge: it dominates weight-class/capability deltas
+ *     so ordering across providers never flips, while those smaller deltas
+ *     still decide which model wins within the same provider tier.
+ *   - Gemini keeps its existing soft per-category bonus (GEMINI_PRIMARY_BONUS)
+ *     for conversational/creative/hinglish quality — this only affects
+ *     ordering *within* the Gemini tier relative to other Gemini models,
+ *     since the provider tier bonus already separates it from Groq/OpenRouter.
  *   - temperature/top_p/top_k are omitted for Gemini models whose metadata
  *     says supportsSampling:false (current Gemini 3.6/3.5-Lite behavior).
- *   - Groq's llama-3.3-70b-versatile / llama-3.1-8b-instant are deprecated
- *     upstream and kept only as a low-priority legacy rung.
+ *   - llama-3.3-70b-versatile / llama-3.1-8b-instant are first-class primary
+ *     targets (weightClass 'heavy' / 'light' respectively) — no longer
+ *     treated as a deprecated/legacy rung.
  *   - Model discovery (Groq /models, OpenRouter /models) is OPTIONAL,
  *     cached for MODEL_DISCOVERY_TTL_MS, and never blocks the hot path —
  *     a discovery failure is silently ignored and the static registry wins.
@@ -79,6 +93,50 @@ const GEMINI_PRIMARY_BONUS = {
   math: 0      // capability-driven, no thumb on the scale
 };
 
+// ------------------------------------------------------------
+// INTENT-BASED WEIGHT-CLASS ROUTING
+// ------------------------------------------------------------
+// Categories are grouped into two task "weights". Heavyweight categories
+// (reasoning-, coding-, and game-strategy-heavy queries) get a large score
+// boost for models tagged weightClass:'heavy' — pulling the big 70b/120b
+// models to the front of the candidate list. Lightweight categories
+// (casual chat, short factual answers, hinglish banter) get the inverse
+// boost for weightClass:'light' models — small, fast models that save
+// compute and respond instantly, rather than burning a big model on
+// "hey" or "lol".
+//
+// This is a scoring nudge on top of the existing capability scores, not a
+// hard filter — a heavy-class model can still be picked for a light task
+// (and vice versa) if every weight-matched model is unhealthy/cooling down.
+const HEAVY_CATEGORIES = new Set(['gameStrategy', 'reasoning', 'coding']);
+const LIGHT_CATEGORIES = new Set(['casual', 'shortFactual', 'hinglish']);
+
+const WEIGHT_CLASS_MATCH_BONUS = 14;   // model's class matches the task's weight
+const WEIGHT_CLASS_MISMATCH_PENALTY = 5; // model's class actively fights the task's weight
+
+// ------------------------------------------------------------
+// STRICT PROVIDER FALLBACK HIERARCHY
+// ------------------------------------------------------------
+// Independent of weight-class/capability scoring above, the overall
+// candidate order must still honor: Groq -> Gemini -> OpenRouter ->
+// Cloudflare. This is applied as a large, fixed per-provider offset so
+// weight-class and capability scores only break ties *within* a provider
+// tier, never across tiers — e.g. a mediocre Groq model still sorts ahead
+// of a great OpenRouter model. buildCandidates()/generate() still walk the
+// whole sorted list on failure, so if every Groq candidate is exhausted or
+// cooling down, Gemini candidates (next tier down) are tried next, then
+// OpenRouter, then Cloudflare — the emergency-fallback block mirrors the
+// same order as a last resort.
+const PROVIDER_TIER_RANK = { groq: 0, gemini: 1, openrouter: 2, cloudflare: 3 };
+const PROVIDER_TIER_BONUS = 100; // dwarfs capability/weight-class deltas
+
+function providerTierBonus(provider) {
+  const rank = PROVIDER_TIER_RANK[provider];
+  if (rank === undefined) return 0;
+  // Higher-priority tiers (lower rank number) get a bigger bonus.
+  return (Object.keys(PROVIDER_TIER_RANK).length - rank) * PROVIDER_TIER_BONUS;
+}
+
 function dlog(...args) { if (DEBUG) console.log('[ROUTER]', ...args); }
 function ilog(...args) { console.log('[ROUTER]', ...args); }
 function wlog(...args) { console.warn('[ROUTER]', ...args); }
@@ -127,19 +185,23 @@ const MODEL_REGISTRY = {
   },
 
   groq: {
+    // Primary HEAVYWEIGHT target — top overall pick for reasoning/coding/
+    // gameStrategy on Groq.
     'openai/gpt-oss-120b': {
       provider: 'groq', model: 'openai/gpt-oss-120b',
       quality: 9, speed: 8, reasoning: 9, coding: 9, math: 8, casualChat: 6,
       creativeWriting: 5, multilingual: 7, hindi: 5, structuredOutput: 8,
       gameStrategy: 9, longContext: 7, toolUse: 8, reliability: 8,
-      costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
+      costTier: 'free-limited', weightClass: 'heavy', maxOutputTokens: 4096, status: 'active'
     },
+    // Primary LIGHTWEIGHT/fast target — quick, cheap responses for casual/
+    // shortFactual/hinglish traffic on Groq.
     'openai/gpt-oss-20b': {
       provider: 'groq', model: 'openai/gpt-oss-20b',
       quality: 7, speed: 9, reasoning: 7, coding: 7, math: 6, casualChat: 7,
       creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 6,
       gameStrategy: 6, longContext: 6, toolUse: 6, reliability: 8,
-      costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
+      costTier: 'free-limited', weightClass: 'light', maxOutputTokens: 4096, status: 'active'
     },
     'qwen/qwen3.6-27b': {
       provider: 'groq', model: 'qwen/qwen3.6-27b',
@@ -162,37 +224,43 @@ const MODEL_REGISTRY = {
       gameStrategy: 5, longContext: 5, toolUse: 8, reliability: 6,
       costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
     },
-    // Legacy — deprecated upstream, kept only as best-effort extra rung.
+    // Primary HEAVYWEIGHT target (reasoning/coding/gameStrategy). No longer
+    // treated as "legacy" — Groq still serves it and it's one of the three
+    // named heavyweight targets for intent-based routing.
     'llama-3.3-70b-versatile': {
       provider: 'groq', model: 'llama-3.3-70b-versatile',
-      quality: 7, speed: 7, reasoning: 6, coding: 6, math: 5, casualChat: 7,
-      creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 6,
-      gameStrategy: 6, longContext: 6, toolUse: 5, reliability: 2,
-      costTier: 'free-limited', legacy: true, maxOutputTokens: 2048, status: 'active'
+      quality: 8, speed: 7, reasoning: 8, coding: 7, math: 6, casualChat: 7,
+      creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 7,
+      gameStrategy: 8, longContext: 6, toolUse: 5, reliability: 7,
+      costTier: 'free-limited', weightClass: 'heavy', maxOutputTokens: 2048, status: 'active'
     },
+    // Primary LIGHTWEIGHT/fast target (casual/shortFactual/hinglish).
     'llama-3.1-8b-instant': {
       provider: 'groq', model: 'llama-3.1-8b-instant',
-      quality: 5, speed: 9, reasoning: 4, coding: 4, math: 3, casualChat: 6,
-      creativeWriting: 4, multilingual: 5, hindi: 3, structuredOutput: 4,
-      gameStrategy: 3, longContext: 4, toolUse: 3, reliability: 2,
-      costTier: 'free-limited', legacy: true, maxOutputTokens: 1024, status: 'active'
+      quality: 6, speed: 9, reasoning: 5, coding: 4, math: 3, casualChat: 8,
+      creativeWriting: 5, multilingual: 5, hindi: 4, structuredOutput: 4,
+      gameStrategy: 4, longContext: 4, toolUse: 3, reliability: 7,
+      costTier: 'free-limited', weightClass: 'light', maxOutputTokens: 1024, status: 'active'
     }
   },
 
   openrouter: {
+    // Primary LIGHTWEIGHT/fast target on OpenRouter.
     'openrouter/free': {
       provider: 'openrouter', model: 'openrouter/free',
       quality: 6, speed: 6, reasoning: 6, coding: 6, math: 5, casualChat: 6,
       creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 5,
       gameStrategy: 5, longContext: 6, toolUse: 5, reliability: 5,
-      costTier: 'free', maxOutputTokens: 2048, status: 'active'
+      costTier: 'free', weightClass: 'light', maxOutputTokens: 2048, status: 'active'
     },
+    // Primary HEAVYWEIGHT target on OpenRouter — mirrors the Groq 70b rung
+    // as a fallback once Groq's own 70b models are exhausted/cooling down.
     'meta-llama/llama-3.3-70b-instruct:free': {
       provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free',
-      quality: 6, speed: 5, reasoning: 6, coding: 5, math: 4, casualChat: 6,
-      creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 5,
-      gameStrategy: 5, longContext: 6, toolUse: 4, reliability: 4,
-      costTier: 'free', maxOutputTokens: 1024, status: 'active'
+      quality: 7, speed: 5, reasoning: 7, coding: 6, math: 5, casualChat: 6,
+      creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 6,
+      gameStrategy: 7, longContext: 6, toolUse: 4, reliability: 5,
+      costTier: 'free', weightClass: 'heavy', maxOutputTokens: 1024, status: 'active'
     }
   },
 
@@ -649,6 +717,25 @@ function scoreModel(entry, category, opts = {}) {
     score += GEMINI_PRIMARY_BONUS[category] || 0;
   }
 
+  // Intent-based weight-class routing: heavyweight tasks favor big models
+  // (openai/gpt-oss-120b, llama-3.3-70b-versatile, the OpenRouter 70b free
+  // model); lightweight tasks favor small/fast models (gpt-oss-20b,
+  // llama-3.1-8b-instant, openrouter/free). See HEAVY_CATEGORIES /
+  // LIGHT_CATEGORIES above.
+  if (entry.weightClass === 'heavy') {
+    if (HEAVY_CATEGORIES.has(category)) score += WEIGHT_CLASS_MATCH_BONUS;
+    else if (LIGHT_CATEGORIES.has(category)) score -= WEIGHT_CLASS_MISMATCH_PENALTY;
+  } else if (entry.weightClass === 'light') {
+    if (LIGHT_CATEGORIES.has(category)) score += WEIGHT_CLASS_MATCH_BONUS;
+    else if (HEAVY_CATEGORIES.has(category)) score -= WEIGHT_CLASS_MISMATCH_PENALTY;
+  }
+
+  // Strict provider fallback hierarchy: Groq > Gemini > OpenRouter >
+  // Cloudflare. Applied as a large fixed offset so it dominates ordering
+  // across providers while weight-class/capability scores still decide
+  // which model wins within the same provider tier.
+  score += providerTierBonus(entry.provider);
+
   if (entry.costTier === 'paid') score -= 1000;
   if (entry.legacy) score -= 6;
   if (entry.preview) score -= 1;
@@ -1074,10 +1161,14 @@ async function generate({ classification, prompt, userMessage, systemInstruction
   const compressedPrompt = compressForEmergency(prompt);
   const emergencyCtx = { ...ctx, prompt: compressedPrompt, maxTokens: 384 };
 
+  // Mirrors the strict provider fallback hierarchy: Groq -> Gemini ->
+  // OpenRouter -> Cloudflare. Within Groq, the small/fast models go first
+  // since the emergency path already means we're compressing the prompt
+  // and want the cheapest, most-likely-to-succeed rung.
   const emergencyOrder = [
-    (ENABLE_GEMINI && geminiKeys.length) ? { provider: 'gemini', model: 'gemini-3.5-flash-lite' } : null,
     (ENABLE_GROQ && hasGroq) ? { provider: 'groq', model: 'openai/gpt-oss-20b' } : null,
     (ENABLE_GROQ && hasGroq) ? { provider: 'groq', model: 'llama-3.1-8b-instant' } : null,
+    (ENABLE_GEMINI && geminiKeys.length) ? { provider: 'gemini', model: 'gemini-3.5-flash-lite' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'openrouter/free' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free' } : null,
     cloudflareEnabled ? { provider: 'cloudflare', model: '@cf/meta/llama-3.1-8b-instruct' } : null
