@@ -10,19 +10,6 @@
 const modelRouter = require('../router/modelRouter.js');
 const { stripLeakedReasoning, gatekeeperLint } = require('../postProcessor/leakFilter');
 const { SMART_GEAR_FALLBACK } = require('../data/gearData.js');
-// 🔗 Reuse the same targeted-extraction + stat-compression pipeline
-// promptAssembler.js already uses for the main path, so askAI() can never
-// regress into pretty-printed / uncompressed <GameData> if a future caller
-// passes a larger context object (e.g. raw heroes/troops arrays) through
-// here. Guarded require: if the module path ever moves, askAI degrades to
-// its previous behavior instead of crashing the whole strategy pipeline.
-let compressGameData = null;
-let extractTargetedContext = null;
-try {
-  ({ compressGameData, extractTargetedContext } = require('../promptBuilder/promptAssembler.js'));
-} catch (e) {
-  console.warn('[aiFallback] promptAssembler compression unavailable, falling back to raw context:', e.message);
-}
 
 const CRITICAL_OUTPUT_RULES = `
 [CRITICAL OUTPUT RULES — ABSOLUTE]
@@ -107,26 +94,13 @@ ${CRITICAL_OUTPUT_RULES}`;
  * -> Promise<string>
  */
 async function askAI({ userMessage, intent, context, geminiKeys = [], groqKeys = [], classification }) {
-
-  // 🗜️ Same 413-prevention pass promptAssembler.js runs on the main path:
-  // if `context` looks like a raw/full-size DB dump, narrow it to only
-  // entities mentioned in userMessage first; either way, collapse per-level
-  // stat arrays/{min,max} ranges down to a single max value before it's
-  // serialized. Falls back to the raw context untouched if the shared
-  // module wasn't loadable (see require guard above) or context is already
-  // small/curated (extractTargetedContext returns null in that case).
-  let renderedContext = context;
-  if (context && typeof context === 'object' && compressGameData) {
-    const targeted = extractTargetedContext ? extractTargetedContext(userMessage, context) : null;
-    renderedContext = compressGameData(targeted || context);
-  }
-
+  
   const prompt = `
 <UserQuestion>${userMessage || 'Provide a strategic breakdown.'}</UserQuestion>
 <UserIntent>${intent || 'strategy'}</UserIntent>
 
 <GameData>
-${renderedContext ? JSON.stringify(renderedContext) : 'No exact data found in database.'}
+${context ? JSON.stringify(context, null, 2) : 'No exact data found in database.'}
 </GameData>
 
 [INSTRUCTION: Analyze <GameData>. Format using vertical bullet points. EVERY stat on a new line. Bold highlights. Provide a comprehensive, highly logical breakdown. NO MARKDOWN TABLES.]`;
@@ -136,16 +110,30 @@ ${renderedContext ? JSON.stringify(renderedContext) : 'No exact data found in da
   let cleanResult = '';
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const { result } = await modelRouter.generate({
-      classification: classification || { intent: intent || 'strategy' },
-      prompt: currentPrompt,
-      userMessage,
-      systemInstruction: STRATEGY_SYSTEM_INSTRUCTION,
-      geminiKeys,
-      groqKeys
-    });
+    // 🛡️ THE FIX: modelRouter.generate() throws when every provider is
+    // exhausted/cooling down. This loop previously had no try/catch, so
+    // that throw propagated straight out of askAI() uncaught — and any
+    // caller destructuring `const { text } = await askAI(...)` would crash
+    // on 'undefined' since the rejected promise never resolved to an object.
+    let routerResponse;
+    try {
+      routerResponse = await modelRouter.generate({
+        classification: classification || { intent: intent || 'strategy' },
+        prompt: currentPrompt,
+        userMessage,
+        systemInstruction: STRATEGY_SYSTEM_INSTRUCTION,
+        geminiKeys,
+        groqKeys
+      });
+    } catch (routerError) {
+      console.error('[aiFallback] modelRouter.generate failed:', routerError);
+      routerResponse = null;
+    }
 
-    const scrubbed = stripLeakedReasoning(result || '');
+    // Safe destructure — never assume shape, even on a resolved value.
+    const result = routerResponse?.result || '';
+
+    const scrubbed = stripLeakedReasoning(result);
 
     if (scrubbed !== '' && gatekeeperLint(scrubbed).ok) {
       cleanResult = scrubbed;
@@ -158,6 +146,13 @@ ${renderedContext ? JSON.stringify(renderedContext) : 'No exact data found in da
       // dropping the response entirely.
       cleanResult = scrubbed;
     }
+  }
+
+  // 🛡️ Final failsafe: if every attempt came back empty (router threw every
+  // time, or output was always blocked by the gatekeeper), never return ''
+  // silently — give the caller a real string they can safely display.
+  if (!cleanResult) {
+    cleanResult = 'My strategy engine hit a snag pulling that data together — could you ask again in a moment?';
   }
 
   return cleanResult;
