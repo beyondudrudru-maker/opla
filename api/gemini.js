@@ -252,13 +252,21 @@ ${CRITICAL_OUTPUT_RULES}
     const MAX_RETRIES = 2;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      const { result, modelUsed } = await modelRouter.generate({
+      // 🛡️ SAFE DESTRUCTURE: modelRouter.generate() can throw (all providers
+      // exhausted) — that's still caught by the outer try/catch below — but
+      // we never assume the resolved value has the shape we expect. Guard
+      // against a router change that resolves `undefined`/null instead of
+      // throwing, so we never crash on `const { result } = undefined`.
+      const routerResponse = await modelRouter.generate({
         classification: plan.classification,
         prompt: currentPrompt,
         systemInstruction: safeSystemInstruction,
         geminiKeys,
         groqKeys
       });
+
+      const result = routerResponse?.result || '';
+      const modelUsed = routerResponse?.modelUsed || 'fallback';
 
       finalModelUsed = modelUsed;
       let cleanedText = (result || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
@@ -299,6 +307,12 @@ ${CRITICAL_OUTPUT_RULES}
       content: turn.content,
       responseText: text
     }).catch(dbError => console.error(dbError));
+
+    // 🐛 THE FIX: this function previously fell off the end here without
+    // returning anything on the success path, so `const { text } =
+    // await generateContent(turn)` at the call site received `undefined`
+    // and crashed with "Cannot destructure property 'text' of undefined".
+    return { text, modelUsed: finalModelUsed };
 
   } catch (err) {
     console.error('[generateContent] error:', err);
