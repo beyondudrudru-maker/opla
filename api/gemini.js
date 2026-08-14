@@ -146,7 +146,13 @@ HERO MASTERY TEMPLATE (single-hero query):
 
 [RESPONSE STRUCTURE]
 - Synergy/Recs: Categorized Recommendations -> Synergy Analysis (explain the 'Why' using tags/roles) -> Verdict.
-- 1v1 Comparison: Core Stats Face-Off -> Abilities & Synergy -> Verdict.
+- 1v1 COMPARISON (STRICT MANDATORY FORMAT):
+  [CRITICAL RULE: NEVER output a simple mathematical comparison like "HP: X > Y". You are an elite strategist, not a calculator. You MUST explain the tactical difference.]
+  • **Core Identity & Abilities:** Define their actual battlefield roles (e.g., Crowd Control vs Damage Ramp). You MUST explicitly explain what their abilities DO and how they impact the fight.
+  • **PvP & Arena:** Explain how they perform against enemy troops/heroes. Who is better for swarms? Who is better for frontline breaking?
+  • **Boss Encounters:** Explain their value against single, high-HP targets. (e.g., Does their ability work on bosses? Do they survive long enough?)
+  • **Optimal Synergies & Gear:** Suggest the best hero pairings and gear for each. You MUST explain *WHY* these synergies work based on their abilities.
+  • **Final Verdict:** Conclude which is better for specific situations. NEVER declare a winner based solely on having higher base HP or Damage.
 - Single Entity: Use the matching Mastery Template above (Troop or Hero) in full — do not fall back to a bare stat dump.
 
 ${CRITICAL_OUTPUT_RULES}`;
@@ -291,27 +297,4 @@ ${CRITICAL_OUTPUT_RULES}
       userId: turn.userId,
       content: turn.content,
       responseText: text
-    }).catch(dbError => console.error('⚠️ [DB] Background finalizeTurn error:', dbError.message));
-
-    return {
-      text,
-      modelUsed: finalModelUsed,
-      debug: {
-        intent: userIntent,
-        tier: plan.relationship?.tier || 'standard',
-        behaviorDirective: plan.behaviorDirective,
-        fastLane: gameTurn
-      }
-    };
-
-  } catch (error) {
-    console.error('❌ generateContent Error:', error);
-    return { 
-      text: "Give me a quick second, my network got a bit tangled up! Try asking me again in a moment. 🌸", 
-      modelUsed: 'fallback', 
-      debug: { intent: 'error', tier: 'standard', error: error.message } 
-    };
-  }
-}
-
-module.exports = { generateContent };
+    }).catch(dbError => console.error('
