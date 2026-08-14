@@ -111,7 +111,7 @@ function build(intent, entities, userCorrections = []) {
       result = {
         sufficient: true,
         context: {
-          formatInstruction: "Compare these two heroes using clean markdown formatting. Use sections: 1. Core Stats Face-Off (HP, Defense, Attack), 2. Abilities & Synergy, 3. Final Verdict. Base your answer STRICTLY on the provided data without hallucinating stats.",
+          formatInstruction: "Do NOT output a simple mathematical stat comparison (e.g. 'HP: X > Y') or declare a winner by raw stats alone. Explain the tactical difference: core identity/abilities and what they DO, PvP/Arena performance, Boss Encounter value, and optimal synergies/gear with mechanical reasoning, before reaching a situational verdict. Base all facts STRICTLY on the provided data without hallucinating stats.",
           hero1: cmp.entityA,
           hero2: cmp.entityB
         }
@@ -125,53 +125,12 @@ function build(intent, entities, userCorrections = []) {
     if (!h1 || h1.type !== 'hero') {
       result = { context: null, sufficient: false, error: `Hero ${heroNames[0]} not found in database.` };
     } else {
-      // 🆕 FIX: "Durand stats" was returning ONLY the hero record with no
-      // candidate troops attached. When the AI's response touched on troop
-      // synergy (which STRATEGY_SYSTEM_INSTRUCTION invites it to do), it had
-      // no real troop data to draw from and invented a plausible-sounding
-      // but nonexistent troop ("Ironclad Golems"). Every hero lookup now
-      // proactively includes real synergy candidates via the hero's
-      // faction/type/tags overlap against the troop roster — the same
-      // matching logic already proven correct in gameDomainRouter.js's
-      // SCENARIO B — so the AI always has grounded troops to reference,
-      // whether or not the user explicitly asked for synergy.
-      const heroData = h1.data;
-      const heroIdentifiers = new Set();
-      if (heroData.faction) heroIdentifiers.add(String(heroData.faction).toUpperCase());
-      if (heroData.type)    heroIdentifiers.add(String(heroData.type).toUpperCase());
-      if (Array.isArray(heroData.tags)) heroData.tags.forEach(t => heroIdentifiers.add(String(t).toUpperCase()));
-
-      const allTroops = queryEngine.gameLibrary.troops || [];
-      const hIdArray = Array.from(heroIdentifiers);
-      const matchingTroops = allTroops.filter(t => {
-        const tId = [];
-        if (t.faction) tId.push(String(t.faction).toUpperCase());
-        if (t.type)    tId.push(String(t.type).toUpperCase());
-        if (Array.isArray(t.tags))       tId.push(...t.tags.map(x => String(x).toUpperCase()));
-        if (Array.isArray(t.categories)) tId.push(...t.categories.map(x => String(x).toUpperCase()));
-        if (t.analysis && t.analysis.primaryRole) tId.push(String(t.analysis.primaryRole).toUpperCase());
-        if (t.analysis && Array.isArray(t.analysis.secondaryRoles)) tId.push(...t.analysis.secondaryRoles.map(x => String(x).toUpperCase()));
-        return tId.some(id => hIdArray.includes(id));
-      });
-
       result = {
         sufficient: true,
         context: {
           task: "Provide exact stats and strategic usage for this database-verified hero.",
-          // 🛡️ Zero-hallucination guardrail — explicitly extended to cover
-          // troop names, not just stats/abilities. If synergyCandidates is
-          // empty, the AI must say so rather than inventing a plausible name.
-          formatInstruction: "Do not invent abilities, stats, or troop names. Use ONLY the provided database record. If asked which troop pairs well with this hero, choose ONLY from synergyCandidates below — if synergyCandidates is empty, say no strong synergy match was found in the database rather than naming a troop.",
-          recognizedHero: heroData,
-          synergyCandidates: matchingTroops.slice(0, 5).map(t => ({
-            name:        t.name,
-            rarity:      t.rarity,
-            primaryRole: t.analysis ? t.analysis.primaryRole : null,
-            matchedOn:   hIdArray.filter(id =>
-              [t.faction, t.type, ...(t.tags || []), ...(t.categories || [])]
-                .filter(Boolean).map(x => String(x).toUpperCase()).includes(id)
-            )
-          }))
+          formatInstruction: "Do not invent abilities or stats. Use ONLY the provided database record.",
+          recognizedHero: h1.data
         }
       };
     }
@@ -191,7 +150,7 @@ function build(intent, entities, userCorrections = []) {
       result = {
         sufficient: true,
         context: {
-          formatInstruction: "Compare these two troops cleanly with bullet points and declare a winner based ONLY on these exact database stats.",
+          formatInstruction: "Do NOT declare a winner based ONLY on raw stats (HP/Damage/Defense) and do NOT output a bare mathematical comparison. Explain what each troop's ability actually does and its battlefield role, how each performs in PvP/Arena vs Boss Encounters, and note any hero/gear synergies from the provided data, before giving a situational verdict. Base all facts ONLY on these exact database stats without hallucinating numbers.",
           troop1: t1,
           troop2: t2
         }
@@ -208,7 +167,7 @@ function build(intent, entities, userCorrections = []) {
         result = {
           sufficient: true,
           context: {
-            formatInstruction: "Compare these two entities cleanly using the provided deterministic stats. Do not guess or hallucinate any numbers.",
+            formatInstruction: "Do NOT output a bare stat comparison or declare a winner by raw numbers alone. Explain the tactical difference — abilities, roles, PvP/Arena vs Boss Encounter performance, and synergies — using the provided deterministic stats. Do not guess or hallucinate any numbers.",
             comparisonData: cmp
           }
         };
@@ -226,10 +185,6 @@ function build(intent, entities, userCorrections = []) {
       result = {
         sufficient: true,
         context: {
-          // 🛡️ Zero-hallucination guardrail — matches the pattern used on
-          // every other branch. Previously missing here, leaving this path
-          // as free-form as the single-hero lookup was before the fix.
-          formatInstruction: "Do not invent stats, abilities, or other troop/hero names not present in this context. Use ONLY the provided database record.",
           troop: {
             name: analysis.troop.name,
             level: analysis.level,
@@ -253,15 +208,7 @@ function build(intent, entities, userCorrections = []) {
     const cmp = strategyEngine.compareTroopLevels(troopName, levels[0], levels[1]);
     result = cmp.error
       ? { context: null, sufficient: false, error: cmp.error }
-      : {
-          sufficient: true,
-          context: {
-            // 🛡️ Zero-hallucination guardrail — previously missing here.
-            formatInstruction: "Do not invent stats or numbers. Use ONLY the provided level-progression data.",
-            troopName,
-            ...cmp
-          }
-        };
+      : { sufficient: true, context: { troopName, ...cmp } };
   }
 
   // 🚀 7. Best Heroes for a Troop
@@ -269,36 +216,12 @@ function build(intent, entities, userCorrections = []) {
     const found = strategyEngine.findBestHeroesForTroop(troopName);
     result = found.error
       ? { context: null, sufficient: false, error: found.error }
-      : {
-          sufficient: true,
-          context: {
-            // 🛡️ Zero-hallucination guardrail — the reverse direction of the
-            // Durand/Ironclad Golems bug. If compatibleHeroes comes back
-            // empty, the AI must say so instead of naming a plausible-
-            // sounding hero that isn't in candidates.
-            formatInstruction: "Recommend heroes ONLY from compatibleHeroes below. If compatibleHeroes is empty, say no strong hero match was found in the database rather than naming one.",
-            troop: { name: found.troopName },
-            compatibleHeroes: found.candidates.slice(0, 5)
-          }
-        };
+      : { sufficient: true, context: { troop: { name: found.troopName }, compatibleHeroes: found.candidates.slice(0, 5) } };
   }
 
   // 🚀 8. Category Strategy
   if (!result && category) {
-    result = {
-      sufficient: true,
-      context: {
-        // 🛡️ Zero-hallucination guardrail — this branch supplies the LEAST
-        // grounded data of any path (just a category label and a generic
-        // note), making it the highest-risk branch for invented specifics
-        // (fabricated troop/hero names, made-up numbers). The instruction
-        // is stricter here: general category-level reasoning is fine, but
-        // any named entity or exact stat must come from a real lookup.
-        formatInstruction: "This is general category-level guidance only — no specific troop/hero records are attached. Speak in terms of the category's general role and playstyle. Do NOT invent specific troop names, hero names, or exact stat numbers; if the user wants specifics, say they should ask about a named hero/troop instead.",
-        category,
-        note: 'Strategy for category buffers based on gameKnowledge.js.'
-      }
-    };
+    result = { sufficient: true, context: { category, note: 'Strategy for category buffers based on gameKnowledge.js.' } };
   }
 
   if (!result) {
