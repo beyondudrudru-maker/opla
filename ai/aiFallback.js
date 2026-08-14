@@ -10,6 +10,19 @@
 const modelRouter = require('../router/modelRouter.js');
 const { stripLeakedReasoning, gatekeeperLint } = require('../postProcessor/leakFilter');
 const { SMART_GEAR_FALLBACK } = require('../data/gearData.js');
+// 🔗 Reuse the same targeted-extraction + stat-compression pipeline
+// promptAssembler.js already uses for the main path, so askAI() can never
+// regress into pretty-printed / uncompressed <GameData> if a future caller
+// passes a larger context object (e.g. raw heroes/troops arrays) through
+// here. Guarded require: if the module path ever moves, askAI degrades to
+// its previous behavior instead of crashing the whole strategy pipeline.
+let compressGameData = null;
+let extractTargetedContext = null;
+try {
+  ({ compressGameData, extractTargetedContext } = require('../promptBuilder/promptAssembler.js'));
+} catch (e) {
+  console.warn('[aiFallback] promptAssembler compression unavailable, falling back to raw context:', e.message);
+}
 
 const CRITICAL_OUTPUT_RULES = `
 [CRITICAL OUTPUT RULES — ABSOLUTE]
@@ -94,13 +107,26 @@ ${CRITICAL_OUTPUT_RULES}`;
  * -> Promise<string>
  */
 async function askAI({ userMessage, intent, context, geminiKeys = [], groqKeys = [], classification }) {
-  
+
+  // 🗜️ Same 413-prevention pass promptAssembler.js runs on the main path:
+  // if `context` looks like a raw/full-size DB dump, narrow it to only
+  // entities mentioned in userMessage first; either way, collapse per-level
+  // stat arrays/{min,max} ranges down to a single max value before it's
+  // serialized. Falls back to the raw context untouched if the shared
+  // module wasn't loadable (see require guard above) or context is already
+  // small/curated (extractTargetedContext returns null in that case).
+  let renderedContext = context;
+  if (context && typeof context === 'object' && compressGameData) {
+    const targeted = extractTargetedContext ? extractTargetedContext(userMessage, context) : null;
+    renderedContext = compressGameData(targeted || context);
+  }
+
   const prompt = `
 <UserQuestion>${userMessage || 'Provide a strategic breakdown.'}</UserQuestion>
 <UserIntent>${intent || 'strategy'}</UserIntent>
 
 <GameData>
-${context ? JSON.stringify(context, null, 2) : 'No exact data found in database.'}
+${renderedContext ? JSON.stringify(renderedContext) : 'No exact data found in database.'}
 </GameData>
 
 [INSTRUCTION: Analyze <GameData>. Format using vertical bullet points. EVERY stat on a new line. Bold highlights. Provide a comprehensive, highly logical breakdown. NO MARKDOWN TABLES.]`;
