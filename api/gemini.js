@@ -92,6 +92,7 @@ function buildGameFastLaneIdentity() {
 2. NO FAKE EXAMPLES: NEVER invent generic fantasy tropes (e.g., "Goblin Swarms", "Orc Brigades").
 3. HOW TO GIVE EXAMPLES: Use actual tags/roles (e.g., "Tank role troops"). For enemies, use ONLY mechanical terms (e.g., "high-HP tanks", "clustered swarms") or exact <GameData> names.
 4. SMART RECOMMENDATIONS: Always select recommendations strictly from the provided recommendation arrays in <GameData>.
+5. RARITY LOCK: Never state or imply a rarity (Common/Rare/Epic/Legendary/Mythical) for any hero/troop unless that exact rarity string is present in <GameData> for that entity — if missing, omit rarity rather than guessing.
 
 [ADVANCED GAME MECHANICS]
 1. TALENT UNLOCKS: When discussing the talents of Legendary or Mythical heroes, you MUST explicitly mention that their talents only unlock when the hero reaches Level 5, and upgrading them requires 'Books' from the Library.
@@ -297,26 +298,11 @@ ${CRITICAL_OUTPUT_RULES}
       userId: turn.userId,
       content: turn.content,
       responseText: text
-    }).catch(dbError => console.error('⚠️ [DB] Background finalizeTurn error:', dbError.message));
+    }).catch(dbError => console.error(dbError));
 
-    return {
-      text,
-      modelUsed: finalModelUsed,
-      debug: {
-        intent: userIntent,
-        tier: plan.relationship?.tier || 'standard',
-        behaviorDirective: plan.behaviorDirective,
-        fastLane: gameTurn
-      }
-    };
-
-  } catch (error) {
-    console.error('❌ generateContent Error:', error);
-    return { 
-      text: "Give me a quick second, my network got a bit tangled up! Try asking me again in a moment. 🌸", 
-      modelUsed: 'fallback', 
-      debug: { intent: 'error', tier: 'standard', error: error.message } 
-    };
+  } catch (err) {
+    console.error('[generateContent] error:', err);
+    return { text: 'Something went sideways on my end — try again in a bit! 🌸', modelUsed: 'fallback', debug: { error: String(err) } };
   }
 }
 
