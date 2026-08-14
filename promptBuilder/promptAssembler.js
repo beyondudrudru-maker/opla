@@ -489,4 +489,176 @@ function findTagOverlapSynergyLinks(entity, synergies) {
         troopIds.forEach(troopId => links.push({
           troopId,
           reason: `Derived from shared tag "${tag}": this hero's supportFocus is "${heroFocusPhrase}", which matches the troop's own category tag.`,
-          derive
+          derived: true
+        }));
+      }
+    }
+  }
+
+  return links.slice(0, 8); // keep the bundle lean, same cap as curated links
+}
+
+/**
+ * resolveSynergyLinks(entity, synergies)
+ * Tries the curated troopHeroSynergy lookup first (authoritative, hand-
+ * verified reasons). Only if that comes back empty does it fall back to the
+ * generic tag-overlap derivation above — so curated data always wins when
+ * it exists, and no entity is ever left with zero synergy context just
+ * because nobody has hand-written an entry for it yet.
+ */
+function resolveSynergyLinks(entity, synergies) {
+  const curated = findSynergyLinks(entity, synergies);
+  if (curated.length > 0) return curated;
+  return findTagOverlapSynergyLinks(entity, synergies);
+}
+
+/**
+ * extractTargetedContext(userMessage, gameData)
+ *
+ * Scans userMessage for troop/hero/boss name mentions inside a full-size
+ * gameData dump and returns a minimal Context Bundle:
+ *   {
+ *     matchedHeroes:  [ ...compressed entity records... ],
+ *     matchedTroops:  [ ... ],
+ *     matchedBosses:  [ ... ],
+ *     synergyLinks:   [ { heroId|troopId, reason } ... ],
+ *     bossModifiers:  GENERIC_BOSS_MODIFIERS | null
+ *   }
+ *
+ * Returns null if gameData isn't a full-database shape (nothing to trim) or
+ * if no entities were matched (caller should fall back to whatever curated
+ * context it already has rather than injecting an empty bundle).
+ */
+function extractTargetedContext(userMessage, gameData) {
+  if (!gameData || typeof gameData !== 'object' || !isFullDatabaseShape(gameData)) {
+    return null;
+  }
+
+  const matchedHeroes = findMentionedEntities(userMessage, gameData.heroes).map(compressEntityStats);
+  const matchedTroops = findMentionedEntities(userMessage, gameData.troops).map(compressEntityStats);
+  const matchedBosses = findMentionedEntities(userMessage, gameData.bosses);
+
+  const synergyLinks = [...matchedHeroes, ...matchedTroops]
+    .flatMap(entity => resolveSynergyLinks(entity, gameData.synergies));
+
+  // Gear cross-reference runs against the ORIGINAL (uncompressed) matches so
+  // gearData.js's tag/type lookups see the real fields, not the "Max: N"
+  // strings compressEntityStats produces.
+  const gearRecommendations = buildGearRecommendations(
+    findMentionedEntities(userMessage, gameData.heroes),
+    findMentionedEntities(userMessage, gameData.troops)
+  );
+
+  const mentionsBossGenerically = /\bboss(es)?\b/i.test(String(userMessage || ''));
+  const bossModifiers = matchedBosses.length > 0
+    ? null // real boss record already carries its own specific rules/resistance
+    : (mentionsBossGenerically ? GENERIC_BOSS_MODIFIERS : null);
+
+  const bundle = {
+    matchedHeroes,
+    matchedTroops,
+    matchedBosses,
+    synergyLinks,
+    gearRecommendations,
+    bossModifiers
+  };
+
+  const isEmpty =
+    matchedHeroes.length === 0 &&
+    matchedTroops.length === 0 &&
+    matchedBosses.length === 0 &&
+    !bossModifiers;
+
+  return isEmpty ? null : bundle;
+}
+
+function renderGameContext(gameData, userMessage) {
+  if (!gameData) return '';
+
+  if (typeof gameData === 'string') {
+    return `<GameData>\n${gameData}\n</GameData>`;
+  }
+
+  // 🎯 Backstop: if this looks like a raw/full database dump, narrow it down
+  // to just what the current message actually references before compressing
+  // further. Curated context objects (the normal case, built upstream by
+  // gameDomainRouter/strategyContextBuilder) are left to the existing
+  // compression path since they're already targeted.
+  const isFullDump = isFullDatabaseShape(gameData);
+  const targeted = extractTargetedContext(userMessage, gameData);
+
+  // 🚫 413-PREVENTION (pass 3) — THE FIX FOR CASUAL-CHAT PAYLOAD BLOAT:
+  // extractTargetedContext() already correctly returns null when the raw
+  // dump contains no entity the user actually mentioned (e.g. "hrw?"). The
+  // old code then fell back to `compressGameData(gameData)` — which still
+  // JSON-serializes the ENTIRE heroes/troops/bosses arrays, just with stat
+  // curves collapsed. That full-DB payload is exactly what was triggering
+  // the Groq 413 on plain greetings. If it's a full dump and nothing
+  // matched, there is nothing worth injecting — emit no GameData block.
+  if (isFullDump && !targeted) {
+    return '';
+  }
+
+  const compressed = compressGameData(targeted || gameData);
+
+  // 🗜️ Minified — no `null, 2` pretty-print — to keep GameData block as
+  // token-lean as possible on top of the stat compression above.
+  const content = JSON.stringify(compressed);
+  return `<GameData>\n${content}\n</GameData>`;
+}
+
+/**
+ * 🚀 GAME FAST-LANE: minimal assembly path.
+ * Only relationship framing (cheap, no memory lookups) + the deterministic
+ * game data + the current message. No LongTermMemory, no ChatHistory, no
+ * EmotionalState, no AudienceTarget, no BehaviorDirectives — those are the
+ * blocks that dilute model attention and cause troop/hero name mixups.
+ */
+function assembleLean({ relationship, gameData, userMessage, speakerName }) {
+  const blocks = [
+    renderRelationshipFraming(relationship || {}),
+    renderGameContext(gameData, userMessage),
+    `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`,
+  ];
+
+  return blocks.filter(Boolean).join('\n');
+}
+
+function assemble({
+  leanMode,
+  emotionalBrief,
+  relationship,
+  behaviorDirective,
+  rankedMemories,
+  workingMemory,
+  gameData,
+  userMessage,
+  targetInfo,
+  speakerName
+}) {
+  if (leanMode) {
+    return assembleLean({ relationship, gameData, userMessage, speakerName });
+  }
+
+  // Assemble the blocks using clean XML structures that modern LLMs parse perfectly
+  const promptBlocks = [
+    emotionalBrief ? `<EmotionalState>${sanitize(emotionalBrief)}</EmotionalState>` : '',
+    renderRelationshipFraming(relationship),
+    renderTargetBlock(targetInfo),
+    renderTaskDirective(behaviorDirective),
+    renderGameContext(gameData, userMessage),
+    renderMemoryBlock(rankedMemories),
+    renderWorkingMemory(workingMemory),
+    `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`
+  ];
+
+  // Instantly removes any empty blocks to save tokens, and joins with newlines
+  return promptBlocks.filter(Boolean).join('\n');
+}
+
+module.exports = {
+  assemble,
+  compressGameData,       // exported for unit testing / reuse in gameDomainRouter.js if needed
+  extractTargetedContext, // exported for unit testing / reuse elsewhere in the pipeline
+  resolveSynergyLinks,    // exported for unit testing / reuse — curated lookup + tag-overlap fallback
+};
