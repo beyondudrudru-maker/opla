@@ -297,4 +297,13 @@ ${CRITICAL_OUTPUT_RULES}
       userId: turn.userId,
       content: turn.content,
       responseText: text
-    }).catch(dbError => console.error('
+    }).catch(dbError => console.error('❌ generateContent Error:', error);
+    return { 
+      text: "Give me a quick second, my network got a bit tangled up! Try asking me again in a moment. 🌸", 
+      modelUsed: 'fallback', 
+      debug: { intent: 'error', tier: 'standard', error: error.message } 
+    };
+  }
+}
+
+module.exports = { generateContent };
