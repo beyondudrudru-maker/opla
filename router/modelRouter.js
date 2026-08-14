@@ -12,9 +12,20 @@
  *   registry with (a) a large fixed per-provider tier bonus enforcing the
  *   Groq > Gemini > OpenRouter > Cloudflare order, and (b) a weight-class
  *   match bonus that pulls big models (openai/gpt-oss-120b,
- *   llama-3.3-70b-versatile, meta-llama/llama-3.3-70b-instruct:free) to the
+ *   llama-3.3-70b-versatile, nvidia/nemotron-3-ultra-550b-a55b:free) to the
  *   front for heavy tasks, and small/fast models (openai/gpt-oss-20b,
- *   llama-3.1-8b-instant, openrouter/free) to the front for light tasks.
+ *   llama-3.1-8b-instant, nvidia/nemotron-nano-9b-v2:free) to the front for
+ *   light tasks.
+ *
+ * MODEL REGISTRY REFRESH (verified live 2026-08-14)
+ *   - Groq, Gemini, and Cloudflare slugs below were checked against each
+ *     provider's live docs/pricing pages and are unchanged/still active.
+ *   - OpenRouter's meta-llama/llama-3.3-70b-instruct:free was CONFIRMED
+ *     REMOVED from OpenRouter's free catalog -- it 404s. Replaced with
+ *     nvidia/nemotron-3-ultra-550b-a55b:free (heavy) and
+ *     nvidia/nemotron-nano-9b-v2:free (light), both live on OpenRouter's
+ *     current :free listing alongside openai/gpt-oss-20b:free and
+ *     openrouter/free.
  *   Unhealthy/quota-exhausted/invalid models are cooled down per-failure-
  *   type and skipped without hammering dead providers. Optional periodic
  *   model discovery keeps the registry honest without ever calling out to
@@ -245,22 +256,43 @@ const MODEL_REGISTRY = {
   },
 
   openrouter: {
-    // Primary LIGHTWEIGHT/fast target on OpenRouter.
+    // Primary HEAVYWEIGHT target on OpenRouter -- top-quality entry on
+    // OpenRouter's live free catalog (1M context, tool use). Replaces the
+    // now-delisted meta-llama/llama-3.3-70b-instruct:free (confirmed gone
+    // from OpenRouter's :free listing as of 2026-08-14 -- calls 404).
+    'nvidia/nemotron-3-ultra-550b-a55b:free': {
+      provider: 'openrouter', model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+      quality: 8, speed: 5, reasoning: 8, coding: 7, math: 6, casualChat: 5,
+      creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 7,
+      gameStrategy: 7, longContext: 8, toolUse: 6, reliability: 5,
+      costTier: 'free', weightClass: 'heavy', maxOutputTokens: 4096, status: 'active'
+    },
+    // Secondary HEAVYWEIGHT/general-purpose target -- solid mid-size free
+    // model, useful when the top Nemotron rung is cooling down.
+    'openai/gpt-oss-20b:free': {
+      provider: 'openrouter', model: 'openai/gpt-oss-20b:free',
+      quality: 6, speed: 6, reasoning: 6, coding: 6, math: 5, casualChat: 5,
+      creativeWriting: 4, multilingual: 5, hindi: 3, structuredOutput: 5,
+      gameStrategy: 5, longContext: 5, toolUse: 5, reliability: 5,
+      costTier: 'free', maxOutputTokens: 2048, status: 'active'
+    },
+    // Primary LIGHTWEIGHT/fast target on OpenRouter -- small, quick model
+    // for casual/shortFactual/hinglish traffic.
+    'nvidia/nemotron-nano-9b-v2:free': {
+      provider: 'openrouter', model: 'nvidia/nemotron-nano-9b-v2:free',
+      quality: 5, speed: 8, reasoning: 4, coding: 4, math: 3, casualChat: 6,
+      creativeWriting: 4, multilingual: 5, hindi: 3, structuredOutput: 4,
+      gameStrategy: 4, longContext: 5, toolUse: 4, reliability: 5,
+      costTier: 'free', weightClass: 'light', maxOutputTokens: 2048, status: 'active'
+    },
+    // Secondary LIGHTWEIGHT/general fallback -- OpenRouter's own
+    // provider-agnostic free routing endpoint.
     'openrouter/free': {
       provider: 'openrouter', model: 'openrouter/free',
       quality: 6, speed: 6, reasoning: 6, coding: 6, math: 5, casualChat: 6,
       creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 5,
       gameStrategy: 5, longContext: 6, toolUse: 5, reliability: 5,
       costTier: 'free', weightClass: 'light', maxOutputTokens: 2048, status: 'active'
-    },
-    // Primary HEAVYWEIGHT target on OpenRouter — mirrors the Groq 70b rung
-    // as a fallback once Groq's own 70b models are exhausted/cooling down.
-    'meta-llama/llama-3.3-70b-instruct:free': {
-      provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free',
-      quality: 7, speed: 5, reasoning: 7, coding: 6, math: 5, casualChat: 6,
-      creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 6,
-      gameStrategy: 7, longContext: 6, toolUse: 4, reliability: 5,
-      costTier: 'free', weightClass: 'heavy', maxOutputTokens: 1024, status: 'active'
     }
   },
 
@@ -1210,7 +1242,7 @@ async function generate({ classification, prompt, userMessage, systemInstruction
     (ENABLE_GROQ && groqKeys.length) ? { provider: 'groq', model: 'llama-3.1-8b-instant' } : null,
     (ENABLE_GEMINI && geminiKeys.length) ? { provider: 'gemini', model: 'gemini-3.5-flash-lite' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'openrouter/free' } : null,
-    getOpenRouterClient() ? { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free' } : null,
+    getOpenRouterClient() ? { provider: 'openrouter', model: 'nvidia/nemotron-nano-9b-v2:free' } : null,
     cloudflareEnabled ? { provider: 'cloudflare', model: '@cf/meta/llama-3.1-8b-instruct' } : null
   ].filter(Boolean);
 
