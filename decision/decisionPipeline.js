@@ -45,7 +45,18 @@ function isGameTurn({ content = '', gameData = null, intent = null } = {}) {
     return false;
   }
 
-  // 3. Fast-lane approvals
+  // 🧠 3. GENERAL-KNOWLEDGE GUARD (Fix for "Lord Ram ka weapon" trap)
+  // FACT/STRATEGY-style intents can also fire for pure general-knowledge
+  // questions that just happen to sound like a query ("sabse powerful
+  // weapon konsa tha"). Only trust these intents as game-lane triggers when
+  // there's real game signal — either a keyword hit or gameData the router
+  // actually resolved. No signal + no data = it's a real-world question,
+  // route it to the full persona path instead of the strict data-lock lane.
+  if (['STRATEGY', 'CALC', 'FACT', 'GOLD', 'GEM'].includes(intent) && !hasGameKeywords && !hasValidGameData) {
+    return false;
+  }
+
+  // 4. Fast-lane approvals
   if (hasValidGameData) return true;
   if (['STRATEGY', 'CALC', 'FACT', 'GOLD', 'GEM'].includes(intent)) return true;
 
