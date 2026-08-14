@@ -297,7 +297,21 @@ ${CRITICAL_OUTPUT_RULES}
       userId: turn.userId,
       content: turn.content,
       responseText: text
-    }).catch(dbError => console.error('❌ generateContent Error:', error);
+    }).catch(dbError => console.error('⚠️ [DB] Background finalizeTurn error:', dbError.message));
+
+    return {
+      text,
+      modelUsed: finalModelUsed,
+      debug: {
+        intent: userIntent,
+        tier: plan.relationship?.tier || 'standard',
+        behaviorDirective: plan.behaviorDirective,
+        fastLane: gameTurn
+      }
+    };
+
+  } catch (error) {
+    console.error('❌ generateContent Error:', error);
     return { 
       text: "Give me a quick second, my network got a bit tangled up! Try asking me again in a moment. 🌸", 
       modelUsed: 'fallback', 
