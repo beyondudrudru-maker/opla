@@ -228,6 +228,12 @@ function compressGameData(data) {
 
 const FULL_DB_LIST_KEYS = ['heroes', 'troops', 'bosses'];
 const MIN_FULL_DB_LENGTH = 5; // below this, treat as an already-small/curated list, not a full dump
+// 🐛 FIX: bosses.js only ever holds a handful of boss records (currently 4)
+// — the shared MIN_FULL_DB_LENGTH=5 floor meant a gameData object containing
+// the full bosses[] array (but no heroes/troops arrays) could NEVER be
+// detected as a "full dump," so the targeted-extraction backstop silently
+// never ran for boss-only payloads. Bosses get their own, lower threshold.
+const MIN_FULL_DB_LENGTH_BY_KEY = { bosses: 2 };
 
 // 🛡️ Defensive require — gearData.js lives in a sibling data/ directory.
 // Guarded so a missing file or path mismatch just skips gear recommendations
@@ -311,9 +317,10 @@ function escapeForRegex(str) {
 }
 
 function isFullDatabaseShape(gameData) {
-  return FULL_DB_LIST_KEYS.some(
-    key => Array.isArray(gameData[key]) && gameData[key].length > MIN_FULL_DB_LENGTH
-  );
+  return FULL_DB_LIST_KEYS.some(key => {
+    const threshold = MIN_FULL_DB_LENGTH_BY_KEY[key] ?? MIN_FULL_DB_LENGTH;
+    return Array.isArray(gameData[key]) && gameData[key].length > threshold;
+  });
 }
 
 // Finds entities in `list` whose `name` appears as a whole word in userMessage.
@@ -572,6 +579,75 @@ function extractTargetedContext(userMessage, gameData) {
   return isEmpty ? null : bundle;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🛟 Priority-Based Size-Budget Trimmer (shared safety net, 413-prevention pass 4)
+// ─────────────────────────────────────────────────────────────────────────────
+// Reused in two places: proactively here in renderGameContext (so an
+// oversized GameData block never leaves promptAssembler in the first place)
+// and reactively by modelRouter.js's emergency-fallback compression (so a
+// last-resort truncation is priority-aware instead of a blind character
+// slice that can cut off mid-object and lose whichever field happened to be
+// serialized last — e.g. bossModifiers/matchedBosses, which is exactly the
+// disambiguating context that stops a model from inventing boss mechanics).
+// Never mutates the input; always returns a JSON string, and is a pure
+// best-effort trim — if every pass still leaves it oversized, the final
+// fallback is the old naive slice, just against a much smaller object.
+const VERBOSE_TEXT_KEYS = new Set(['description', 'lore', 'flavorText', 'flavourText']);
+const LONG_TEXT_KEY_PATTERN = /reasoning|notes|tacticalAdvice|strategy/i;
+const LOW_PRIORITY_DROPPABLE_KEYS = ['synergyLinks', 'gearRecommendations'];
+
+function _firstSentence(str, maxLen) {
+  const cut = str.split(/(?<=[.!?])\s/)[0];
+  return (cut && cut.length < str.length) ? cut : `${str.slice(0, maxLen)}…`;
+}
+
+function fitGameDataToBudget(data, maxChars) {
+  if (data === null || data === undefined) return JSON.stringify(data);
+
+  let working = JSON.parse(JSON.stringify(data)); // deep clone — never mutate caller's object
+  let out = JSON.stringify(working);
+  if (out.length <= maxChars) return out;
+
+  // Pass 1: drop verbose lore/description/flavor text entirely. Names, ids,
+  // ability mechanics, and numbers survive — those matter far more for
+  // factual grounding than narrative flavor text.
+  working = JSON.parse(JSON.stringify(working, (key, value) => (VERBOSE_TEXT_KEYS.has(key) ? undefined : value)));
+  out = JSON.stringify(working);
+  if (out.length <= maxChars) return out;
+
+  // Pass 2: shrink long reasoning/notes/strategy/tacticalAdvice fields down
+  // to their first sentence rather than dropping them outright — these
+  // often carry critical disambiguation (e.g. "swarm-only, not for bosses").
+  working = JSON.parse(JSON.stringify(working, (key, value) => {
+    if (typeof value === 'string' && value.length > 160 && LONG_TEXT_KEY_PATTERN.test(key)) {
+      return _firstSentence(value, 160);
+    }
+    return value;
+  }));
+  out = JSON.stringify(working);
+  if (out.length <= maxChars) return out;
+
+  // Pass 3: drop lowest-priority arrays outright if still oversized —
+  // matchedHeroes/matchedTroops/matchedBosses/bossModifiers are kept intact
+  // since those are the fields the model needs most to stay grounded.
+  for (const key of LOW_PRIORITY_DROPPABLE_KEYS) {
+    if (working && typeof working === 'object' && key in working) {
+      delete working[key];
+      out = JSON.stringify(working);
+      if (out.length <= maxChars) return out;
+    }
+  }
+
+  // Last resort: naive slice, but now against a much smaller/already-trimmed
+  // payload rather than the raw original.
+  return out.length > maxChars ? `${out.slice(0, maxChars)}...[truncated]` : out;
+}
+
+// Soft proactive cap — catches oversized GameData blocks here, before they
+// ever reach modelRouter, so the emergency-fallback path above is a true
+// last resort rather than the routine way 413s get avoided.
+const GAME_CONTEXT_SOFT_CAP_CHARS = 6000;
+
 function renderGameContext(gameData, userMessage) {
   if (!gameData) return '';
 
@@ -603,7 +679,17 @@ function renderGameContext(gameData, userMessage) {
 
   // 🗜️ Minified — no `null, 2` pretty-print — to keep GameData block as
   // token-lean as possible on top of the stat compression above.
-  const content = JSON.stringify(compressed);
+  let content = JSON.stringify(compressed);
+
+  // 🛟 413-PREVENTION (pass 4) — proactive soft-cap safety net. Even a
+  // "targeted" bundle can still balloon (many matched entities, long
+  // synergy/gear write-ups), so this is a backstop independent of how the
+  // bundle was built. Priority-drops verbose text before ever falling back
+  // to a blind slice — see fitGameDataToBudget() above.
+  if (content.length > GAME_CONTEXT_SOFT_CAP_CHARS) {
+    content = fitGameDataToBudget(compressed, GAME_CONTEXT_SOFT_CAP_CHARS);
+  }
+
   return `<GameData>\n${content}\n</GameData>`;
 }
 
@@ -661,4 +747,5 @@ module.exports = {
   compressGameData,       // exported for unit testing / reuse in gameDomainRouter.js if needed
   extractTargetedContext, // exported for unit testing / reuse elsewhere in the pipeline
   resolveSynergyLinks,    // exported for unit testing / reuse — curated lookup + tag-overlap fallback
+  fitGameDataToBudget,    // exported so modelRouter.js's emergency fallback can reuse the same priority-aware trim instead of a blind slice
 };
