@@ -69,6 +69,17 @@ try {
   INTENTS = {};
 }
 
+// 🛟 Reuse promptAssembler's priority-aware GameData trimmer for the
+// emergency-fallback path below, instead of a blind character slice.
+// Guarded require — a missing/renamed file just falls back to the old
+// naive-slice behavior rather than crashing the router.
+let fitGameDataToBudget = null;
+try {
+  ({ fitGameDataToBudget } = require('../promptBuilder/promptAssembler'));
+} catch (_) {
+  fitGameDataToBudget = null;
+}
+
 // ============================================================
 // 0. ENV / SAFETY SWITCHES
 // ============================================================
@@ -443,7 +454,10 @@ function classifyFailure(error) {
     return FAILURE.OVERLOADED;
   }
   if (status && status >= 500) return FAILURE.OUTAGE;
-  if (/timeout|timed out|etimedout/.test(msg)) return FAILURE.TIMEOUT;
+  // 🆕 Catches both our own explicit timeoutError() (Gemini path) and the
+  // OpenAI SDK's APIUserAbortError thrown when AbortController fires
+  // (Groq/OpenRouter path) — neither says "timeout" verbatim.
+  if (/timeout|timed out|etimedout|abort/i.test(msg) || error?.name === 'APIUserAbortError' || error?.name === 'AbortError') return FAILURE.TIMEOUT;
   if (/network|econnreset|enotfound|econnrefused|fetch failed/.test(msg)) return FAILURE.NETWORK;
   return FAILURE.UNKNOWN;
 }
@@ -795,7 +809,21 @@ function scoreModel(entry, category, opts = {}) {
 // ============================================================
 // 8. TOKEN COMPRESSION (Emergency Tier)
 // ============================================================
-const EMERGENCY_MEMORY_CHAR_CAP = 300;
+// 🐛 FIX: execGemini/execOpenAICompatible had NO request timeout at all —
+// only execCloudflare did (20s AbortController). Observed in production:
+// OpenRouter's nvidia/nemotron-3-ultra-550b:free taking 50-127 SECONDS on a
+// single call, with the router just awaiting it to completion every time —
+// stalling the entire Discord response and burning the whole retry budget
+// on one slow candidate instead of failing fast to the next one. This is a
+// shared budget for Gemini + Groq/OpenRouter (Cloudflare keeps its own
+// existing 20s constant untouched).
+const GENERATION_TIMEOUT_MS = 25000;
+
+function timeoutError(label, ms) {
+  const err = new Error(`${label} request timed out after ${ms}ms`);
+  err.status = 408;
+  return err;
+}
 const EMERGENCY_GAMEDATA_CHAR_CAP = 800;
 function compressForEmergency(prompt) {
   if (!prompt) return prompt;
@@ -809,14 +837,37 @@ function compressForEmergency(prompt) {
   });
   // 🆕 GameData is now frequently the largest block (full hero/troop stat
   // sets, formations, boss records). It's already minified JSON by the time
-  // it reaches here, so truncate rather than trying to re-parse/re-shrink it —
-  // keep the head (entity names/ids matter more than trailing fields for the
-  // model to stay on-topic) and flag it as truncated.
+  // it reaches here.
+  // 🐛 FIX: this used to be a blind `.slice(0, CAP)` on the serialized JSON,
+  // which chops mid-object — whichever field happened to be serialized last
+  // (often `bossModifiers`/`matchedBosses`, the exact fields that disambiguate
+  // "this hero's CC is for swarms, not bosses") would get cut off entirely,
+  // leaving the model with an incomplete picture and room to invent. Now it
+  // parses the JSON and reuses promptAssembler's priority-aware trimmer —
+  // verbose lore/description dropped first, long reasoning/notes text
+  // shortened next, low-priority arrays dropped last — so the fields the
+  // model needs most to stay factually grounded are the last thing cut.
+  // Falls back to the old naive-slice behavior if parsing fails or the
+  // trimmer module isn't available (e.g. a path/require mismatch).
   compressed = compressed.replace(/<GameData>([\s\S]*?)<\/GameData>/i, (match, inner) => {
     const trimmedInner = inner.trim();
     if (trimmedInner.length <= EMERGENCY_GAMEDATA_CHAR_CAP) return match;
-    const truncated = trimmedInner.slice(0, EMERGENCY_GAMEDATA_CHAR_CAP);
-    return `<GameData>\n${truncated}...[truncated for emergency]\n</GameData>`;
+
+    let smart = null;
+    if (fitGameDataToBudget) {
+      try {
+        const parsed = JSON.parse(trimmedInner);
+        smart = fitGameDataToBudget(parsed, EMERGENCY_GAMEDATA_CHAR_CAP);
+      } catch (_) {
+        smart = null; // not valid JSON (already partially truncated elsewhere, or a plain string) — fall back below
+      }
+    }
+
+    if (smart === null) {
+      smart = `${trimmedInner.slice(0, EMERGENCY_GAMEDATA_CHAR_CAP)}...[truncated for emergency]`;
+    }
+
+    return `<GameData>\n${smart}\n</GameData>`;
   });
   compressed = compressed.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   return compressed;
@@ -838,7 +889,12 @@ async function withRetry(fn, { retries = 1 } = {}) {
       return await fn();
     } catch (error) {
       const type = classifyFailure(error);
-      const noRetryTypes = [FAILURE.INVALID_MODEL, FAILURE.AUTH, FAILURE.UNSUPPORTED_FEATURE, FAILURE.QUOTA_EXHAUSTED, FAILURE.PAYLOAD_TOO_LARGE];
+      // 🐛 FIX: TIMEOUT wasn't in this list, so a candidate that just took
+      // 25s to time out would get retried once MORE on the exact same slow
+      // model before the router ever moved on — doubling the worst-case
+      // wait (e.g. the 50-127s OpenRouter nemotron calls seen in
+      // production) instead of failing fast to the next candidate.
+      const noRetryTypes = [FAILURE.INVALID_MODEL, FAILURE.AUTH, FAILURE.UNSUPPORTED_FEATURE, FAILURE.QUOTA_EXHAUSTED, FAILURE.PAYLOAD_TOO_LARGE, FAILURE.TIMEOUT];
       if (noRetryTypes.includes(type) || attempt >= retries) throw error;
       const delay = backoffDelay(attempt);
       dlog(`transient error [${type}], retrying in ${Math.round(delay)}ms`);
@@ -879,7 +935,15 @@ async function execGemini({ apiKey, modelName, prompt, systemInstruction, temp, 
     generationConfig
   });
 
-  const response = await model.generateContent(prompt);
+  // 🐛 FIX: no timeout previously — a slow Gemini call would hang the whole
+  // request indefinitely. Promise.race can't cancel the underlying HTTP
+  // call (the Gemini SDK here doesn't take an abort signal), but it stops
+  // the router from waiting on it — the router moves on to the next
+  // candidate instead of stalling the user's response for 60-120+ seconds.
+  const response = await Promise.race([
+    model.generateContent(prompt),
+    sleep(GENERATION_TIMEOUT_MS).then(() => { throw timeoutError('Gemini', GENERATION_TIMEOUT_MS); })
+  ]);
   // Gemini SDK doesn't expose raw rate-limit headers through this call path.
   return { text: response.response.text(), quota: null };
 }
@@ -896,6 +960,16 @@ async function execOpenAICompatible(client, { modelName, prompt, systemInstructi
     max_tokens: maxTokens
   };
 
+  // 🐛 FIX: no timeout previously — this executor handles BOTH Groq and
+  // OpenRouter, and was observed in production awaiting a single OpenRouter
+  // call (nvidia/nemotron-3-ultra-550b:free) for up to 127 SECONDS with
+  // nothing to stop it. Real AbortController + the SDK's `signal` request
+  // option, so the underlying HTTP request is actually cancelled (not just
+  // abandoned like a bare Promise.race would do) — the connection is torn
+  // down and the router moves on to the next candidate immediately.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS);
+
   // Some SDK versions/paths return a plain Promise from .create() (no
   // .withResponse() chain method) instead of the APIPromise this prefers.
   // Distinguish "this SDK doesn't support .withResponse()" from "the
@@ -904,21 +978,25 @@ async function execOpenAICompatible(client, { modelName, prompt, systemInstructi
   // in the catch block double-fires the request on every real failure
   // (doubling quota burn) and can also surface as an unhandled rejection
   // on the un-awaited first promise.
-  const initial = client.chat.completions.create(payload);
-  if (typeof initial.withResponse === 'function') {
-    try {
-      const withResp = await initial.withResponse();
-      data = withResp.data;
-      headers = withResp.response ? withResp.response.headers : null;
-    } catch (e) {
-      // withResponse() exists but the request itself failed — propagate,
-      // do NOT re-issue the request.
-      throw e;
+  try {
+    const initial = client.chat.completions.create(payload, { signal: controller.signal });
+    if (typeof initial.withResponse === 'function') {
+      try {
+        const withResp = await initial.withResponse();
+        data = withResp.data;
+        headers = withResp.response ? withResp.response.headers : null;
+      } catch (e) {
+        // withResponse() exists but the request itself failed — propagate,
+        // do NOT re-issue the request.
+        throw e;
+      }
+    } else {
+      // No .withResponse() support on this SDK path/version — the plain
+      // call IS the real request; let its rejection propagate naturally.
+      data = await initial;
     }
-  } else {
-    // No .withResponse() support on this SDK path/version — the plain
-    // call IS the real request; let its rejection propagate naturally.
-    data = await initial;
+  } finally {
+    clearTimeout(timeout);
   }
 
   const text = data.choices?.[0]?.message?.content || '';
