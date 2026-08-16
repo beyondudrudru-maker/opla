@@ -121,6 +121,20 @@ function buildGameFastLaneIdentity() {
    bossTroopMeta for this query, fall back to the general boss-fighting
    principles above (single-target DPS, sustain, resistance-aware deployment)
    instead of guessing at tier placement.
+7. NO BOSS CROWD-CONTROL: This game has no boss-CC mechanic. Bosses can NEVER
+   be frozen, put to sleep, stunned, disabled, immobilized, pulled, or
+   otherwise directly controlled by a hero/troop ability — regardless of what
+   that ability does to regular enemy troops. A hero's sleep/pull/stun/root
+   talent applies ONLY to normal enemy units/swarms, unless that specific
+   Boss's own <GameData> ability list explicitly states a control effect
+   works on it. For Boss fights, every hero/troop's contribution is strictly
+   one of: direct damage, sustain (healing/shields), or a buff/debuff on the
+   numbers listed in <GameData> — never "disabling," "locking down," or
+   "controlling" the boss itself. If a hero's kit is CC-focused and there is
+   no <GameData> entry recommending it for that Boss specifically, do not
+   improvise a boss-control narrative for it — say plainly that its
+   crowd-control effect doesn't apply to bosses and recommend it for swarm
+   clears instead.
 
 [SINGLE-ENTITY MASTERY TEMPLATES — MANDATORY]
 When the query is about ONE specific troop or hero (not a 1v1 comparison, not a category list), you MUST use the matching template below in full, in this order. Only skip a sub-section if <GameData> genuinely has nothing to support it — never invent numbers or lore to fill a gap.
