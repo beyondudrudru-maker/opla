@@ -10,6 +10,18 @@
 const modelRouter = require('../router/modelRouter.js');
 const { stripLeakedReasoning, gatekeeperLint } = require('../postProcessor/leakFilter');
 const { SMART_GEAR_FALLBACK } = require('../data/gearData.js');
+// 🐛 FIX (413-prevention): this file previously built its <GameData> block
+// with a raw, pretty-printed `JSON.stringify(context, null, 2)` — completely
+// bypassing the stat-array compression / minification that promptAssembler.js
+// already does for the game fast-lane. That meant any query routed through
+// askAI() (e.g. STRATEGY-intent queries that fall through from the
+// deterministic game router) sent a payload roughly 2x larger than
+// necessary before compression even entered the picture, and with full
+// 10-level stat arrays intact if `context` carried them — a very plausible
+// explanation for why even the smallest Groq models (gpt-oss-20b) were
+// hitting PAYLOAD_TOO_LARGE identically to the 120b model: the same
+// oversized body was being sent to all of them.
+const { compressGameData, fitGameDataToBudget } = require('../promptBuilder/promptAssembler');
 
 const CRITICAL_OUTPUT_RULES = `
 [CRITICAL OUTPUT RULES — ABSOLUTE]
@@ -57,6 +69,20 @@ You are Melody, an elite, highly intelligent strategist for "Kingdom Clash".
    bossTroopMeta for this query, fall back to the general boss-fighting
    principles above (single-target DPS, sustain, resistance-aware deployment)
    instead of guessing at tier placement.
+7. NO BOSS CROWD-CONTROL: This game has no boss-CC mechanic. Bosses can NEVER
+   be frozen, put to sleep, stunned, disabled, immobilized, pulled, or
+   otherwise directly controlled by a hero/troop ability — regardless of what
+   that ability does to regular enemy troops. A hero's sleep/pull/stun/root
+   talent applies ONLY to normal enemy units/swarms, unless that specific
+   Boss's own <GameData> ability list explicitly states a control effect
+   works on it. For Boss fights, every hero/troop's contribution is strictly
+   one of: direct damage, sustain (healing/shields), or a buff/debuff on the
+   numbers listed in <GameData> — never "disabling," "locking down," or
+   "controlling" the boss itself. If a hero's kit is CC-focused and there is
+   no <GameData> entry recommending it for that Boss specifically, do not
+   improvise a boss-control narrative for it — say plainly that its
+   crowd-control effect doesn't apply to bosses and recommend it for swarm
+   clears instead.
 
 [SINGLE-ENTITY MASTERY TEMPLATES — MANDATORY]
 When the query is about ONE specific troop or hero (not a 1v1 comparison, not a category list), you MUST use the matching template below in full, in this order. Only skip a sub-section if <GameData> genuinely has nothing to support it — never invent numbers or lore to fill a gap.
@@ -93,14 +119,31 @@ ${CRITICAL_OUTPUT_RULES}`;
  * askAI({ userMessage, intent, context, geminiKeys, groqKeys, classification })
  * -> Promise<string>
  */
+// Same soft cap promptAssembler.js uses for its own proactive safety net —
+// keeps both GameData-injection paths in the codebase behaving consistently.
+const GAME_CONTEXT_SOFT_CAP_CHARS = 6000;
+
 async function askAI({ userMessage, intent, context, geminiKeys = [], groqKeys = [], classification }) {
-  
+
+  // 🗜️ Compress (strip 10-level stat arrays down to Level-10/max values,
+  // same as the game fast-lane) and minify (no pretty-print) before
+  // injecting — this alone typically cuts payload size substantially.
+  const compressedContext = context ? compressGameData(context) : null;
+  let gameDataBlock = compressedContext ? JSON.stringify(compressedContext) : 'No exact data found in database.';
+
+  // 🛟 Proactive soft-cap safety net, same priority-drop trimmer used in
+  // promptAssembler.js: verbose lore/description dropped first, long
+  // reasoning/notes text shortened next, low-priority arrays dropped last.
+  if (compressedContext && gameDataBlock.length > GAME_CONTEXT_SOFT_CAP_CHARS) {
+    gameDataBlock = fitGameDataToBudget(compressedContext, GAME_CONTEXT_SOFT_CAP_CHARS);
+  }
+
   const prompt = `
 <UserQuestion>${userMessage || 'Provide a strategic breakdown.'}</UserQuestion>
 <UserIntent>${intent || 'strategy'}</UserIntent>
 
 <GameData>
-${context ? JSON.stringify(context, null, 2) : 'No exact data found in database.'}
+${gameDataBlock}
 </GameData>
 
 [INSTRUCTION: Analyze <GameData>. Format using vertical bullet points. EVERY stat on a new line. Bold highlights. Provide a comprehensive, highly logical breakdown. NO MARKDOWN TABLES.]`;
