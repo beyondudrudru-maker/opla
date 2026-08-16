@@ -25,7 +25,11 @@ const DB_TIMEOUT_MS = 2500; // 🛡️ Max time to wait for memory fetches befor
 // ============================================================
 // 🚀 SMART EMBEDDED GAME TURN DETECTOR
 // ============================================================
-const GAME_KEYWORD_FALLBACK = /\b(stats|hp|damage|hero|troop|game|clash|synergy|best with|use with)\b/i;
+// 🐛 FIX: "boss" was missing from this list — a message that only mentions a
+// boss (no "hero"/"troop"/"stats" etc.) could fall through the keyword
+// fast-lane check entirely and rely solely on intent classification to be
+// recognized as a game turn.
+const GAME_KEYWORD_FALLBACK = /\b(stats|hp|damage|hero|troop|boss|game|clash|synergy|best with|use with)\b/i;
 const CASUAL_GREETINGS_REGEX = /\b(khabar|khana|kha liya|kya haal|hello|hi|hey|sup|wassup|gm|gn|kaise ho|batao)\b/i;
 const VS_FALSE_POSITIVE_REGEX = /\b(vs\.?|versus|compare)\b/i; // 🚀 ADDED TO CATCH VS TRAP
 
@@ -45,18 +49,7 @@ function isGameTurn({ content = '', gameData = null, intent = null } = {}) {
     return false;
   }
 
-  // 🧠 3. GENERAL-KNOWLEDGE GUARD (Fix for "Lord Ram ka weapon" trap)
-  // FACT/STRATEGY-style intents can also fire for pure general-knowledge
-  // questions that just happen to sound like a query ("sabse powerful
-  // weapon konsa tha"). Only trust these intents as game-lane triggers when
-  // there's real game signal — either a keyword hit or gameData the router
-  // actually resolved. No signal + no data = it's a real-world question,
-  // route it to the full persona path instead of the strict data-lock lane.
-  if (['STRATEGY', 'CALC', 'FACT', 'GOLD', 'GEM'].includes(intent) && !hasGameKeywords && !hasValidGameData) {
-    return false;
-  }
-
-  // 4. Fast-lane approvals
+  // 3. Fast-lane approvals
   if (hasValidGameData) return true;
   if (['STRATEGY', 'CALC', 'FACT', 'GOLD', 'GEM'].includes(intent)) return true;
 
