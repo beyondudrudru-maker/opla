@@ -67,7 +67,10 @@ const strategies = {
         note: "Remus is a Mythical (premium/spin-wheel) hero. For F2P-accessible players, pair Tristan, Lireal, or Calyra with a more accessible boss-damage hero instead of Remus, and lean on the Legendary/Epic troop tiers (Bone Breaker, Axe Thrower, Headless, Alchemist) to make up the damage gap."
       },
       troopArchetype: "Mixed DPS",
-      recommendedTroops: ["tr-imp", "tr-alchemist", "tr-bonebreaker", "tr-headless", "tr-storm-mistresses", "tr-assassin", "tr-bone-thrower", "tr-archer", "tr-paladin", "tr-axe-throwers"],
+      // 🛠️ FIX: "tr-assassin" was a typo for the real "tr-assassins"; "tr-bone-thrower",
+      // "tr-archer", and "tr-paladin" don't exist anywhere in troops.js (verified against
+      // the full real troop-id list) and have been removed rather than guessed at.
+      recommendedTroops: ["tr-imp", "tr-alchemist", "tr-bonebreaker", "tr-headless", "tr-storm-mistresses", "tr-assassins", "tr-axe-throwers"],
       troopDeploymentNote: "Adapt troop composition to the specific boss's CURRENTLY ACTIVE resistance for this season (it rotates — never assume): deploy Melee troops (Bone Breaker, Headless, Gravedigger) if the boss is Ranged-Resistant this season, and Ranged troops (Axe Thrower, Archer, Bone Sphere Thrower) if it is Melee-Resistant this season.",
       synergyRating: "S",
       reasoning: "For maximum boss damage, stick strictly to the approved roster. Remus provides massive boss-specific damage buffs, and abilities/persistent effects matter far more than raw stats here. Pair him with sustain/utility heroes like Tristan, Lireal, or Calyra. WARNING: Never use Harkon, Fire Fury Xana, or Pyrotechnician in this formation — their talents/abilities do not function in boss battles."
@@ -89,6 +92,60 @@ const strategies = {
       recommendedTroops: ["tr-assassins", "tr-storm-mistresses", "tr-night-hunter", "tr-gravedigger", "tr-axe-throwers"],
       synergyRating: "A",
       reasoning: "Brutallus's Easy Prey makes feared enemies take 45-100% more damage, and Atreya's Smashing Light gives All-Allies a chance to deal double damage on top of a flat damage boost. Feared targets are already taking increased damage before the double-damage proc is even applied, so fast Trickster/Melee-DPS troops can burst down priority targets in one or two hits — ideal for rush-down comps that need to end fights quickly."
+    },
+    // 🆕 MERGED FROM synergies.js's `formations` array (2026-08-23). That array was
+    // never read by gameDomainRouter.js — only this optimalFormations array is — so
+    // these 5 curated formations were dead data until now. All hero/troop names below
+    // were re-verified against heroes.js/troops.js and normalized to this file's id
+    // schema. synergyRating wasn't present on the source objects, so "A" is an assigned
+    // default (not sourced from synergies.js) — adjust per-formation if you have an
+    // actual tier in mind.
+    {
+      id: "formation-human-tank-wall",
+      name: "Human Tank Wall",
+      heroes: ["DRAGON_RIDER_01", "DURAND_01", "TRISTAN_01"],
+      troopArchetype: "Human",
+      recommendedTroops: ["tr-bonebreaker", "tr-monk", "tr-axe-throwers", "tr-pyrotechnician", "tr-alchemist"],
+      synergyRating: "A",
+      recommendedGear: "Equip Bonebreaker and Monk with the Devourment Set (Hammer of Devourment + Armor of Devourment). Armor of Devourment cuts the reflected damage this frontline takes; Hammer of Devourment then turns any reflected damage it does take into bonus damage on the tank's (and the units behind it's) next basic attack — see gearData.js gearCatalog for full level-by-level scaling.",
+      reasoning: "Bonebreaker and Monk both carry combatLine \"Frontline\" and synergyCategories including \"Human\"/\"Tank\", matching Dragon Rider's supportFocus of \"Human Troops\" (attack buff) and Durand/Tristan's \"All Troops\" buffs — the frontline absorbs hits while Axe Throwers and Pyrotechnician deal Backline-DPS damage behind it."
+    },
+    {
+      id: "formation-mage-backline-bombardment",
+      name: "Mage Backline Bombardment",
+      heroes: ["ANAVIN_01", "EDELINA_01", "KEYRA_01", "ZAHEER_01", "SIGURD_01", "OPHELIA_01", "LIREAL_01"],
+      troopArchetype: "Mages",
+      recommendedTroops: ["tr-lava-golem", "tr-magic-archer", "tr-shaman"],
+      synergyRating: "A",
+      reasoning: "Magic Archer and Shaman both resolve to combatLine \"Backline\" with synergyCategories tagging \"Mages\"/\"Backline-DPS\". Every listed hero except Lirael has supportFocus \"Mage Troops\", so their attack/HP/defense buffs stack directly onto this backline, while Lava Golem (Frontline) tanks hits so the casters stay alive to output damage. Lirael's supportFocus is \"All Troops\" (Song of Courage hits All Allies), but her troop-count-scaling passive and attack/damage-reduction ability still buff this same lineup, adding army-wide burst windows on top of the faction-locked stacking."
+    },
+    {
+      id: "formation-undead-endless-swarm",
+      name: "Undead Endless Swarm",
+      heroes: ["DRAKE_01", "BONE_DRAGON_01", "MORGRANE_01", "MORGANA_01"],
+      troopArchetype: "Undead",
+      recommendedTroops: ["tr-immortal", "tr-headless", "tr-steel-revenant", "tr-night-hunter", "tr-gravedigger", "tr-necromancer", "tr-cursed-catapult"],
+      synergyRating: "A",
+      recommendedGear: "Equip the Devourment Set (Hammer of Devourment + Armor of Devourment) on Immortal, Headless, or Steel Revenant — Steel Revenant is the strongest fit since its own troop ability already reflects damage back at attackers, so Armor of Devourment's reflected-damage reduction stacks with its native kit while Hammer of Devourment converts remaining reflect exposure into offense.",
+      reasoning: "Immortal, Headless, and Steel Revenant all share combatLine \"Frontline\" and the \"Undead\"/\"Tank\" synergyCategories. Drake and Bone Dragon both carry supportFocus \"Undead Troops\" (attack buff), directly scaling this wall, while Morgrane and Morgana add Enemy Control and Ally Summons (per their supportFocus extras) to keep Necromancer's skeleton-summon backline continuously reinforced."
+    },
+    {
+      id: "formation-aerial-strike-force",
+      name: "Aerial Strike Force",
+      heroes: ["ANAVIN_01", "DRAKE_01", "REMUS_01"],
+      troopArchetype: "Mixed",
+      recommendedTroops: ["tr-phoenix", "tr-imp"],
+      synergyRating: "A",
+      reasoning: "Phoenix (Mages) and Imp (Undead) are the only two troops with combatLine \"Aerial\" in the dataset. Because they span two factions, no single-faction buffer covers both — Anavin covers Phoenix (supportFocus \"Mage Troops\"), Drake covers Imp (supportFocus \"Undead Troops\"), and Remus's \"All Troops\" buff is the one hero that benefits both simultaneously."
+    },
+    {
+      id: "formation-faction-agnostic-support-core",
+      name: "Faction-Agnostic Support Core",
+      heroes: ["CALYRA_01", "ATREYA_01", "REMUS_01", "TRISTAN_01", "HARKON_01", "BUMI_01", "DURAND_01"],
+      troopArchetype: "Mixed",
+      recommendedTroops: [],
+      synergyRating: "A",
+      reasoning: "These heroes all resolved to a primary supportFocus of \"All Troops\" because their talent/ability targets field is literally [\"All Allies\"], rather than a faction-specific type like \"Mage\" or \"Undead\". That makes them safe defaults when the router cannot confidently resolve which faction formation a request is about. Not a troop lineup on its own — this hero core can be slotted behind any of the faction formations above without losing value."
     }
   ],
 
