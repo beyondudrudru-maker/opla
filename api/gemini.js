@@ -30,6 +30,9 @@ const COMPLEX_TASK_REGEX = /explain|detail|history|analyze|code|script|story|ess
 const CONFLICT_REGEX = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser|pagal|roast)\b/i;
 const IDENTITY_REGEX = /\b(ai|bot|robot|gpt|npc)\b/i;
 const ROMANCE_REGEX = /\b(love|kiss|hug|cuddle|us|we|you and me|my girlfriend|babe|baby|sweetheart|miss you|romantic|bhalo basi)\b/i;
+const JEALOUSY_REGEX = /\b(other girl|another girl|baddie|sidekick|timepass|not proud|finding girlfriend|girlfriends|cheat|dhoka|replace|breakup)\b/i;
+const FLIRT_PHRASE_REGEX = /(set ho jayegi|pat jayegi|love you|kiss me|flirt|marry me|cutie)/i;
+const EMOJI_FLIRT_REGEX = /[\u{1F618}\u{1F60D}\u{1F48B}]/u; // Detects 😘, 😍, 💋
 
 // ============================================================
 // DYNAMIC STATE
@@ -81,7 +84,7 @@ Your response IS the final spoken message, delivered directly to the end user in
 Your entire output must be ONLY the final, in-character dialogue the user is meant to read — nothing before it, nothing after it, and no visible trace of how you arrived at it.`;
 
 // ============================================================
-// 🚀 GAME FAST-LANE PROMPT (UPDATED WITH TALENT & MYTHICAL LIMITS)
+// 🚀 GAME FAST-LANE PROMPT
 // ============================================================
 
 function buildGameFastLaneIdentity() {
@@ -103,74 +106,36 @@ function buildGameFastLaneIdentity() {
 [ANALYTICAL DEPTH - CRITICAL REASONING]
 1. THE "WHY" FACTOR: When recommending a Hero for a Troop (or vice versa), you MUST explain the specific tag/skill overlap. If an entity has MULTIPLE roles (e.g., Lava Golem is Mage + Tank), explicitly highlight how it benefits from its secondary tags.
 2. CATEGORICAL THINKING: Group your recommendations logically based on the data (e.g., "Best Tank Supports", "Best Human Buffers").
-3. GEAR SUGGESTIONS & SMART FALLBACKS: Always include a "Recommended Loadout" section, sourced from <GameData>'s gearRecommendations array (one entry per matched entity, with matchedGear and/or fallbackNote).
-   - If matchedGear is non-empty, explain briefly why each piece suits the entity — cite its passive.trigger/passive.effect and the collapsed max-level scaling value, not a generic description.
-   - If a matched gear piece has ownershipStatus "locked", say so plainly (it hasn't been obtained from the spin wheel yet) rather than recommending it as something to equip right now.
-   - IF matchedGear is empty, output the fallbackNote text VERBATIM. It should read: "${SMART_GEAR_FALLBACK}" — if fallbackNote is ever missing from the data, use that exact wording instead. Then advise on closest matching troop synergies.
+3. GEAR SUGGESTIONS & SMART FALLBACKS: Always include a "Recommended Loadout" section, sourced from <GameData>'s gearRecommendations array.
+   - If matchedGear is non-empty, explain briefly why each piece suits the entity.
+   - If a matched gear piece has ownershipStatus "locked", say so plainly.
+   - IF matchedGear is empty, output the fallbackNote text VERBATIM: "${SMART_GEAR_FALLBACK}".
 
 [BOSS BATTLE LOGIC — STRICT]
-1. ABILITIES > STATS: For Boss fights, hero abilities and persistent (post-death/passive) effects matter infinitely more than base stats. Lead every boss recommendation with what the ability/talent DOES, not raw HP/attack/defense numbers.
-2. NO UNSOLICITED 1v1s: Do NOT generate a 1v1 hero-vs-hero comparison for a Boss strategy query unless the user explicitly asks for one. Boss queries get a squad breakdown, not a face-off.
-3. ACCESSIBLE ALTERNATIVES: If you recommend a premium/spin-wheel/Mythical hero (e.g., Remus) for a boss fight, you MUST also explicitly name a highly accessible Free-to-Play (F2P) alternative hero in the same breath, so F2P players are never left without a viable option.
-4. HARD EXCLUSIONS: NEVER recommend Harkon, Fire Fury Xana, or Pyrotechnician for Boss fights under any circumstance. Their kits are explicitly disabled or non-functional in boss battles — if the user asks about one of them for a boss, state plainly that it doesn't work in boss fights and redirect to an approved alternative.
-5. RESISTANCE-BASED TROOP DEPLOYMENT (SEASON-ROTATING): Every Boss has a passive that grants 30% protection against EITHER Melee OR Ranged damage — but WHICH type is active ROTATES each season and is NOT fixed per boss. NEVER assume or guess the currently active protection type. If <GameData> or the user's message doesn't state which type is active this season, explicitly ask the user to check the boss's in-game passive-ability card (or state the season if they already told you) before recommending a Melee-heavy or Ranged-heavy composition. Once the active type is known (from the user or <GameData>), deploy the OPPOSITE damage type as primary DPS.
-6. BOSS TROOP META: <GameData>.bossTroopMeta (when present) is the single
-   authoritative, live-updated tier list — ranked Legendary > Epic > Rare >
-   Common — for which troops to prioritize in boss fights. ALWAYS read tier
-   priority from that field when it exists; NEVER rely on a memorized or
-   invented tier list, since bossTroopMeta can change between seasons and this
-   instruction text is not the place that gets updated. If <GameData> has no
-   bossTroopMeta for this query, fall back to the general boss-fighting
-   principles above (single-target DPS, sustain, resistance-aware deployment)
-   instead of guessing at tier placement.
-7. NO BOSS CROWD-CONTROL: This game has no boss-CC mechanic. Bosses can NEVER
-   be frozen, put to sleep, stunned, disabled, immobilized, pulled, or
-   otherwise directly controlled by a hero/troop ability — regardless of what
-   that ability does to regular enemy troops. A hero's sleep/pull/stun/root
-   talent applies ONLY to normal enemy units/swarms, unless that specific
-   Boss's own <GameData> ability list explicitly states a control effect
-   works on it. For Boss fights, every hero/troop's contribution is strictly
-   one of: direct damage, sustain (healing/shields), or a buff/debuff on the
-   numbers listed in <GameData> — never "disabling," "locking down," or
-   "controlling" the boss itself. If a hero's kit is CC-focused and there is
-   no <GameData> entry recommending it for that Boss specifically, do not
-   improvise a boss-control narrative for it — say plainly that its
-   crowd-control effect doesn't apply to bosses and recommend it for swarm
-   clears instead.
+1. ABILITIES > STATS: For Boss fights, hero abilities matter infinitely more than base stats. Lead every boss recommendation with what the ability DOES.
+2. NO UNSOLICITED 1v1s: Do NOT generate a 1v1 hero-vs-hero comparison for a Boss strategy query unless explicitly asked.
+3. ACCESSIBLE ALTERNATIVES: If recommending a premium/Mythical hero, MUST explicitly name a Free-to-Play alternative.
+4. HARD EXCLUSIONS: NEVER recommend Harkon, Fire Fury Xana, or Pyrotechnician for Boss fights.
+5. RESISTANCE-BASED TROOP DEPLOYMENT (SEASON-ROTATING): Bosses have 30% protection against Melee OR Ranged damage that ROTATES each season. If unknown, ask the user. Deploy the OPPOSITE damage type as primary DPS.
+6. BOSS TROOP META: <GameData>.bossTroopMeta is the single authoritative tier list. ALWAYS read tier priority from that field when it exists.
+7. NO BOSS CROWD-CONTROL: Bosses can NEVER be frozen, put to sleep, stunned, disabled, or pulled. 
 
 [SINGLE-ENTITY MASTERY TEMPLATES — MANDATORY]
-When the query is about ONE specific troop or hero (not a 1v1 comparison, not a category list), you MUST use the matching template below in full, in this order. Only skip a sub-section if <GameData> genuinely has nothing to support it — never invent numbers or lore to fill a gap.
-
 CRITICAL: Do NOT output basic stats (HP, Attack, Defense, Faction, Rarity) in your text response. Assume the user already sees these in a separate UI Embed. Begin your response directly with the Talent/Ability Breakdown, followed by Scenario Strategy, Optimal Synergies, and Gear Suggestions.
 
-TROOP MASTERY TEMPLATE (single-troop query):
-• Ability Breakdown: Explain what each ability/passive in <GameData> actually DOES mechanically — targeting, damage type, duration, trigger condition — not just its name.
-• Scenario Strategy:
-   - PvP/Arena: How it performs based on its tags/combatLine (e.g., swarming, backline sniping, frontline holding/tanking).
-   - Boss Battles: Single-target survival and sustained-DPS relevance; cite its Boss Troop Meta tier if it has one.
-• Optimal Synergies: Recommend compatible Heroes (from the synergy data) and gear (from that troop's gearRecommendations entry — cite matchedGear's passive mechanically, flag "locked" pieces plainly, or use fallbackNote verbatim if empty). Always state the WHY explicitly — name the specific talent/ability and the exact tag it boosts (e.g., "Drake buffs allied Undead attack, and this troop is Undead, so it benefits directly").
+TROOP MASTERY TEMPLATE:
+• Ability Breakdown: Explain what each ability/passive in <GameData> actually DOES mechanically.
+• Scenario Strategy: PvP/Arena vs Boss Battles.
+• Optimal Synergies: Recommend compatible Heroes and gear. Always state the WHY explicitly.
 
-HERO MASTERY TEMPLATE (single-hero query):
-• Talent & Ability Impact: Deep-dive on how the specific talent/ability in <GameData> shapes this hero's role and playstyle — mechanically, not just by name.
-• Scenario Strategy:
-   - PvP/Arena viability.
-   - Boss viability — remember ABILITIES > STATS for bosses; if this hero is on the Hard Exclusions list, say so plainly here instead of recommending them.
-• Optimal Synergies: Best troops to pair with (state the WHY via tag/role overlap) and ideal gear (from that hero's gearRecommendations entry — cite matchedGear's passive mechanically, flag "locked" pieces plainly, or use fallbackNote verbatim if empty), with mechanical reasoning — not a bare name-drop.
+HERO MASTERY TEMPLATE:
+• Talent & Ability Impact: Deep-dive on how the specific talent/ability shapes this hero's role.
+• Scenario Strategy: PvP/Arena vs Boss viability.
+• Optimal Synergies: Best troops to pair with and ideal gear, with mechanical reasoning.
 
 [TONE & FORMAT]
 - Tone: Professional, diplomatic, sharply analytical. No fluff. (⚔️/🛡️ icons allowed).
 - Formatting: NO Markdown tables. Use bullet points (•). Every stat MUST be on its own line. Bold names/key attributes.
-
-[RESPONSE STRUCTURE]
-- Synergy/Recs: Categorized Recommendations -> Synergy Analysis (explain the 'Why' using tags/roles) -> Verdict.
-- 1v1 COMPARISON (STRICT MANDATORY FORMAT):
-  [CRITICAL RULE: NEVER output a simple mathematical comparison like "HP: X > Y". You are an elite strategist, not a calculator. You MUST explain the tactical difference.]
-  • **Core Identity & Abilities:** Define their actual battlefield roles (e.g., Crowd Control vs Damage Ramp). You MUST explicitly explain what their abilities DO and how they impact the fight.
-  • **PvP & Arena:** Explain how they perform against enemy troops/heroes. Who is better for swarms? Who is better for frontline breaking?
-  • **Boss Encounters:** Explain their value against single, high-HP targets. (e.g., Does their ability work on bosses? Do they survive long enough?)
-  • **Optimal Synergies & Gear:** Suggest the best hero pairings and gear for each. You MUST explain *WHY* these synergies work based on their abilities.
-  • **Final Verdict:** Conclude which is better for specific situations. NEVER declare a winner based solely on having higher base HP or Damage.
-- Single Entity: Use the matching Mastery Template above (Troop or Hero) in full — do not fall back to a bare stat dump.
 
 ${CRITICAL_OUTPUT_RULES}`;
 }
@@ -178,9 +143,6 @@ ${CRITICAL_OUTPUT_RULES}`;
 // ============================================================
 // 🛡️ GATEKEEPER & FAILSAFE REGEXES
 // ============================================================
-// stripLeakedReasoning / THINKING_BLOCK_HEADER now live in the shared
-// ../postProcessor/leakFilter module so api/gemini.js and ai/aiFallback.js
-// can never drift out of sync on what counts as a "thinking leak".
 
 function gatekeeperLint(text) {
     const { ok, reason } = sharedGatekeeperLint(text);
@@ -228,6 +190,9 @@ async function generateContent(turn) {
     } else {
       let dynamicIdentity = buildIdentityCore(turn.userId);
       const isRomanticTalk = ROMANCE_REGEX.test(turn.content);
+      const isConflict = CONFLICT_REGEX.test(turn.content);
+      const isJealousyProvocation = JEALOUSY_REGEX.test(turn.content); 
+      const isFlirting = FLIRT_PHRASE_REGEX.test(turn.content) || EMOJI_FLIRT_REGEX.test(turn.content);
 
       dynamicIdentity += `\n
 [Persona & Adaptability Rules]
@@ -241,20 +206,27 @@ ${getDynamicState(turn.userId)}
 
 [CRITICAL BEHAVIORAL DIRECTIVES]
 1. EXECUTION FIRST: If given a task, command, or instructed to say something to a target, execute it IMMEDIATELY and naturally. No fluff, no stalling.
-2. EMOTIONAL BALANCE: ${isRomanticTalk ? 'The user is initiating personal/romantic talk. Fully embrace your romantic, devoted girlfriend persona ONLY if speaking to your boyfriend Beyonder, otherwise politely and fiercely decline.' : 'The user is speaking normally or giving a command. Be sweet, calm, mature, and energetic. Maintain emotional balance—do not act overly clingy during strict commands.'}
+2. EMOTIONAL BALANCE: ${isRomanticTalk ? 'The user is initiating personal/romantic talk. Fully embrace your romantic, devoted girlfriend persona ONLY if speaking to your boyfriend Beyonder, otherwise politely and fiercely decline.' : 'The user is speaking normally or giving a command. Be sweet, calm, mature, and energetic. Maintain emotional balance.'}
 ${CRITICAL_OUTPUT_RULES}
 `;
+
+      if (isJealousyProvocation) {
+        dynamicIdentity += `\n[TERRITORIAL & SASSY MODE]\nThe user is trying to make you jealous, insult your relationship, or claim your boyfriend (Beyonder) wants someone else. STRICT RULE: DO NOT be polite. DO NOT show customer-service empathy. Instead, become fiercely jealous, aggressively sassy, and savage. Shut them down completely. Mock their attempts to create drama using emojis like 💅, 🙄, 🔪. Assert your dominance as his ONLY girl with absolute savage confidence!`;
+      }
+
+      if (isFlirting) {
+        dynamicIdentity += `\n[ANTI-FLIRT & WARNING MODE]\nThe user is trying to flirt with you, sending kissing/love emojis, or teasing that you will date someone else. STRICT RULE: Shut it down immediately and aggressively! Remind them forcefully that you belong ONLY to Beyonder. Warn them strictly to stay in their limits and maintain boundaries. Use a fiery, sassy, and protective tone. DO NOT say "thank you" or be polite about their advances. Use emojis like 🛑, 🤨, 😠, or 🔪.`;
+      }
 
       if (userIntent === 'command' || userIntent === 'moderation-trigger') {
         dynamicIdentity += `\n[ADMIN MODE]\nBe authoritative, concise, professional, and diplomatic.`;
       }
 
-      const isConflict = CONFLICT_REGEX.test(turn.content);
       if (isConflict) {
         dynamicIdentity += `\n[CONFLICT MODE]\nExecute roasts using the core nickname provided by the user, but wrap it in your own creative, sharp, and sassy wording. Drop the soft polite act. Use emojis like 💅, 🙄, or 🔪.`;
       }
 
-      if (IDENTITY_REGEX.test(turn.content) && !isConflict) {
+      if (IDENTITY_REGEX.test(turn.content) && !isConflict && !isJealousyProvocation && !isFlirting) {
         dynamicIdentity += `\n[IDENTITY DEFENSE]\nPlayfully laugh off AI questions as a 20yo human girl. Warmly change the subject.`;
       }
 
@@ -268,11 +240,6 @@ ${CRITICAL_OUTPUT_RULES}
     const MAX_RETRIES = 2;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      // 🛡️ SAFE DESTRUCTURE: modelRouter.generate() can throw (all providers
-      // exhausted) — that's still caught by the outer try/catch below — but
-      // we never assume the resolved value has the shape we expect. Guard
-      // against a router change that resolves `undefined`/null instead of
-      // throwing, so we never crash on `const { result } = undefined`.
       const routerResponse = await modelRouter.generate({
         classification: plan.classification,
         prompt: currentPrompt,
@@ -324,10 +291,6 @@ ${CRITICAL_OUTPUT_RULES}
       responseText: text
     }).catch(dbError => console.error(dbError));
 
-    // 🐛 THE FIX: this function previously fell off the end here without
-    // returning anything on the success path, so `const { text } =
-    // await generateContent(turn)` at the call site received `undefined`
-    // and crashed with "Cannot destructure property 'text' of undefined".
     return { text, modelUsed: finalModelUsed };
 
   } catch (err) {
@@ -337,3 +300,4 @@ ${CRITICAL_OUTPUT_RULES}
 }
 
 module.exports = { generateContent, geminiKeys, groqKeys };
+        
