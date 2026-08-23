@@ -1018,8 +1018,12 @@ function route(text, recentContext = '', userCorrections = []) {
                (guide.targetOpponent && text.toLowerCase().includes(guide.targetOpponent.toLowerCase()));
       });
 
+      // 🗜️ PAYLOAD BOUND: filtering already narrows this to matches, but on a
+      // generic name (e.g. a hero mentioned in many guides) match count is
+      // still unbounded. Cap to the 3 most relevant so one broad query can't
+      // silently balloon the context the same way an unfiltered dump would.
       if (relevantCounters.length > 0) {
-        strategyData.context.counterGuides = relevantCounters;
+        strategyData.context.counterGuides = relevantCounters.slice(0, 3);
         enrichmentAdded = true;
       }
     }
@@ -1033,8 +1037,10 @@ function route(text, recentContext = '', userCorrections = []) {
                mentionedTags.some(tag => formString.includes(tag.toLowerCase()));
       });
 
+      // 🗜️ PAYLOAD BOUND: same reasoning as counterGuides above — cap matched
+      // formations to the 3 most relevant instead of injecting every hit.
       if (relevantFormations.length > 0) {
-        strategyData.context.optimalFormations = relevantFormations;
+        strategyData.context.optimalFormations = relevantFormations.slice(0, 3);
         enrichmentAdded = true;
       } else if (entities.heroNames.length === 0 && entities.troopNames.length === 0 && mentionedTags.length === 0) {
         strategyData.context.optimalFormations = strategiesData.optimalFormations.slice(0, 3);
@@ -1059,7 +1065,12 @@ function route(text, recentContext = '', userCorrections = []) {
         relevantScenarios.forEach(g => {
           if (!seen.has(g.scenario)) { existingScenarios.push(g); seen.add(g.scenario); }
         });
-        strategyData.context.scenarioGuides = existingScenarios;
+        // 🗜️ PAYLOAD BOUND: this array is fed by TWO paths (the boss force-inject
+        // above, then this generic scenario match), so it can grow unbounded when
+        // a query's keywords happen to land in several guides at once. Cap to the
+        // 4 most relevant — each guide already carries a dense, formatted
+        // description block, so a handful is plenty for the AI to reason from.
+        strategyData.context.scenarioGuides = existingScenarios.slice(0, 4);
         enrichmentAdded = true;
       }
     }
