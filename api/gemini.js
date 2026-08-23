@@ -263,7 +263,7 @@ ${CRITICAL_OUTPUT_RULES}
       scrubbedText = scrubbedText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
       if (scrubbedText.endsWith(']')) scrubbedText = scrubbedText.slice(0, -1).trim();
 
-      if (scrubbedText !== '' && gatekeeperLint(scrubbedText)) {
+      if (scrubbedText !== '' && gatekeeperLint(scrubbedText).ok) {
         rawText = scrubbedText;
         break; 
       } else if (attempt < MAX_RETRIES) {
