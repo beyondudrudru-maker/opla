@@ -734,35 +734,48 @@ try {
     // (b) an auth problem — request completes but Discord returns 401, or
     // (c) neither — request succeeds, meaning the gateway WS is the only
     //     thing stuck, which points at a WS-specific network block.
-    (async () => {
-        try {
-            const https = require('node:https');
-            const probeResult = await new Promise((resolve, reject) => {
-                const req = https.get('https://discord.com/api/v10/users/@me', {
-                    headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}` },
-                    timeout: 10000
-                }, (res) => {
-                    let body = '';
-                    res.on('data', (c) => (body += c));
-                    res.on('end', () => resolve({ status: res.statusCode, body }));
+    //
+    // 🗜️ FIX: this used to run on every single boot, burning one extra
+    // Discord REST call on top of the one client.login() already makes
+    // internally — during a redeploy-heavy debugging session that doubles
+    // how fast you can trip Discord's global rate limit (the 429 we saw).
+    // Gated behind DEBUG_DISCORD_PROBE so it only fires when you actually
+    // set that env var to investigate a connection issue, not on normal
+    // production restarts. To enable: set DEBUG_DISCORD_PROBE=true in
+    // Render's env vars, redeploy, then unset it once you're done debugging.
+    if (process.env.DEBUG_DISCORD_PROBE === 'true') {
+        (async () => {
+            try {
+                const https = require('node:https');
+                const probeResult = await new Promise((resolve, reject) => {
+                    const req = https.get('https://discord.com/api/v10/users/@me', {
+                        headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}` },
+                        timeout: 10000
+                    }, (res) => {
+                        let body = '';
+                        res.on('data', (c) => (body += c));
+                        res.on('end', () => resolve({ status: res.statusCode, body }));
+                    });
+                    req.on('timeout', () => { req.destroy(); reject(new Error('REST probe timed out after 10s')); });
+                    req.on('error', reject);
                 });
-                req.on('timeout', () => { req.destroy(); reject(new Error('REST probe timed out after 10s')); });
-                req.on('error', reject);
-            });
-            if (probeResult.status === 200) {
-                console.log('✅ [PROBE] REST API reachable AND token is valid (got 200 from /users/@me).');
-                console.log('✅ [PROBE] This means the network path to Discord works and the token is good — the problem is specific to the WebSocket gateway connection.');
-            } else if (probeResult.status === 401) {
-                console.error('❌ [PROBE] REST API reachable but token was REJECTED (401 Unauthorized).');
-                console.error('❌ [PROBE] The token in DISCORD_TOKEN is invalid/revoked. Regenerate it in the Developer Portal and update the Render env var.');
-            } else {
-                console.warn(`⚠️ [PROBE] REST API responded with unexpected status ${probeResult.status}:`, probeResult.body.slice(0, 200));
+                if (probeResult.status === 200) {
+                    console.log('✅ [PROBE] REST API reachable AND token is valid (got 200 from /users/@me).');
+                    console.log('✅ [PROBE] This means the network path to Discord works and the token is good — the problem is specific to the WebSocket gateway connection.');
+                } else if (probeResult.status === 401) {
+                    console.error('❌ [PROBE] REST API reachable but token was REJECTED (401 Unauthorized).');
+                    console.error('❌ [PROBE] The token in DISCORD_TOKEN is invalid/revoked. Regenerate it in the Developer Portal and update the Render env var.');
+                } else {
+                    console.warn(`⚠️ [PROBE] REST API responded with unexpected status ${probeResult.status}:`, probeResult.body.slice(0, 200));
+                }
+            } catch (probeErr) {
+                console.error('❌ [PROBE] Could not reach Discord REST API at all:', probeErr.message);
+                console.error('❌ [PROBE] This points to an outbound network/egress problem on Render, not your code or token.');
             }
-        } catch (probeErr) {
-            console.error('❌ [PROBE] Could not reach Discord REST API at all:', probeErr.message);
-            console.error('❌ [PROBE] This points to an outbound network/egress problem on Render, not your code or token.');
-        }
-    })();
+        })();
+    } else {
+        console.log('ℹ️ [PROBE] Skipped (set DEBUG_DISCORD_PROBE=true in env vars to enable this diagnostic on next boot).');
+    }
     // ─────────────────────────────────────────────────────────────────
 
 
