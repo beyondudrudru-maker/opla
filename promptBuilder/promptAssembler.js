@@ -113,6 +113,13 @@ function renderTaskDirective(behavior = {}) {
 // boss records, talents, etc.) pass through untouched.
 const STAT_KEYS = ['hp', 'defense', 'attack'];
 
+// 🗜️ Shared array caps — synergy/gear lists are ranked-by-relevance, so the
+// top few entries carry all the analysis value; the tail was pure payload
+// weight the AI never cited. Used by both the synergy resolvers below and
+// buildGearRecommendations().
+const SYNERGY_LINK_CAP = 4;
+const GEAR_ITEM_CAP = 3;
+
 function compressStatValue(stat) {
   if (Array.isArray(stat)) {
     if (stat.length === 0) return stat;
@@ -285,7 +292,9 @@ function buildGearRecommendations(matchedHeroes, matchedTroops) {
     recs.push({
       entity: troop.name,
       entityType: 'troop',
-      matchedGear: (matchedGear || []).map(compressGearEntry),
+      // 🗜️ Capped to the top 3 most relevant pieces — the Optimal Synergies
+      // template only ever names the best gear pick(s), never the full list.
+      matchedGear: (matchedGear || []).slice(0, GEAR_ITEM_CAP).map(compressGearEntry),
       fallbackNote: fallbackNote || null
     });
   });
@@ -295,7 +304,7 @@ function buildGearRecommendations(matchedHeroes, matchedTroops) {
     recs.push({
       entity: hero.name,
       entityType: 'hero',
-      matchedGear: (matchedGear || []).map(compressGearEntry),
+      matchedGear: (matchedGear || []).slice(0, GEAR_ITEM_CAP).map(compressGearEntry),
       fallbackNote: fallbackNote || null
     });
   });
@@ -403,7 +412,10 @@ function findSynergyLinks(entity, synergies) {
   const asTroop = byTroopId.get(entityId) || [];
   const asHero = byHeroId.get(entityId) || [];
 
-  return [...asTroop, ...asHero].slice(0, 8); // keep the bundle lean
+  // 🗜️ Capped 8 -> 4: the AI only ever cites the top pick(s) in Optimal
+  // Synergies anyway (see STRATEGY_SYSTEM_INSTRUCTION) — the tail entries
+  // were pure payload weight with no analysis value.
+  return [...asTroop, ...asHero].slice(0, SYNERGY_LINK_CAP);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -502,7 +514,7 @@ function findTagOverlapSynergyLinks(entity, synergies) {
     }
   }
 
-  return links.slice(0, 8); // keep the bundle lean, same cap as curated links
+  return links.slice(0, SYNERGY_LINK_CAP); // same cap as curated links above
 }
 
 /**
@@ -580,6 +592,59 @@ function extractTargetedContext(userMessage, gameData) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 🗜️ Aggressive Deep Compression (413-prevention, pass 4.5 / token-cost pass)
+// ─────────────────────────────────────────────────────────────────────────────
+// Runs as the LAST step before JSON.stringify, on top of every pass above
+// (stat collapsing, gear collapsing, synergy/gear array caps). Strips bytes
+// that carry zero additional information for the AI:
+//   - null / undefined values — an absent key and an explicit null are the
+//     same signal to the model ("nothing here"), so the key is dropped
+//     entirely rather than serialized as `"field":null`.
+//   - empty arrays / empty objects — same reasoning; `"gear":[]` costs bytes
+//     to say "no gear," omitting the key says the same thing for free.
+//   - a fixed list of UI-only presentation keys (icons, colors, image URLs,
+//     sort order) that the Discord embed builder renders directly and the
+//     AI never reads for tactical analysis — these are pure UI plumbing
+//     that leaked into the context payload.
+// Never mutates the input; recurses through arrays/objects; leaves falsy-
+// but-meaningful values (0, false, '') untouched since those ARE real data
+// (e.g. a 0% resistance, a false flag).
+const UI_ONLY_KEYS = new Set([
+  'icon', 'iconUrl', 'iconURL', 'imageUrl', 'imageURL', 'thumbnail', 'thumbnailUrl',
+  'avatarUrl', 'portraitUrl', 'artUrl', 'artworkUrl', 'bannerUrl', 'color', 'colour',
+  'embedColor', 'embedColour', 'hexColor', 'sortOrder', 'displayOrder', 'uiOrder',
+  'badge', 'badgeUrl', 'emojiIcon', 'displayIcon', 'thumbnailURL'
+]);
+
+function _isEmptyContainer(v) {
+  if (Array.isArray(v)) return v.length === 0;
+  if (v && typeof v === 'object') return Object.keys(v).length === 0;
+  return false;
+}
+
+function deepCompress(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map(deepCompress)
+      .filter(v => v !== null && v !== undefined && !_isEmptyContainer(v));
+  }
+
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [key, val] of Object.entries(value)) {
+      if (UI_ONLY_KEYS.has(key)) continue;
+      const compressedVal = deepCompress(val);
+      if (compressedVal === null || compressedVal === undefined) continue;
+      if (_isEmptyContainer(compressedVal)) continue;
+      out[key] = compressedVal;
+    }
+    return out;
+  }
+
+  return value;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 🛟 Priority-Based Size-Budget Trimmer (shared safety net, 413-prevention pass 4)
 // ─────────────────────────────────────────────────────────────────────────────
 // Reused in two places: proactively here in renderGameContext (so an
@@ -604,7 +669,9 @@ function _firstSentence(str, maxLen) {
 function fitGameDataToBudget(data, maxChars) {
   if (data === null || data === undefined) return JSON.stringify(data);
 
-  let working = JSON.parse(JSON.stringify(data)); // deep clone — never mutate caller's object
+  // 🗜️ Deep-compress first (strips nulls/empty containers/UI-only keys) —
+  // often enough on its own to hit budget without touching lore/notes text.
+  let working = deepCompress(JSON.parse(JSON.stringify(data))); // deep clone — never mutate caller's object
   let out = JSON.stringify(working);
   if (out.length <= maxChars) return out;
 
@@ -675,7 +742,10 @@ function renderGameContext(gameData, userMessage) {
     return '';
   }
 
-  const compressed = compressGameData(targeted || gameData);
+  // 🗜️ deepCompress strips null/undefined/empty-array values and UI-only
+  // presentation keys (icons, colors, sort order) on top of the existing
+  // stat/gear compression — none of that carries analysis value for the AI.
+  const compressed = deepCompress(compressGameData(targeted || gameData));
 
   // 🗜️ Minified — no `null, 2` pretty-print — to keep GameData block as
   // token-lean as possible on top of the stat compression above.
@@ -748,4 +818,5 @@ module.exports = {
   extractTargetedContext, // exported for unit testing / reuse elsewhere in the pipeline
   resolveSynergyLinks,    // exported for unit testing / reuse — curated lookup + tag-overlap fallback
   fitGameDataToBudget,    // exported so modelRouter.js's emergency fallback can reuse the same priority-aware trim instead of a blind slice
+  deepCompress,           // exported for unit testing / reuse — strips null/empty/UI-only keys
 };
