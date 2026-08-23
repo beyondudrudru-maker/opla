@@ -178,6 +178,17 @@ const strategies = {
       recommendedHeroes: ["BUMI_01", "ZAHEER_01", "HARKON_01"],
       recommendedTroops: ["tr-alchemist", "tr-storm-mistresses", "tr-pyrotechnician"],
       tacticalAdvice: "Morgana will attempt to overwhelm your forces with continuous Undead summons. You must counter her with heavy AoE (Area of Effect) damage and crowd control. Use Zaheer to group her summons, or Bumi/Harkon to lay down massive area damage to clear the skeletons before they snowball."
+    },
+    {
+      // Grounded against real troops.js data: Magic Archer is combatLine
+      // "Backline", primaryRole "Ranger", analysis.weaknesses = ["Low
+      // movement speed"]. It can't reposition once your frontline closes
+      // the distance, and it has no way to disengage from a direct strike.
+      targetOpponent: "Magic Archer",
+      targetArchetype: "Backline Ranger / Piercing-Arrow DPS",
+      recommendedHeroes: ["DRAKE_01", "BONE_DRAGON_01", "DRAGON_RIDER_01"],
+      recommendedTroops: ["tr-steel-revenant", "tr-assassins", "tr-storm-mistresses"],
+      tacticalAdvice: "Magic Archer hits hard at max range but has Low movement speed and no self-peel — once engaged, it cannot reposition to re-open the gap. Send a heavy Frontline Tank (Steel Revenant or Stone Golem) forward to absorb its piercing volleys while closing distance, then route Assassins or Storm Mistresses — this dataset's real infiltration troops, both tagged Trickster/Midline — past the frontline to strike it directly rather than trying to out-range it."
     }
   ],
 
