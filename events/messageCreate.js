@@ -1,22 +1,36 @@
 /**
  * events/messageCreate.js
- * 
+ *
  * PURPOSE
  *   The primary entry point for Discord messages.
  *   Orchestrates the flow: Discord -> Deterministic Gatekeeper -> Decision Pipeline -> AI -> Memory
+ *
+ * 🚀 FIX (this version)
+ *   Previously, when gameDomainRouter returned an unresolved strategy
+ *   context, it was pretty-printed (JSON.stringify(context, null, 2)) and
+ *   appended RAW to the prompt, then sent via modelRouter.generate()
+ *   directly with a generic persona instruction — completely bypassing
+ *   compressGameData/fitGameDataToBudget, the STRATEGY-specific rules
+ *   (zero-hallucination lock, boss vs PvP logic, gear-fallback wording),
+ *   and the gatekeeper retry loop. That's fixed here: any message carrying
+ *   a gameDomainRouter context (or detected as a game turn) now routes
+ *   through aiFallback.askAI(), which handles compression, the modular
+ *   per-query-type instruction, the deterministic-cache fast path, and
+ *   retries — all in one place instead of three disconnected ones.
+ *   Non-game/social messages are unaffected and still use the generic
+ *   Melody persona instruction via modelRouter.generate() directly.
  */
 
 const { Events } = require('discord.js');
 const { getGoldGuide, getGemGuide } = require('../data/gameData.js');
 const supabase = require('../database/supabase.js');
 
-const { planTurn, finalizeTurn } = require('../decision/decisionPipeline.js');
-const { generate } = require('../router/modelRouter.js'); 
+const { planTurn, finalizeTurn, isGameTurn } = require('../decision/decisionPipeline.js');
+const { generate } = require('../router/modelRouter.js');
+const { askAI } = require('../ai/aiFallback.js');
 
-// 🚀 NEW: Import the Deterministic Game Domain Router
 const gameDomainRouter = require('../router/gameDomainRouter.js');
 
-// 🛡️ GLOBAL DEDUPLICATION SET (Prevents double processing)
 const processedMessages = new Set();
 
 module.exports = {
@@ -24,10 +38,8 @@ module.exports = {
     once: false,
     async execute(message, client) {
 
-        // Ignore bot messages
         if (message.author.bot) return;
 
-        // 🛡️ DEDUPLICATION CHECK
         if (processedMessages.has(message.id)) return;
         processedMessages.add(message.id);
         setTimeout(() => processedMessages.delete(message.id), 5000);
@@ -91,7 +103,7 @@ module.exports = {
         await message.channel.sendTyping();
 
         // 🚀 THE GATEKEEPER: DETERMINISTIC GAME ROUTING LAYER
-        let gameResult = { resolved: false, context: null, intent: 'UNKNOWN' };
+        let gameResult = { resolved: false, context: null, intent: 'UNKNOWN', queryFlags: {}, entities: {} };
         try {
             gameResult = gameDomainRouter.route(rawUserMessage);
             console.log(`[GAME ROUTER] input="${rawUserMessage}" intent=${gameResult.intent} resolved=${gameResult.resolved}`);
@@ -99,11 +111,9 @@ module.exports = {
             console.error('❌ [GAME ROUTER ERROR]', err);
         }
 
-        // IF RESOLVED: Instant deterministic answer. Bypass Gemini completely.
+        // IF RESOLVED: Instant deterministic answer. Bypass AI completely.
         if (gameResult.resolved === true) {
-            console.log(`[GAME ROUTER] Deterministic answer — Gemini bypassed`);
-            
-            // Save to memory so the AI remembers this interaction later!
+            console.log(`[GAME ROUTER] Deterministic answer — AI bypassed`);
             try {
                 await finalizeTurn({
                     channelId: message.channel.id,
@@ -114,19 +124,15 @@ module.exports = {
             } catch (memErr) {
                 console.error('❌ [MEMORY LOGGING ERROR]', memErr);
             }
-
             return await message.reply({ content: gameResult.reply, allowedMentions: { repliedUser: false } });
         }
 
-        // IF UNRESOLVED: Proceed to AI Pipeline
-        console.log(`[GAME ROUTER] Falling through to Melody AI`);
+        console.log(`[GAME ROUTER] Falling through — has context: ${!!gameResult.context}`);
 
-        // Construct dynamic context for the Pipeline
         const displayName = message.member?.displayName || message.author.username;
         const roles = message.member?.roles.cache.map(r => r.name) || [];
         const isGroupContext = message.channel.type !== 'DM';
-        
-        // Capture Mentions
+
         const mentions = {
             everyone: message.mentions.everyone,
             users: [...message.mentions.users.values()]
@@ -137,7 +143,7 @@ module.exports = {
                 })),
         };
 
-        const systemInstruction = `
+        const genericSystemInstruction = `
         You are MELODY, a highly intelligent AI assistant for the !NF!N!TY gaming clan.
         CRITICAL DIRECTIVES:
         1. ADAPTABILITY: Mirror the user's language, slang, and energy instantly (e.g., Hinglish, English, etc.).
@@ -146,7 +152,6 @@ module.exports = {
         `;
 
         try {
-            // STEP 1: Plan the Turn
             const turnData = await planTurn({
                 userId: message.author.id,
                 displayName,
@@ -157,26 +162,41 @@ module.exports = {
                 mentions
             });
 
-            // 🚀 INJECT STRATEGY CONTEXT: If the router prepared compact JSON for the AI, attach it to the prompt.
-            if (gameResult.context) {
-                const contextStr = typeof gameResult.context === 'object' ? JSON.stringify(gameResult.context, null, 2) : gameResult.context;
-                turnData.prompt += `\n\n<GameStrategyContext>\n${contextStr}\n</GameStrategyContext>`;
+            // 🚀 THE FIX: a game-router context (resolved:false + context present)
+            // now routes through aiFallback.askAI() — compression, per-type
+            // instruction, deterministic-cache fast path, and gatekeeper retry
+            // all happen there instead of raw JSON being glued onto a generic
+            // prompt. Non-game messages are untouched and still use generate()
+            // directly with the persona instruction.
+            const hasGameContext = !!gameResult.context;
+            const gameTurnDetected = isGameTurn({ content: rawUserMessage, gameData: gameResult.context, intent: turnData.classification?.intent });
+
+            let aiReply;
+
+            if (hasGameContext || gameTurnDetected) {
+                aiReply = await askAI({
+                    userMessage: rawUserMessage,
+                    intent: turnData.classification?.intent,
+                    context: gameResult.context,
+                    geminiKeys: [process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2],
+                    groqKeys: [process.env.GROQ_API_KEY, process.env.GROQ_API_KEY_2].filter(Boolean),
+                    classification: turnData.classification,
+                    queryFlags: gameResult.queryFlags || {},
+                    deterministic: gameResult.deterministic || null,
+                });
+            } else {
+                const aiResponse = await generate({
+                    classification: turnData.classification,
+                    prompt: turnData.prompt,
+                    userMessage: rawUserMessage,
+                    systemInstruction: genericSystemInstruction,
+                    geminiKeys: [process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2],
+                    hasGroq: !!process.env.GROQ_API_KEY,
+                    groqClient: client.groq
+                });
+                aiReply = aiResponse.result;
             }
 
-            // STEP 2: Execute the Smart Router (Melody AI)
-            const aiResponse = await generate({
-                classification: turnData.classification, 
-                prompt: turnData.prompt,                 
-                userMessage: rawUserMessage,             
-                systemInstruction: systemInstruction,
-                geminiKeys: [process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2], 
-                hasGroq: !!process.env.GROQ_API_KEY,
-                groqClient: client.groq 
-            });
-
-            const aiReply = aiResponse.result;
-
-            // STEP 3: ✂️ Chunk and Send Response
             if (aiReply.length > 1950) {
                 const chunks = aiReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
                 for (let i = 0; i < chunks.length; i++) {
@@ -191,7 +211,6 @@ module.exports = {
                 await message.reply({ content: aiReply, allowedMentions: { repliedUser: false } });
             }
 
-            // STEP 4: Save the interaction to Supabase Memory
             await finalizeTurn({
                 channelId: message.channel.id,
                 userId: message.author.id,
