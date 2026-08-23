@@ -12,8 +12,8 @@
  *   registry with (a) a large fixed per-provider tier bonus enforcing the
  *   Groq > Gemini > OpenRouter > Cloudflare order, and (b) a weight-class
  *   match bonus that pulls big models (openai/gpt-oss-120b,
- *   llama-3.3-70b-versatile, nvidia/nemotron-3-ultra-550b-a55b:free) to the
- *   front for heavy tasks, and small/fast models (openai/gpt-oss-20b,
+ *   moonshotai/kimi-k2-instruct-0905, nvidia/nemotron-3-ultra-550b-a55b:free)
+ *   to the front for heavy tasks, and small/fast models (openai/gpt-oss-20b,
  *   llama-3.1-8b-instant, nvidia/nemotron-nano-9b-v2:free) to the front for
  *   light tasks.
  *
@@ -57,9 +57,10 @@
  *     since the provider tier bonus already separates it from Groq/OpenRouter.
  *   - temperature/top_p/top_k are omitted for Gemini models whose metadata
  *     says supportsSampling:false (current Gemini 3.6/3.5-Lite behavior).
- *   - llama-3.3-70b-versatile / llama-3.1-8b-instant are first-class primary
- *     targets (weightClass 'heavy' / 'light' respectively) — no longer
- *     treated as a deprecated/legacy rung.
+ *   - llama-3.1-8b-instant is a first-class primary LIGHT target.
+ *     llama-3.3-70b-versatile was REMOVED 2026-08-23 (confirmed 404 on both
+ *     keys — permanently retired, not transient). openai/gpt-oss-120b and
+ *     moonshotai/kimi-k2-instruct-0905 are the current HEAVY targets on Groq.
  *   - Model discovery (Groq /models, OpenRouter /models) is OPTIONAL,
  *     cached for MODEL_DISCOVERY_TTL_MS, and never blocks the hot path —
  *     a discovery failure is silently ignored and the static registry wins.
@@ -261,16 +262,16 @@ const MODEL_REGISTRY = {
       gameStrategy: 5, longContext: 5, toolUse: 8, reliability: 6,
       costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
     },
-    // Primary HEAVYWEIGHT target (reasoning/coding/gameStrategy). No longer
-    // treated as "legacy" — Groq still serves it and it's one of the three
-    // named heavyweight targets for intent-based routing.
-    'llama-3.3-70b-versatile': {
-      provider: 'groq', model: 'llama-3.3-70b-versatile',
-      quality: 8, speed: 7, reasoning: 8, coding: 7, math: 6, casualChat: 7,
-      creativeWriting: 5, multilingual: 6, hindi: 4, structuredOutput: 7,
-      gameStrategy: 8, longContext: 6, toolUse: 5, reliability: 7,
-      costTier: 'free-limited', weightClass: 'heavy', maxOutputTokens: 2048, status: 'active'
-    },
+    // 🐛 REMOVED 2026-08-23: 'llama-3.3-70b-versatile' confirmed 404ing on
+    // BOTH configured Groq keys ("does not exist or you do not have access
+    // to it") — this is a permanently-retired model, not a transient issue.
+    // It was still marked weightClass:'heavy', so it kept winning a slot in
+    // the heavy-task candidate list, 404ing, opening a 45min INVALID_MODEL
+    // cooldown, then self-healing back to HALF_OPEN and repeating forever —
+    // wasting one round-trip on every gameStrategy cascade roughly once per
+    // 45min window instead of ever actually recovering. If Groq re-adds this
+    // slug (or a renamed successor) later, re-add the entry with the correct
+    // current model ID rather than restoring this one verbatim.
     // Primary LIGHTWEIGHT/fast target (casual/shortFactual/hinglish).
     'llama-3.1-8b-instant': {
       provider: 'groq', model: 'llama-3.1-8b-instant',
@@ -795,8 +796,8 @@ function scoreModel(entry, category, opts = {}) {
   }
 
   // Intent-based weight-class routing: heavyweight tasks favor big models
-  // (openai/gpt-oss-120b, llama-3.3-70b-versatile, the OpenRouter 70b free
-  // model); lightweight tasks favor small/fast models (gpt-oss-20b,
+  // (openai/gpt-oss-120b, moonshotai/kimi-k2-instruct-0905, the OpenRouter
+  // Nemotron free model); lightweight tasks favor small/fast models (gpt-oss-20b,
   // llama-3.1-8b-instant, openrouter/free). See HEAVY_CATEGORIES /
   // LIGHT_CATEGORIES above.
   if (entry.weightClass === 'heavy') {

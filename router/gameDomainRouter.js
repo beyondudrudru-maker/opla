@@ -1112,6 +1112,41 @@ function route(text, recentContext = '', userCorrections = []) {
     strategyData.sufficient = true;
   }
 
+  // ── 🆕 QUERY FLAGS — drives aiFallback's per-query-type instruction split ──
+  // Built from the same locals already computed above in this function, so
+  // no re-parsing of `text` happens here. isComparisonQuery is new: a pure
+  // "X vs Y" with exactly 2 total entities and no synergy/boss/counter
+  // signal — anything else (e.g. "combo for pvp effective with X") stays on
+  // the full reasoning path in aiFallback, which is correct since a combo
+  // recommendation needs judgment, not just a stat comparison.
+  const totalEntities = entities.heroNames.length + entities.troopNames.length;
+  const isComparisonQuery =
+    INTENT_PATTERNS.explicitVs.test(text) &&
+    totalEntities === 2 &&
+    !isSynergyQuery && !isBossQuery && !isCounterQuery;
+
+  const queryFlags = {
+    isBossQuery,
+    isSynergyQuery,
+    isComparisonQuery,
+    isSingleEntity: totalEntities === 1,
+    needsGear: INTENT_PATTERNS.equipment.test(text),
+  };
+
+  // Only offered as a deterministic-cache candidate for a clean 1v1 with
+  // both names resolved — gameStrategyEngine.compareEntities() needs both
+  // exact names to do the CPU-only lookup. aiFallback/strategyCache decide
+  // whether to actually use it; this just flags the possibility.
+  const deterministic = isComparisonQuery
+    ? {
+        queryType: 'compareEntities',
+        params: {
+          nameA: entities.heroNames[0] || entities.troopNames[0],
+          nameB: entities.heroNames[1] || entities.troopNames[1],
+        },
+      }
+    : null;
+
   if (strategyData.sufficient || prebuiltEmbeds.length > 0) {
     return {
       resolved: false,
@@ -1119,11 +1154,13 @@ function route(text, recentContext = '', userCorrections = []) {
       intent,
       entities,
       context:  strategyData.sufficient ? strategyData.context : null,
-      needsClarification
+      needsClarification,
+      queryFlags,
+      deterministic,
     };
   }
 
-  return { resolved: false, intent, entities, context: null, needsClarification };
+  return { resolved: false, intent, entities, context: null, needsClarification, queryFlags, deterministic };
 }
 
 module.exports = { route };
