@@ -24,7 +24,7 @@
 
 const modelRouter = require('../router/modelRouter.js');
 const { stripLeakedReasoning, gatekeeperLint } = require('../postProcessor/leakFilter');
-const { compressGameData, fitGameDataToBudget } = require('../promptBuilder/promptAssembler');
+const { compressGameData, deepCompress, fitGameDataToBudget } = require('../promptBuilder/promptAssembler');
 const { buildInstruction } = require('./promptInstructions');
 const strategyCache = require('../cache/strategyCache');
 
@@ -123,7 +123,13 @@ async function askAI({
   }
 
   // ── FULL PIPELINE: open-ended reasoning over GameData ──
-  const compressedContext = context ? compressGameData(context) : null;
+  // 🗜️ FIX: deepCompress() (strips null/undefined values, empty arrays/objects,
+  // and UI-only presentation keys) was already built and exported by
+  // promptAssembler.js and used inside its own renderGameContext() — but this
+  // call site only ever ran compressGameData() (stat-curve collapsing), so
+  // the null/empty-key stripping pass was silently skipped on every real
+  // askAI() call. Chained here to match what renderGameContext() already does.
+  const compressedContext = context ? deepCompress(compressGameData(context)) : null;
   let gameDataBlock = compressedContext ? JSON.stringify(compressedContext) : 'No exact data found in database.';
 
   if (compressedContext && gameDataBlock.length > GAME_CONTEXT_SOFT_CAP_CHARS) {
