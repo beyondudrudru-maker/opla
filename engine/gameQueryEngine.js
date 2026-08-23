@@ -664,7 +664,11 @@ function getBestTroopForRole(role, opts = {}) {
   const idx   = _levelIndex(level);
   if (idx === null) return [];
 
-  const matches = findTroops({ role });
+  let matches = findTroops({ role });
+  if (opts.excludeName) {
+    const ex = normalize(opts.excludeName);
+    matches = matches.filter(t => normalize(t.name) !== ex);
+  }
   return matches
     .map(t => ({ troop: t, hp: (typeof t.levels.hp[idx] === 'number') ? t.levels.hp[idx] : null }))
     .filter(x => x.hp !== null)
@@ -681,6 +685,10 @@ function getBestTroopForAttack(opts = {}) {
 
   let pool = troops;
   if (opts.category) pool = findTroops({ category: opts.category });
+  if (opts.excludeName) {
+    const ex = normalize(opts.excludeName);
+    pool = pool.filter(t => normalize(t.name) !== ex);
+  }
 
   return pool
     .map(t => ({ troop: t, damage: (typeof t.levels.damage[idx] === 'number') ? t.levels.damage[idx] : null }))
@@ -688,6 +696,95 @@ function getBestTroopForAttack(opts = {}) {
     .sort((a, b) => b.damage - a.damage)
     .slice(0, limit)
     .map(x => ({ troopId: x.troop.id, troopName: x.troop.name, level, damage: x.damage }));
+}
+
+/**
+ * _speedOrdinal(speed)
+ * Every real troop record in gameKnowledge.js stores baseStats.speed as a
+ * qualitative tier string ("Low" | "Medium" | "High") — never a raw number.
+ * (Verified against all 20 real troop entries: zero use a numeric speed.)
+ * This maps that tier onto a comparable ordinal so tier-vs-tier comparisons
+ * are possible. If a future data update ever supplies a genuine numeric
+ * speed value, it's passed through unchanged so comparisons still work.
+ * Anything else (missing/unrecognized) returns null — never guessed at.
+ */
+const _SPEED_TIER_ORDINAL = { low: 1, medium: 2, high: 3 };
+function _speedOrdinal(speed) {
+  if (typeof speed === 'number') return speed;
+  if (typeof speed === 'string') {
+    const ord = _SPEED_TIER_ORDINAL[speed.trim().toLowerCase()];
+    return (typeof ord === 'number') ? ord : null;
+  }
+  return null;
+}
+
+/**
+ * getFasterTroopsThan(speedThreshold, opts)
+ * Real-data helper for counter-formation building — never invents troops.
+ * Returns troops whose baseStats.speed tier is strictly above a given
+ * threshold tier (e.g. an enemy's own speed, so you get units that close
+ * the gap before it acts), ranked first by speed tier then by damage-at-
+ * level. Troops with no recognized baseStats.speed are excluded rather
+ * than guessed at. opts.excludeName removes the target itself from the
+ * pool (relevant when the target's own tier ties the threshold).
+ */
+function getFasterTroopsThan(speedThreshold, opts = {}) {
+  const level = opts.level || 10;
+  const limit = opts.limit || 5;
+  const idx   = _levelIndex(level);
+  const thresholdOrdinal = _speedOrdinal(speedThreshold);
+  if (idx === null || thresholdOrdinal === null) return [];
+
+  let pool = troops;
+  if (opts.category) pool = findTroops({ category: opts.category });
+  if (opts.excludeName) {
+    const ex = normalize(opts.excludeName);
+    pool = pool.filter(t => normalize(t.name) !== ex);
+  }
+
+  return pool
+    .map(t => ({
+      troop: t,
+      ordinal: t.baseStats ? _speedOrdinal(t.baseStats.speed) : null,
+      damage: (typeof t.levels.damage[idx] === 'number') ? t.levels.damage[idx] : null
+    }))
+    .filter(x => x.ordinal !== null && x.ordinal > thresholdOrdinal && x.damage !== null)
+    .sort((a, b) => (b.ordinal - a.ordinal) || (b.damage - a.damage))
+    .slice(0, limit)
+    .map(x => ({ troopId: x.troop.id, troopName: x.troop.name, level, damage: x.damage, speed: x.troop.baseStats.speed }));
+}
+
+/**
+ * getInfiltratorCandidates(opts)
+ * Real-data helper: this dataset has no troop whose kit is "outrun the
+ * backline via a large numeric speed gap" — verified across all 20 real
+ * troops, the only two "High" speed units (Bonebreaker, Monk) are both
+ * Frontline Tanks, not flankers. The troops actually described as reaching
+ * a backline (Assassins: "sneaking around the shadows"; Storm Mistresses:
+ * "fully elusive on the battlefield"; Gravedigger: "dig into the ground
+ * near troops at back and kill them silently") all share
+ * analysis.primaryRole "Trickster" and combatLine "Midline" — that's the
+ * dataset's real, structural backline-breach archetype. Ranked by damage
+ * at level so the hardest-hitting infiltrator comes first.
+ */
+function getInfiltratorCandidates(opts = {}) {
+  const level = opts.level || 10;
+  const limit = opts.limit || 5;
+  const idx   = _levelIndex(level);
+  if (idx === null) return [];
+
+  let pool = findTroops({ role: 'Trickster' });
+  if (opts.excludeName) {
+    const ex = normalize(opts.excludeName);
+    pool = pool.filter(t => normalize(t.name) !== ex);
+  }
+
+  return pool
+    .map(t => ({ troop: t, damage: (typeof t.levels.damage[idx] === 'number') ? t.levels.damage[idx] : null }))
+    .filter(x => x.damage !== null)
+    .sort((a, b) => b.damage - a.damage)
+    .slice(0, limit)
+    .map(x => ({ troopId: x.troop.id, troopName: x.troop.name, level, damage: x.damage, combatLine: x.troop.combatLine }));
 }
 
 function getBestHeroForTroop(troopName, opts = {}) {
@@ -916,6 +1013,8 @@ module.exports = {
   // Ranking helpers
   getBestTroopForRole,
   getBestTroopForAttack,
+  getFasterTroopsThan,          // real-data speed-TIER ranking for counter-formation building (fixed: ordinal comparison, not raw number)
+  getInfiltratorCandidates,     // NEW — real-data Trickster-role ranking (this dataset's actual backline-breach archetype)
   getBestHeroForTroop,
 
   // NEW — explicit synergy/recommendation context (recommendedHeroes /

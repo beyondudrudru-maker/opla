@@ -506,6 +506,143 @@ function resolveBossScenario(text) {
 }
 
 // ---------------------------------------------------------------
+// 3.7 COUNTER-FORMATION BUILDER (deterministic, zero-hallucination)
+// ---------------------------------------------------------------
+// 🆕 Root-cause fix: "beat/counter a formation of X" queries previously had
+// NO deterministic engine function at all — they fell straight to the full
+// AI-reasoning path with only the target's own weakness text (if any) as
+// real data, so the model had to freehand-invent placeholder categories
+// ("Tank-role troops", "Rogue/Assassin tag units") to fill out a formation.
+// This function ONLY ever returns troop/hero names that queryEngine
+// actually resolved from gameKnowledge.js — if a slot can't be filled with
+// real data, it's left empty and flagged in missingInformation instead of
+// guessed at.
+function buildCounterFormation(targetName, options = {}) {
+  const level = options.level || 10;
+  const limit = options.limit || 5;
+
+  if (!queryEngine.findEntityByName) {
+    return { error: `queryEngine.findEntityByName is not available. Please ensure gameQueryEngine.js is updated.` };
+  }
+
+  const target = queryEngine.findEntityByName(targetName);
+  if (!target) return { error: `Entity "${targetName}" not found in gameKnowledge.js database.` };
+  if (target.type !== 'troop') {
+    return { error: `"${targetName}" is a hero, not an enemy troop — counter-formation building currently only applies to countering enemy troop compositions.` };
+  }
+
+  const troop = target.data;
+  const weaknesses  = troop.analysis ? (troop.analysis.weaknesses || []) : [];
+  const primaryRole = troop.analysis ? troop.analysis.primaryRole : null;
+  const combatLine  = troop.combatLine || null;
+  const speed       = troop.baseStats ? troop.baseStats.speed : null;
+
+  const missingInformation = [];
+
+  // Frontline: real Tank-role troops ranked by HP — soaks whatever this
+  // enemy deals, regardless of its specific kit. Excludes the target
+  // itself (relevant when the target IS a Tank) so a troop never gets
+  // recommended as its own counter.
+  const frontline = _rankTankCandidates(level, limit, troop.name);
+  if (!frontline.length) missingInformation.push('No Tank-role troops found in gameKnowledge.js to fill the frontline slot.');
+
+  // Backline / strike package: how to actually threaten THIS target, not a
+  // generic "highest damage" pick. Tried in order, each pulling ONLY from
+  // real gameKnowledge.js records:
+  //   1. Infiltrator (Trickster-role) troops — this dataset's real
+  //      backline-breach archetype — when the target itself sits outside
+  //      the Frontline/Tank slot (i.e. it's a target actually worth
+  //      bypassing a shield to reach).
+  //   2. Troops with a strictly higher speed TIER than the target's
+  //      recorded tier (Low < Medium < High), when the target's speed is
+  //      on record. NOTE: no real troop in this dataset is both
+  //      High-speed and non-Tank, so this branch will rarely fire — that's
+  //      an accurate reflection of the data, not a bug to paper over.
+  //   3. Plain highest-damage ranking, only as a last resort.
+  let backline = [];
+  let strikeMethod = null;
+
+  const isBreachWorthyTarget = combatLine && combatLine !== 'Frontline' && primaryRole !== 'Tank';
+  if (isBreachWorthyTarget && queryEngine.getInfiltratorCandidates) {
+    const infiltrators = queryEngine.getInfiltratorCandidates({ level, limit, excludeName: troop.name });
+    if (infiltrators.length) { backline = infiltrators; strikeMethod = 'infiltrator'; }
+  }
+
+  if (!backline.length && typeof speed === 'string' && queryEngine.getFasterTroopsThan) {
+    const faster = queryEngine.getFasterTroopsThan(speed, { level, limit, excludeName: troop.name });
+    // A faster-tier Tank is still just another frontline unit, not a real
+    // strike pick — prefer faster-tier troops that aren't Tank-role when
+    // any exist, and only fall back to faster-tier Tanks if that's all
+    // the real data offers.
+    const fasterNonTank = faster.filter(f => {
+      const t = queryEngine.getTroop(f.troopName);
+      return !t || !t.analysis || t.analysis.primaryRole !== 'Tank';
+    });
+    if (fasterNonTank.length) {
+      backline = fasterNonTank; strikeMethod = 'speed-tier';
+    } else if (faster.length) {
+      backline = faster; strikeMethod = 'speed-tier-tank-only';
+    }
+  }
+
+  if (strikeMethod === 'speed-tier-tank-only') {
+    missingInformation.push(`Every troop with a speed tier above "${troop.name}"'s ("${speed}") is itself Tank-role in gameKnowledge.js — no faster non-Tank strike unit exists, so the faster Tank(s) are offered as the closest real match.`);
+  }
+
+  if (!backline.length) {
+    backline = _rankDamageCandidates(level, limit, null, troop.name);
+    strikeMethod = 'damage-fallback';
+    missingInformation.push(
+      isBreachWorthyTarget
+        ? 'No Trickster-role infiltrator troops or higher-speed-tier troops were available in gameKnowledge.js for this target — falling back to a plain highest-damage ranking instead of a targeted breach unit.'
+        : `"${troop.name}" is itself Frontline/Tank, so no infiltrator or faster-tier counter applies — falling back to a plain highest-damage ranking.`
+    );
+  }
+
+  if (!weaknesses.length) {
+    missingInformation.push(`No analysis.weaknesses entries exist for "${troop.name}" in gameKnowledge.js — ranking still applied via role/combatLine, but no declared weakness to cite directly.`);
+  }
+
+  // Support heroes: curated synergy for BOTH the top frontline pick and the
+  // top backline/strike pick — a real, data-backed pairing instead of a
+  // freehand name. Deduped in case the same hero supports both slots.
+  const frontSupport  = frontline[0] ? findBestHeroesForTroop(frontline[0].troopName, { limit: 2 }) : { candidates: [] };
+  const strikeSupport = backline[0]  ? findBestHeroesForTroop(backline[0].troopName,  { limit: 2 }) : { candidates: [] };
+  const seenHeroIds = new Set();
+  const supportHeroes = [...(frontSupport.candidates || []), ...(strikeSupport.candidates || [])]
+    .filter(h => {
+      if (!h.heroId || seenHeroIds.has(h.heroId)) return false;
+      seenHeroIds.add(h.heroId);
+      return true;
+    });
+
+  const strikeMethodology = strikeMethod === 'infiltrator'
+    ? `real Trickster-role troops — this dataset's documented backline-breach archetype — ranked by damage (queryEngine.getInfiltratorCandidates), used because "${troop.name}" sits in a ${combatLine} position rather than Frontline/Tank`
+    : strikeMethod === 'speed-tier'
+      ? `non-Tank troops with a speed tier above ${troop.name}'s ("${speed}"), ranked by damage (queryEngine.getFasterTroopsThan, filtered to exclude Tank-role results)`
+      : strikeMethod === 'speed-tier-tank-only'
+        ? `troops with a speed tier above ${troop.name}'s ("${speed}"), ranked by damage (queryEngine.getFasterTroopsThan) — every such troop happens to be Tank-role in gameKnowledge.js, so no non-Tank faster option exists`
+        : `highest-damage troops at level ${level} (queryEngine.getBestTroopForAttack), used because no infiltrator or faster-tier troop was found in gameKnowledge.js for this target`;
+
+  const confidence = (frontline.length && strikeMethod === 'infiltrator') ? 'high'
+    : (frontline.length && strikeMethod === 'speed-tier') ? 'high'
+    : (frontline.length && backline.length) ? 'medium'
+    : (frontline.length || backline.length) ? 'low'
+    : 'low';
+
+  return {
+    target: { name: troop.name, primaryRole, combatLine, weaknesses, speed },
+    frontline,
+    backline,
+    strikeMethod,
+    supportHeroes,
+    methodology: `Frontline = real Tank-role troops ranked by HP at level ${level} (queryEngine.getBestTroopForRole). Backline = ${strikeMethodology}. Support heroes = curated troopHeroSynergy entries for the top frontline AND backline picks (gameQueryEngine.findHeroSynergies) — never a freehand guess.`,
+    confidence,
+    missingInformation
+  };
+}
+
+// ---------------------------------------------------------------
 // 4. HERO BUFF ANALYSIS
 // ---------------------------------------------------------------
 
@@ -730,8 +867,8 @@ function calculateBattlePower(options = {}) {
 // 9. RANKING HELPERS (used by answerStrategyQuery — no universal "best" formula)
 // ---------------------------------------------------------------
 
-function _rankTankCandidates(level, limit) {
-  const ranked = queryEngine.getBestTroopForRole('Tank', { level, limit });
+function _rankTankCandidates(level, limit, excludeName) {
+  const ranked = queryEngine.getBestTroopForRole('Tank', { level, limit, excludeName });
   return ranked.map(r => {
     const troop = queryEngine.getTroop(r.troopName);
     const idx = level - 1;
@@ -739,8 +876,8 @@ function _rankTankCandidates(level, limit) {
   });
 }
 
-function _rankDamageCandidates(level, limit, category) {
-  const ranked = queryEngine.getBestTroopForAttack({ level, limit, category });
+function _rankDamageCandidates(level, limit, category, excludeName) {
+  const ranked = queryEngine.getBestTroopForAttack({ level, limit, category, excludeName });
   return ranked.map(r => {
     const troop = queryEngine.getTroop(r.troopName);
     return {
@@ -777,6 +914,14 @@ function answerStrategyQuery(query) {
     // an unrelated hero-vs-hero or generic "which hero" match.
     if (_detectBossKeywords(q).length > 0) {
       type = 'bossScenario'; params = { text: q };
+    } else if ((m = qLower.match(/(?:beat|counter|against)\s+(?:a\s+)?(?:formation|team|army|comp)\s*(?:full of|of|with)?\s*(.+)/i))) {
+      // 🆕 "strategic formation to beat a formation full of X" / "counter a
+      // team of X" style phrasing. Free-text extraction is best-effort —
+      // structured { type: 'counterFormation', params: { targetName } }
+      // from the router is more reliable and preferred for production use.
+      type = 'counterFormation'; params = { targetName: m[1].trim(), level: _extractLevel(q) || 10 };
+    } else if ((m = qLower.match(/^counter\s+(.+)/i))) {
+      type = 'counterFormation'; params = { targetName: m[1].replace(/\b(formation|team|army|comp)\b/gi, '').trim(), level: _extractLevel(q) || 10 };
     } else if (qLower.match(/best\s+tank/)) {
       type = 'bestTank'; params = { level: _extractLevel(q) || 10 };
     } else if ((m = qLower.match(/best\s+(\w+)\s+troop(?:\s+at\s+level\s*(\d+))?/))) {
@@ -817,6 +962,30 @@ function answerStrategyQuery(query) {
         recommendation: top ? `${top.scenario}: ${top.notes}` : `No scenario guide found for boss keyword(s): ${result.matchedBossKeywords.join(', ')}.`,
         confidence: result.usedFallback ? 'medium' : 'high',
         missingInformation: result.scenarioGuides.length ? [] : [`Boss keyword(s) ${result.matchedBossKeywords.join(', ')} detected but no matching or fallback scenario guide exists in gameKnowledge.js.`]
+      };
+    }
+
+    case 'counterFormation': {
+      const result = buildCounterFormation(params.targetName, { level: params.level || 10 });
+      if (result.error) {
+        return { queryType: 'counterFormation', data: null, calculations: null, candidates: [], ranking: [], recommendation: null, confidence: 'low', missingInformation: [result.error] };
+      }
+      const fl = result.frontline.map(f => f.troopName).join(', ') || 'none found';
+      const bl = result.backline.map(b => b.troopName).join(', ') || 'none found';
+      const heroLine = result.supportHeroes.length ? ` Support: ${result.supportHeroes.map(h => h.heroName).join(', ')}.` : '';
+      const strikeLabel = result.strikeMethod === 'infiltrator' ? 'Backline (infiltrators)'
+        : result.strikeMethod === 'speed-tier' ? 'Backline (faster-tier)'
+        : result.strikeMethod === 'speed-tier-tank-only' ? 'Backline (faster, Tank-only)'
+        : 'Backline (highest-damage fallback)';
+      return {
+        queryType: 'counterFormation',
+        data: result.target,
+        calculations: { methodology: result.methodology },
+        candidates: { frontline: result.frontline, backline: result.backline, supportHeroes: result.supportHeroes },
+        ranking: { frontline: result.frontline.map(f => f.troopName), backline: result.backline.map(b => b.troopName) },
+        recommendation: `Vs ${result.target.name}: Frontline — ${fl}. ${strikeLabel} — ${bl}.${heroLine}`,
+        confidence: result.confidence,
+        missingInformation: result.missingInformation
       };
     }
 
@@ -951,7 +1120,7 @@ function answerStrategyQuery(query) {
         queryType: 'unrecognized', data: null, calculations: null, candidates: [], ranking: [], recommendation: null, confidence: 'low',
         missingInformation: [
           `Could not match "${typeof query === 'string' ? query : JSON.stringify(query)}" to a supported query pattern.`,
-          'Supported patterns: best tank / best <category> troop [at level N] / "is X Lv.A worth upgrading from Lv.B" / which hero increases <category> hp|attack|defense / which hero is best for <troop> / how good is <troop> Lv.N with a N% hp|damage buff / what troop gives highest damage at level N / X vs Y.',
+          'Supported patterns: best tank / best <category> troop [at level N] / "is X Lv.A worth upgrading from Lv.B" / which hero increases <category> hp|attack|defense / which hero is best for <troop> / how good is <troop> Lv.N with a N% hp|damage buff / what troop gives highest damage at level N / X vs Y / beat|counter a formation of X.',
           'For reliable routing (recommended for production use), pass a structured { type, params } object instead of a free-text string.'
         ]
       };
@@ -972,5 +1141,6 @@ module.exports = {
   calculateBattlePower,
   answerStrategyQuery,
   compareEntities,
-  resolveBossScenario
+  resolveBossScenario,
+  buildCounterFormation
 };
