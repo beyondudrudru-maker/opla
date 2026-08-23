@@ -17,17 +17,16 @@ const express = require('express');
 // 1. IMPORT MODULES
 const { ramClient } = require('./database/supabaseClient');
 const melody = require('./api/gemini');
+const { askAI } = require('./ai/aiFallback');
 const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval');
 const reflectionJob = require('./reflection/reflectionJob');
 const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData');
 
 // 🚀 IMPORT THE GAME ROUTER
 const gameDomainRouter = require('./router/gameDomainRouter');
-// 🗜️ Same compression used everywhere else GameData gets injected — this
-// file was building its own [GAME DATA] block independently with
-// JSON.stringify(..., null, 2), bypassing compression entirely and
-// contributing to 413 Request Entity Too Large errors from Groq/Gemini.
-const { compressGameData } = require('./promptBuilder/promptAssembler');
+// 🗜️ Compression/budget-fitting for GameData now happens inside
+// askAI() (ai/aiFallback.js) — this file no longer builds its own
+// [GAME DATA] block, so promptAssembler isn't needed directly here.
 
 // 🛡️ DEDUPLICATION SET (Global)
 const processedMessages = new Set();
@@ -360,35 +359,42 @@ client.on(Events.MessageCreate, async (message) => {
             console.log(`[GAME ROUTER] Falling through to Melody AI`);
 
             let knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
-
-            // 🚀 AGGRESSIVE STRATEGY CONTEXT INJECTION FOR THE AI
-            let aiPromptContent = cleanText;
-            if (gameResult.context) {
-                const compressedContext = typeof gameResult.context === 'object'
-                    ? compressGameData(gameResult.context)
-                    : gameResult.context;
-                const contextStr = typeof compressedContext === 'object'
-                    ? JSON.stringify(compressedContext)
-                    : compressedContext;
-
-                aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question. Compare the stats directly and provide strategic advice based ONLY on these numbers. Do not invent abilities or stats.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${cleanText}`;
-            }
-
             const roles = message.member ? message.member.roles.cache.map(r => r.name.toLowerCase()) : [];
 
-            // Execute the AI generation
-            const { text: aiReply, modelUsed, debug } = await melody.generateContent({
-                userId: message.author.id,
-                displayName: message.author.username,
-                roles,
-                channelId: message.channel.id,
-                content: aiPromptContent, // <-- Sends the strictly formatted payload
-                isGroupContext: Boolean(message.guild),
-                mentionedUsers,
-                knowledgeContext,
-            });
+            // 🚀 THE FIX: game queries now route through askAI() — real
+            // compression + budget-fitting + per-query-type modular
+            // instructions + gatekeeper retries — instead of a raw
+            // JSON-glued-onto-prompt string that was blowing past Groq's
+            // 413 payload limit. Social/non-game turns are untouched.
+            let aiReply, modelUsed = 'fallback';
 
-            console.log(`🧠 [MELODY] intent=${debug?.intent} tier=${debug?.tier} model=${modelUsed}`);
+            if (gameResult.context) {
+                aiReply = await askAI({
+                    userMessage: cleanText,
+                    intent: gameResult.intent,
+                    context: gameResult.context,
+                    geminiKeys: melody.geminiKeys,
+                    groqKeys: melody.groqKeys,
+                    classification: { intent: gameResult.intent },
+                    queryFlags: gameResult.queryFlags || {},
+                    deterministic: gameResult.deterministic || null,
+                });
+                console.log(`🧠 [MELODY] game path — intent=${gameResult.intent} via askAI()`);
+            } else {
+                const result = await melody.generateContent({
+                    userId: message.author.id,
+                    displayName: message.author.username,
+                    roles,
+                    channelId: message.channel.id,
+                    content: cleanText,
+                    isGroupContext: Boolean(message.guild),
+                    mentionedUsers,
+                    knowledgeContext,
+                });
+                aiReply = result.text;
+                modelUsed = result.modelUsed;
+                console.log(`🧠 [MELODY] social path — model=${modelUsed}`);
+            }
 
             // 👑 EVERYONE MENTION LOGIC
             let finalReply = aiReply;
