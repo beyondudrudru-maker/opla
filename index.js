@@ -772,6 +772,41 @@ try {
                 console.error('❌ [PROBE] Could not reach Discord REST API at all:', probeErr.message);
                 console.error('❌ [PROBE] This points to an outbound network/egress problem on Render, not your code or token.');
             }
+
+            // ── RAW WEBSOCKET GATEWAY PROBE ──────────────────────────
+            // discord.js's own WS handling can go quiet with almost no debug
+            // output if the raw socket handshake itself is the thing stuck
+            // (as opposed to Discord actively rejecting the connection).
+            // This opens a WebSocket straight to Discord's gateway using
+            // Node's built-in WebSocket (no discord.js, no extra deps) so we
+            // can tell definitively: does the socket ever OPEN at all?
+            try {
+                const wsProbeResult = await new Promise((resolve, reject) => {
+                    const ws = new WebSocket('wss://gateway.discord.gg/?v=10&encoding=json');
+                    const timer = setTimeout(() => {
+                        ws.close();
+                        reject(new Error('Raw WS handshake did not open within 10s'));
+                    }, 10000);
+                    ws.addEventListener('open', () => {
+                        clearTimeout(timer);
+                        resolve('opened');
+                    });
+                    ws.addEventListener('message', (event) => {
+                        clearTimeout(timer);
+                        ws.close();
+                        resolve(`opened + received: ${String(event.data).slice(0, 120)}`);
+                    });
+                    ws.addEventListener('error', (event) => {
+                        clearTimeout(timer);
+                        reject(new Error(event.message || 'raw WS error event fired'));
+                    });
+                });
+                console.log('✅ [WS PROBE] Raw WebSocket to gateway.discord.gg', wsProbeResult + '.');
+                console.log('✅ [WS PROBE] The network path supports WebSocket connections — if the bot still won\'t connect, the problem is in discord.js/client config, not the network.');
+            } catch (wsProbeErr) {
+                console.error('❌ [WS PROBE] Raw WebSocket to gateway.discord.gg FAILED:', wsProbeErr.message);
+                console.error('❌ [WS PROBE] REST works but a raw WS handshake does not — this points at Render\'s outbound network blocking/dropping WebSocket upgrades to Discord, not your code, intents, or token.');
+            }
         })();
     } else {
         console.log('ℹ️ [PROBE] Skipped (set DEBUG_DISCORD_PROBE=true in env vars to enable this diagnostic on next boot).');
@@ -781,8 +816,8 @@ try {
 
     const loginWatchdog = setTimeout(() => {
         console.error('❌ [CRITICAL ERROR] Still not connected 20s after login() was called.');
-        console.error('❌ [LIKELY CAUSE] A privileged intent (e.g. MESSAGE CONTENT) requested in code is not enabled for this bot in the Discord Developer Portal, OR the token is invalid/regenerated.');
-        console.error('❌ [ACTION] Go to https://discord.com/developers/applications -> your app -> Bot -> enable "MESSAGE CONTENT INTENT" (and any other intents you request in code), then redeploy.');
+        console.error('❌ [POSSIBLE CAUSES] (1) A privileged intent (e.g. MESSAGE CONTENT) isn\'t enabled in the Dev Portal, (2) the token is invalid/regenerated, or (3) Render\'s outbound network is blocking/dropping the WebSocket handshake to Discord\'s gateway — REST calls can succeed while this still fails, since they use a different transport.');
+        console.error('❌ [ACTION] If DEBUG_DISCORD_PROBE=true was set this boot, check the [WS PROBE] lines above — they tell you definitively whether the WebSocket handshake even opens. If it was not set, set DEBUG_DISCORD_PROBE=true in Render\'s env vars and redeploy to get that answer before changing anything else.');
     }, 20000);
 
     client.login(process.env.DISCORD_TOKEN)
