@@ -17,9 +17,17 @@
  *   llama-3.1-8b-instant, nvidia/nemotron-nano-9b-v2:free) to the front for
  *   light tasks.
  *
- * MODEL REGISTRY REFRESH (verified live 2026-08-14)
+ * MODEL REGISTRY REFRESH (verified live 2026-08-23)
  *   - Groq, Gemini, and Cloudflare slugs below were checked against each
  *     provider's live docs/pricing pages and are unchanged/still active.
+ *   - Gemini Gen 3 (gemini-3.6-flash, gemini-3.5-flash-lite) CONFIRMED GA on
+ *     the free tier -- both already sit at the top of the Gemini tier below
+ *     and inherit GEMINI_PRIMARY_BONUS + providerTierBonus('gemini') same as
+ *     every other Gemini rung, so no separate wiring was needed.
+ *   - qwen/qwen3.6-27b REMOVED per explicit instruction to drop Qwen from
+ *     the registry entirely. Replaced with moonshotai/kimi-k2-instruct-0905
+ *     (Moonshot's large MoE reasoning model) as the secondary Groq HEAVY
+ *     rung -- confirmed present on Groq's current free catalog.
  *   - OpenRouter's meta-llama/llama-3.3-70b-instruct:free was CONFIRMED
  *     REMOVED from OpenRouter's free catalog -- it 404s. Replaced with
  *     nvidia/nemotron-3-ultra-550b-a55b:free (heavy) and
@@ -225,12 +233,19 @@ const MODEL_REGISTRY = {
       gameStrategy: 6, longContext: 6, toolUse: 6, reliability: 8,
       costTier: 'free-limited', weightClass: 'light', maxOutputTokens: 4096, status: 'active'
     },
-    'qwen/qwen3.6-27b': {
-      provider: 'groq', model: 'qwen/qwen3.6-27b',
-      quality: 7, speed: 8, reasoning: 7, coding: 7, math: 6, casualChat: 7,
-      creativeWriting: 6, multilingual: 9, hindi: 8, structuredOutput: 6,
-      gameStrategy: 6, longContext: 6, toolUse: 5, reliability: 6,
-      costTier: 'free-limited', preview: true, maxOutputTokens: 4096, status: 'active'
+    // Secondary HEAVYWEIGHT target — Moonshot's large MoE reasoning model,
+    // confirmed live on Groq's free catalog (2026-08-23 check). Replaces
+    // qwen/qwen3.6-27b per explicit instruction to drop Qwen from the
+    // registry entirely. Preview-tagged since Groq lists it under evaluation
+    // limits (lower daily request cap than the GA gpt-oss/llama rungs) —
+    // still a legitimate fallback candidate, just scored slightly behind the
+    // GA heavy rungs via the existing `preview` penalty in scoreModel().
+    'moonshotai/kimi-k2-instruct-0905': {
+      provider: 'groq', model: 'moonshotai/kimi-k2-instruct-0905',
+      quality: 9, speed: 6, reasoning: 9, coding: 8, math: 7, casualChat: 6,
+      creativeWriting: 6, multilingual: 8, hindi: 6, structuredOutput: 7,
+      gameStrategy: 8, longContext: 7, toolUse: 6, reliability: 6,
+      costTier: 'free-limited', weightClass: 'heavy', preview: true, maxOutputTokens: 4096, status: 'active'
     },
     'groq/compound': {
       provider: 'groq', model: 'groq/compound',
