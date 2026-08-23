@@ -113,6 +113,7 @@ client.on('guildMemberRemove', async (member) => {
 // 6. MESSAGE EVENT LISTENER (Core Engines)
 // ==========================================
 client.on(Events.MessageCreate, async (message) => {
+  try {
     if (message.author.bot) return;
 
     // 🛡️ DEDUPLICATION: Stop double processing immediately
@@ -181,7 +182,7 @@ client.on(Events.MessageCreate, async (message) => {
 
         if (isModCommand && targetMember) {
             const isSakha = message.author.id === '1369404203880939650';
-            const isAdmin = message.member.roles.cache.has('1372987132855058504');
+            const isAdmin = message.member?.roles.cache.has('1372987132855058504') ?? false;
 
             if (!isSakha && !isAdmin) {
                 return message.reply("❌ **Access Denied:** You must be my King or a Clan Admin to command me to modify users.").catch(() => {});
@@ -573,6 +574,18 @@ client.on(Events.MessageCreate, async (message) => {
             }
         } catch (err) { console.warn("⚠️ Gem popup failed:", err.message); }
     }
+  } catch (fatalErr) {
+    // 🛡️ OUTER SAFETY NET: catches anything above that wasn't already
+    // wrapped in its own try/catch (e.g. an unguarded message.member
+    // access). Without this, such an error kills the handler for this
+    // message with ZERO console output — the bot just goes silent on
+    // that one message with no trace in the logs, which is exactly what
+    // was happening. Now it always logs, so a silent-fail is visible.
+    console.error('❌ [FATAL] Uncaught error in MessageCreate handler:', fatalErr);
+    try {
+      await message.reply('Something went wrong on my end — try that again? 🌸').catch(() => {});
+    } catch (_) {}
+  }
 }); 
 
 // ==========================================
