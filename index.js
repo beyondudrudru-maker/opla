@@ -113,6 +113,7 @@ client.on('guildMemberRemove', async (member) => {
 // 6. MESSAGE EVENT LISTENER (Core Engines)
 // ==========================================
 client.on(Events.MessageCreate, async (message) => {
+  console.log(`📨 [RAW EVENT] MessageCreate fired — id=${message.id} author=${message.author.tag} bot=${message.author.bot} content="${message.content.slice(0, 60)}"`);
   try {
     if (message.author.bot) return;
 
