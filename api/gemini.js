@@ -147,7 +147,7 @@ ${CRITICAL_OUTPUT_RULES}`;
 function gatekeeperLint(text) {
     const { ok, reason } = sharedGatekeeperLint(text);
     if (!ok) console.warn(`⚠️ [GATEKEEPER] ${reason} and blocked.`);
-    return ok;
+    return ok; // This returns a boolean, not an object!
 }
 
 // ============================================================
@@ -252,23 +252,33 @@ ${CRITICAL_OUTPUT_RULES}
       const modelUsed = routerResponse?.modelUsed || 'fallback';
 
       finalModelUsed = modelUsed;
+      
+      // 1. Initial cleanup of safely closed tags
       let cleanedText = (result || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-      if (cleanedText === '' || cleanedText.includes('<think>')) {
-          cleanedText = (result || '').replace(/<\/?think>/gi, '').trim();
+      // 2. AGGRESSIVE FIX: Wipe unclosed tags and everything after them
+      if (cleanedText.includes('<think>')) {
+          cleanedText = cleanedText.replace(/<think>[\s\S]*/gi, '').trim();
       }
+
+      // 3. Strip pseudo XML tags
       cleanedText = cleanedText.replace(/<\/?(?:reasoning|reflection|plan|analysis|scratchpad)>/gi, '').trim();
+      
+      // 4. Strip text-based preamble that evades XML checks
+      cleanedText = cleanedText.replace(/^(Thinking Process:|Here's a thinking process:|Let me think|Let's see\.\.\.|\*Thinking\*)[\s\S]*?(?=\n\n|\n-|\n•|[A-Z])/i, '').trim();
 
       let scrubbedText = stripLeakedReasoning(cleanedText);
       scrubbedText = scrubbedText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
       if (scrubbedText.endsWith(']')) scrubbedText = scrubbedText.slice(0, -1).trim();
 
-      if (scrubbedText !== '' && gatekeeperLint(scrubbedText).ok) {
+      // 🐛 FIXED: Removed the `.ok` bug here so it properly evaluates the boolean return
+      if (scrubbedText !== '' && gatekeeperLint(scrubbedText)) {
         rawText = scrubbedText;
         break; 
       } else if (attempt < MAX_RETRIES) {
         console.warn(`[RETRY] Attempt ${attempt} blocked by Gatekeeper. Retrying...`);
-        currentPrompt += `\n\n[SYSTEM WARNING: Your previous output violated formatting rules. Provide ONLY clean, bulleted dialogue. NO markdown tables or XML tags.]`;
+        // Force the model to skip the preamble on the retry
+        currentPrompt += `\n\n[SYSTEM WARNING: Your previous output violated formatting rules. DO NOT use <think> tags, internal monologue, or markdown tables. Provide ONLY the final spoken dialogue directly.]`;
       }
     }
 
@@ -300,4 +310,3 @@ ${CRITICAL_OUTPUT_RULES}
 }
 
 module.exports = { generateContent, geminiKeys, groqKeys };
-        
