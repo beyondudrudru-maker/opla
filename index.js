@@ -139,7 +139,7 @@ client.on(Events.MessageCreate, async (message) => {
     // 👑 6.1.5: DEVELOPER OVERRIDE (Runs FIRST)
     if (lowerText.includes('fetch chats from supabase') || lowerText.includes('present all chats')) {
         if (message.author.id !== '1369404203880939650') {
-            return message.reply("❌ **Access Denied:** You do not have clearance to view server logs.").catch(() => {});
+            return message.reply("❌ **Access Denied:** You do not have clearance to view server logs.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
         }
 
         try {
@@ -161,7 +161,7 @@ client.on(Events.MessageCreate, async (message) => {
 
         } catch (err) {
             console.error('[SUPABASE ERROR]', err);
-            return message.channel.send("⚠️ I encountered a critical error while trying to connect to my memory banks.").catch(() => {});
+            return message.channel.send("⚠️ I encountered a critical error while trying to connect to my memory banks.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
         }
     }
 
@@ -171,7 +171,7 @@ client.on(Events.MessageCreate, async (message) => {
         const lowerClean = cleanText.toLowerCase();
 
         if (cleanText.length === 0) {
-            return message.reply("Yes, my Beyonder? 🌸").catch(() => {});
+            return message.reply("Yes, my Beyonder? 🌸").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
         }
 
         // ==========================================
@@ -185,11 +185,11 @@ client.on(Events.MessageCreate, async (message) => {
             const isAdmin = message.member.roles.cache.has('1372987132855058504');
 
             if (!isSakha && !isAdmin) {
-                return message.reply("❌ **Access Denied:** You must be my King or a Clan Admin to command me to modify users.").catch(() => {});
+                return message.reply("❌ **Access Denied:** You must be my King or a Clan Admin to command me to modify users.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
             }
 
             if (adminCooldown.has(message.author.id)) {
-                return message.reply("⏳ Please wait a few seconds before issuing another server command.").catch(() => {});
+                return message.reply("⏳ Please wait a few seconds before issuing another server command.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
             }
             adminCooldown.add(message.author.id);
             setTimeout(() => adminCooldown.delete(message.author.id), 5000);
@@ -198,14 +198,14 @@ client.on(Events.MessageCreate, async (message) => {
                 try {
                     await targetMember.kick("Requested by Admin/Creator via INF AI");
                     return message.reply(`👢 Consider it done! I have kicked ${targetMember.user.username} from the server.`);
-                } catch (err) { return message.reply("❌ I don't have permission to kick this user. Check my role hierarchy!").catch(() => {}); }
+                } catch (err) { return message.reply("❌ I don't have permission to kick this user. Check my role hierarchy!").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e)); }
             }
 
             if (lowerClean.includes('ban')) {
                 try {
                     await targetMember.ban({ reason: "Requested by Admin/Creator via INF AI" });
                     return message.reply(`🔨 Handled. ${targetMember.user.username} has been permanently banned.`);
-                } catch (err) { return message.reply("❌ I don't have permission to ban this user.").catch(() => {}); }
+                } catch (err) { return message.reply("❌ I don't have permission to ban this user.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e)); }
             }
 
             const roleBundles = {
@@ -235,10 +235,10 @@ client.on(Events.MessageCreate, async (message) => {
                         return message.reply(`✅ Perfectly executed! I have granted the requested role(s) to ${targetMember.user.username}. 🌸`);
                     }
                 } catch (err) {
-                    return message.reply("❌ **Role Error:** I cannot assign this. Please ensure my 'INF AI' role is placed HIGHER in your server settings than the roles you want me to give out.").catch(() => {});
+                    return message.reply("❌ **Role Error:** I cannot assign this. Please ensure my 'INF AI' role is placed HIGHER in your server settings than the roles you want me to give out.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
                 }
             } else {
-                return message.reply("⚠️ I couldn't figure out which role you want me to give. Try mentioning the role directly or using a bundle word like 'boss' or 'clan'.").catch(() => {});
+                return message.reply("⚠️ I couldn't figure out which role you want me to give. Try mentioning the role directly or using a bundle word like 'boss' or 'clan'.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
             }
         }
 
@@ -272,7 +272,7 @@ client.on(Events.MessageCreate, async (message) => {
             const isAdmin = message.member?.roles.cache.has('1372987132855058504');
 
             if (!isCreator && !isAdmin) {
-                return message.reply("❌ Only my Creator or a Clan Admin can ask me to send announcements.").catch(() => {});
+                return message.reply("❌ Only my Creator or a Clan Admin can ask me to send announcements.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
             }
 
             let announceText = cleanText;
@@ -297,7 +297,7 @@ client.on(Events.MessageCreate, async (message) => {
                 return;
             } catch (err) {
                 console.error('[ANNOUNCEMENT ERROR]', err);
-                return message.reply("❌ I couldn't send that — check my permissions in this channel.").catch(() => {});
+                return message.reply("❌ I couldn't send that — check my permissions in this channel.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
             }
         }
 
