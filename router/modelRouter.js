@@ -1061,6 +1061,7 @@ async function execCloudflare({ modelName, prompt, systemInstruction, maxTokens,
 async function runCandidate(candidate, ctx) {
   const { provider, model: modelName } = candidate;
   const { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqKeys, openRouterFreeOnly } = ctx;
+  let lastFailureType = null;
 
   if (provider === 'gemini') {
     if (!ENABLE_GEMINI || !geminiKeys || geminiKeys.length === 0) return null;
@@ -1078,9 +1079,10 @@ async function runCandidate(candidate, ctx) {
         const type = classifyFailure(error);
         wlog(`gemini/${modelName} key=${index + 1} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
         if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
+        lastFailureType = type;
       }
     }
-    return null;
+    return { result: null, failureType: lastFailureType };
   }
 
   if (provider === 'groq') {
@@ -1106,9 +1108,10 @@ async function runCandidate(candidate, ctx) {
         const type = classifyFailure(error);
         wlog(`groq/${modelName} key=${index + 1} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
         if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
+        lastFailureType = type;
       }
     }
-    return null;
+    return { result: null, failureType: lastFailureType };
   }
 
   if (provider === 'openrouter') {
@@ -1130,7 +1133,7 @@ async function runCandidate(candidate, ctx) {
       const type = classifyFailure(error);
       wlog(`openrouter/${modelName} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
       if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
-      return null;
+      return { result: null, failureType: type };
     }
   }
 
@@ -1148,7 +1151,7 @@ async function runCandidate(candidate, ctx) {
       const type = classifyFailure(error);
       wlog(`cloudflare/${modelName} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
       if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
-      return null;
+      return { result: null, failureType: type };
     }
   }
 
@@ -1302,6 +1305,17 @@ async function generate({ classification, prompt, userMessage, systemInstruction
   const ctx = { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqKeys, openRouterFreeOnly };
   let lastError = null;
   let lastProviderTried = null;
+  // 🆕 Once we see a real PAYLOAD_TOO_LARGE from any provider, the prompt
+  // itself is the problem — every remaining candidate would just 413 again
+  // on the same oversized payload. Compress ctx.prompt in place ONE time
+  // and keep walking the *same* candidate list with the smaller prompt,
+  // instead of burning a dead round-trip on every remaining candidate and
+  // only compressing after the whole list is exhausted (the old behavior,
+  // visible in the logs as 5-6 back-to-back 413s before the 14s+ emergency
+  // fallback). This reuses the same priority-aware compressForEmergency()
+  // trimmer the emergency path already uses, so quality doesn't regress —
+  // it just runs at the right time instead of the last possible moment.
+  let alreadyCompressedForSize = false;
 
   for (const candidate of candidates) {
     if (lastProviderTried === candidate.provider) {
@@ -1317,6 +1331,15 @@ async function generate({ classification, prompt, userMessage, systemInstruction
     if (outcome && outcome.result) {
       ilog(`intent=${category} selected=${candidate.model} provider=${candidate.provider} latency=${outcome.metadata?.latencyMs || '?'}ms`);
       return { result: outcome.result, modelUsed: outcome.modelUsed, provider: outcome.provider, metadata: outcome.metadata };
+    }
+
+    if (!alreadyCompressedForSize && outcome && outcome.failureType === FAILURE.PAYLOAD_TOO_LARGE) {
+      const shrunk = compressForEmergency(ctx.prompt);
+      if (shrunk && shrunk.length < ctx.prompt.length) {
+        ilog(`PAYLOAD_TOO_LARGE on ${candidate.provider}/${candidate.model} — compressing prompt (${ctx.prompt.length} -> ${shrunk.length} chars) and continuing candidate list`);
+        ctx.prompt = shrunk;
+        alreadyCompressedForSize = true;
+      }
     }
   }
 
