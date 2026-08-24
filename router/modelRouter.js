@@ -12,12 +12,11 @@
  *   registry with (a) a large fixed per-provider tier bonus enforcing the
  *   Groq > Gemini > OpenRouter > Cloudflare order, and (b) a weight-class
  *   match bonus that pulls big models (openai/gpt-oss-120b,
- *   moonshotai/kimi-k2-instruct-0905, nvidia/nemotron-3-ultra-550b-a55b:free)
- *   to the front for heavy tasks, and small/fast models (openai/gpt-oss-20b,
- *   llama-3.1-8b-instant, nvidia/nemotron-nano-9b-v2:free) to the front for
- *   light tasks.
+ *   nvidia/nemotron-3-ultra-550b-a55b:free) to the front for heavy tasks,
+ *   and small/fast models (openai/gpt-oss-20b, groq/compound-mini,
+ *   nvidia/nemotron-nano-9b-v2:free) to the front for light tasks.
  *
- * MODEL REGISTRY REFRESH (verified live 2026-08-23)
+ * MODEL REGISTRY REFRESH (verified live 2026-08-24)
  *   - Groq, Gemini, and Cloudflare slugs below were checked against each
  *     provider's live docs/pricing pages and are unchanged/still active.
  *   - Gemini Gen 3 (gemini-3.6-flash, gemini-3.5-flash-lite) CONFIRMED GA on
@@ -25,9 +24,13 @@
  *     and inherit GEMINI_PRIMARY_BONUS + providerTierBonus('gemini') same as
  *     every other Gemini rung, so no separate wiring was needed.
  *   - qwen/qwen3.6-27b REMOVED per explicit instruction to drop Qwen from
- *     the registry entirely. Replaced with moonshotai/kimi-k2-instruct-0905
- *     (Moonshot's large MoE reasoning model) as the secondary Groq HEAVY
- *     rung -- confirmed present on Groq's current free catalog.
+ *     the registry entirely. Its stand-in replacement,
+ *     moonshotai/kimi-k2-instruct-0905, was ALSO REMOVED 2026-08-24 after
+ *     confirming it 404s (INVALID_MODEL) -- both are now hard-blocked from
+ *     re-entering via discovery too (see DISCOVERY_BLOCKLIST). llama-3.1-8b-
+ *     instant was separately confirmed dead and removed; groq/compound-mini
+ *     (already live, no 404s in logs) is now tagged weightClass:'light' and
+ *     carries the primary LIGHT slot on Groq alongside openai/gpt-oss-20b.
  *   - OpenRouter's meta-llama/llama-3.3-70b-instruct:free was CONFIRMED
  *     REMOVED from OpenRouter's free catalog -- it 404s. Replaced with
  *     nvidia/nemotron-3-ultra-550b-a55b:free (heavy) and
@@ -37,7 +40,9 @@
  *   Unhealthy/quota-exhausted/invalid models are cooled down per-failure-
  *   type and skipped without hammering dead providers. Optional periodic
  *   model discovery keeps the registry honest without ever calling out to
- *   a provider on every Discord message.
+ *   a provider on every Discord message, and now hard-blocklists explicitly
+ *   banned model families (currently: Qwen) so a live provider catalog can
+ *   never silently re-add them to the discovered pool.
  *
  * PUBLIC CONTRACT (unchanged — required by gemini.js)
  *   const { result, modelUsed } = await modelRouter.generate({
@@ -57,10 +62,12 @@
  *     since the provider tier bonus already separates it from Groq/OpenRouter.
  *   - temperature/top_p/top_k are omitted for Gemini models whose metadata
  *     says supportsSampling:false (current Gemini 3.6/3.5-Lite behavior).
- *   - llama-3.1-8b-instant is a first-class primary LIGHT target.
+ *   - groq/compound-mini is now a first-class primary LIGHT target (llama-
+ *     3.1-8b-instant, its predecessor, was confirmed dead and removed).
  *     llama-3.3-70b-versatile was REMOVED 2026-08-23 (confirmed 404 on both
- *     keys — permanently retired, not transient). openai/gpt-oss-120b and
- *     moonshotai/kimi-k2-instruct-0905 are the current HEAVY targets on Groq.
+ *     keys — permanently retired, not transient). openai/gpt-oss-120b is
+ *     currently the sole GA HEAVY target on Groq (moonshotai/kimi-k2-
+ *     instruct-0905 was removed 2026-08-24 after confirming it 404s).
  *   - Model discovery (Groq /models, OpenRouter /models) is OPTIONAL,
  *     cached for MODEL_DISCOVERY_TTL_MS, and never blocks the hot path —
  *     a discovery failure is silently ignored and the static registry wins.
@@ -234,20 +241,11 @@ const MODEL_REGISTRY = {
       gameStrategy: 6, longContext: 6, toolUse: 6, reliability: 8,
       costTier: 'free-limited', weightClass: 'light', maxOutputTokens: 4096, status: 'active'
     },
-    // Secondary HEAVYWEIGHT target — Moonshot's large MoE reasoning model,
-    // confirmed live on Groq's free catalog (2026-08-23 check). Replaces
-    // qwen/qwen3.6-27b per explicit instruction to drop Qwen from the
-    // registry entirely. Preview-tagged since Groq lists it under evaluation
-    // limits (lower daily request cap than the GA gpt-oss/llama rungs) —
-    // still a legitimate fallback candidate, just scored slightly behind the
-    // GA heavy rungs via the existing `preview` penalty in scoreModel().
-    'moonshotai/kimi-k2-instruct-0905': {
-      provider: 'groq', model: 'moonshotai/kimi-k2-instruct-0905',
-      quality: 9, speed: 6, reasoning: 9, coding: 8, math: 7, casualChat: 6,
-      creativeWriting: 6, multilingual: 8, hindi: 6, structuredOutput: 7,
-      gameStrategy: 8, longContext: 7, toolUse: 6, reliability: 6,
-      costTier: 'free-limited', weightClass: 'heavy', preview: true, maxOutputTokens: 4096, status: 'active'
-    },
+    // 🐛 REMOVED 2026-08-24: 'moonshotai/kimi-k2-instruct-0905' confirmed
+    // 404ing (INVALID_MODEL) — its replacement-of-Qwen slug turned out to be
+    // dead too. Left the heavy Groq slot with only openai/gpt-oss-120b as a
+    // GA rung until Groq lists a working secondary heavy model; re-add here
+    // with the correct current slug when one is confirmed live.
     'groq/compound': {
       provider: 'groq', model: 'groq/compound',
       quality: 8, speed: 6, reasoning: 8, coding: 6, math: 6, casualChat: 5,
@@ -255,31 +253,26 @@ const MODEL_REGISTRY = {
       gameStrategy: 6, longContext: 6, toolUse: 9, reliability: 6,
       costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
     },
+    // Now the primary LIGHTWEIGHT/fast target on Groq (2026-08-24) — Groq's
+    // own compound-mini tool-use model, confirmed healthy in logs (no 404s
+    // seen) — filling the gap left by removing llama-3.1-8b-instant (dead)
+    // and kimi-k2 (dead). Tagged weightClass:'light' so it actually gets the
+    // light-task scoring bonus instead of sitting untagged.
     'groq/compound-mini': {
       provider: 'groq', model: 'groq/compound-mini',
       quality: 6, speed: 8, reasoning: 6, coding: 5, math: 5, casualChat: 6,
       creativeWriting: 4, multilingual: 6, hindi: 4, structuredOutput: 5,
       gameStrategy: 5, longContext: 5, toolUse: 8, reliability: 6,
-      costTier: 'free-limited', maxOutputTokens: 4096, status: 'active'
-    },
+      costTier: 'free-limited', weightClass: 'light', maxOutputTokens: 4096, status: 'active'
+    }
     // 🐛 REMOVED 2026-08-23: 'llama-3.3-70b-versatile' confirmed 404ing on
     // BOTH configured Groq keys ("does not exist or you do not have access
     // to it") — this is a permanently-retired model, not a transient issue.
-    // It was still marked weightClass:'heavy', so it kept winning a slot in
-    // the heavy-task candidate list, 404ing, opening a 45min INVALID_MODEL
-    // cooldown, then self-healing back to HALF_OPEN and repeating forever —
-    // wasting one round-trip on every gameStrategy cascade roughly once per
-    // 45min window instead of ever actually recovering. If Groq re-adds this
-    // slug (or a renamed successor) later, re-add the entry with the correct
-    // current model ID rather than restoring this one verbatim.
-    // Primary LIGHTWEIGHT/fast target (casual/shortFactual/hinglish).
-    'llama-3.1-8b-instant': {
-      provider: 'groq', model: 'llama-3.1-8b-instant',
-      quality: 6, speed: 9, reasoning: 5, coding: 4, math: 3, casualChat: 8,
-      creativeWriting: 5, multilingual: 5, hindi: 4, structuredOutput: 4,
-      gameStrategy: 4, longContext: 4, toolUse: 3, reliability: 7,
-      costTier: 'free-limited', weightClass: 'light', maxOutputTokens: 1024, status: 'active'
-    }
+    // 🐛 REMOVED 2026-08-24: 'llama-3.1-8b-instant' also confirmed dead —
+    // both former LIGHTWEIGHT rungs on Groq are gone; groq/compound-mini
+    // above now carries that slot alone. If Groq re-adds either slug (or a
+    // renamed successor), re-add the entry with the correct current model
+    // ID rather than restoring these verbatim.
   },
 
   openrouter: {
@@ -796,10 +789,9 @@ function scoreModel(entry, category, opts = {}) {
   }
 
   // Intent-based weight-class routing: heavyweight tasks favor big models
-  // (openai/gpt-oss-120b, moonshotai/kimi-k2-instruct-0905, the OpenRouter
-  // Nemotron free model); lightweight tasks favor small/fast models (gpt-oss-20b,
-  // llama-3.1-8b-instant, openrouter/free). See HEAVY_CATEGORIES /
-  // LIGHT_CATEGORIES above.
+  // (openai/gpt-oss-120b, the OpenRouter Nemotron free model); lightweight
+  // tasks favor small/fast models (gpt-oss-20b, groq/compound-mini,
+  // openrouter/free). See HEAVY_CATEGORIES / LIGHT_CATEGORIES above.
   if (entry.weightClass === 'heavy') {
     if (HEAVY_CATEGORIES.has(category)) score += WEIGHT_CLASS_MATCH_BONUS;
     else if (LIGHT_CATEGORIES.has(category)) score -= WEIGHT_CLASS_MISMATCH_PENALTY;
@@ -1236,7 +1228,37 @@ async function maybeRunDiscovery({ groqKeys }) {
   }
 }
 
+// Models that must never enter the discovered pool, regardless of what a
+// provider's live /models list returns — e.g. Qwen was explicitly dropped
+// from the registry (see header notes), but discovery only skipped
+// whisper/tts/guard by default, so a live Groq/OpenRouter listing could
+// silently re-add it as a 'discovered' candidate. Matched against the raw
+// model id, case-insensitive, substring match (so 'qwen', 'qwen3.6-27b',
+// 'org/qwen-whatever' are all caught).
+const DISCOVERY_BLOCKLIST = [/qwen/i];
+
+function isBlockedFromDiscovery(modelId) {
+  return DISCOVERY_BLOCKLIST.some((re) => re.test(modelId));
+}
+
+// Best-effort weightClass inference from the model id itself, so newly
+// discovered models still get scored sensibly against HEAVY_CATEGORIES /
+// LIGHT_CATEGORIES instead of sitting permanently untagged (no bonus,
+// no penalty either way). Heuristic only — a real registry entry with
+// explicit scores always wins if one exists; this just prevents raw
+// discovered entries from being invisible to weight-class scoring.
+function inferWeightClass(modelId) {
+  const id = modelId.toLowerCase();
+  if (/mini|nano|lite|small|8b|9b|1b|3b|instant/.test(id)) return 'light';
+  if (/70b|120b|400b|ultra|large|maxi|72b|235b/.test(id)) return 'heavy';
+  return undefined; // unknown — no weight-class bonus/penalty either way
+}
+
 function upsertDiscovered(provider, modelId, defaults) {
+  if (isBlockedFromDiscovery(modelId)) {
+    dlog(`discovery blocked ${provider} model: ${modelId} (blocklisted)`);
+    return;
+  }
   if (MODEL_REGISTRY[provider] && MODEL_REGISTRY[provider][modelId]) {
     MODEL_REGISTRY[provider][modelId].status = 'active';
     return;
@@ -1245,6 +1267,7 @@ function upsertDiscovered(provider, modelId, defaults) {
   if (discoveredModels.has(key)) return;
   if (discoveredModels.size >= DISCOVERED_POOL_LIMIT) return;
 
+  const weightClass = inferWeightClass(modelId);
   discoveredModels.set(key, {
     provider, model: modelId,
     quality: 4, speed: 5, reasoning: 4, coding: 4, math: 3, casualChat: 4,
@@ -1252,9 +1275,10 @@ function upsertDiscovered(provider, modelId, defaults) {
     gameStrategy: 3, longContext: 3, toolUse: 3, reliability: 3,
     costTier: defaults.costTier || 'free-limited',
     maxOutputTokens: 1024,
+    ...(weightClass ? { weightClass } : {}),
     status: 'discovered'
   });
-  dlog(`discovered new ${provider} model: ${modelId} (unknown-capability pool)`);
+  dlog(`discovered new ${provider} model: ${modelId} (unknown-capability pool${weightClass ? `, weightClass=${weightClass}` : ''})`);
 }
 
 async function discoverGroqModels(groqClient) {
@@ -1356,7 +1380,7 @@ async function generate({ classification, prompt, userMessage, systemInstruction
   // and want the cheapest, most-likely-to-succeed rung.
   const emergencyOrder = [
     (ENABLE_GROQ && groqKeys.length) ? { provider: 'groq', model: 'openai/gpt-oss-20b' } : null,
-    (ENABLE_GROQ && groqKeys.length) ? { provider: 'groq', model: 'llama-3.1-8b-instant' } : null,
+    (ENABLE_GROQ && groqKeys.length) ? { provider: 'groq', model: 'groq/compound-mini' } : null,
     (ENABLE_GEMINI && geminiKeys.length) ? { provider: 'gemini', model: 'gemini-3.5-flash-lite' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'openrouter/free' } : null,
     getOpenRouterClient() ? { provider: 'openrouter', model: 'nvidia/nemotron-nano-9b-v2:free' } : null,
