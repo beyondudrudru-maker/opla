@@ -17,16 +17,17 @@ const express = require('express');
 // 1. IMPORT MODULES
 const { ramClient } = require('./database/supabaseClient');
 const melody = require('./api/gemini');
-const { askAI } = require('./ai/aiFallback');
 const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval');
 const reflectionJob = require('./reflection/reflectionJob');
 const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData');
 
 // 🚀 IMPORT THE GAME ROUTER
 const gameDomainRouter = require('./router/gameDomainRouter');
-// 🗜️ Compression/budget-fitting for GameData now happens inside
-// askAI() (ai/aiFallback.js) — this file no longer builds its own
-// [GAME DATA] block, so promptAssembler isn't needed directly here.
+// 🗜️ Same compression used everywhere else GameData gets injected — this
+// file was building its own [GAME DATA] block independently with
+// JSON.stringify(..., null, 2), bypassing compression entirely and
+// contributing to 413 Request Entity Too Large errors from Groq/Gemini.
+const { compressGameData } = require('./promptBuilder/promptAssembler');
 
 // 🛡️ DEDUPLICATION SET (Global)
 const processedMessages = new Set();
@@ -113,8 +114,6 @@ client.on('guildMemberRemove', async (member) => {
 // 6. MESSAGE EVENT LISTENER (Core Engines)
 // ==========================================
 client.on(Events.MessageCreate, async (message) => {
-  console.log(`📨 [RAW EVENT] MessageCreate fired — id=${message.id} author=${message.author.tag} bot=${message.author.bot} content="${message.content.slice(0, 60)}"`);
-  try {
     if (message.author.bot) return;
 
     // 🛡️ DEDUPLICATION: Stop double processing immediately
@@ -140,7 +139,7 @@ client.on(Events.MessageCreate, async (message) => {
     // 👑 6.1.5: DEVELOPER OVERRIDE (Runs FIRST)
     if (lowerText.includes('fetch chats from supabase') || lowerText.includes('present all chats')) {
         if (message.author.id !== '1369404203880939650') {
-            return message.reply("❌ **Access Denied:** You do not have clearance to view server logs.").catch(() => {});
+            return message.reply("❌ **Access Denied:** You do not have clearance to view server logs.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
         }
 
         try {
@@ -162,7 +161,7 @@ client.on(Events.MessageCreate, async (message) => {
 
         } catch (err) {
             console.error('[SUPABASE ERROR]', err);
-            return message.channel.send("⚠️ I encountered a critical error while trying to connect to my memory banks.").catch(() => {});
+            return message.channel.send("⚠️ I encountered a critical error while trying to connect to my memory banks.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
         }
     }
 
@@ -172,7 +171,7 @@ client.on(Events.MessageCreate, async (message) => {
         const lowerClean = cleanText.toLowerCase();
 
         if (cleanText.length === 0) {
-            return message.reply("Yes, my Beyonder? 🌸").catch(() => {});
+            return message.reply("Yes, my Beyonder? 🌸").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
         }
 
         // ==========================================
@@ -183,14 +182,14 @@ client.on(Events.MessageCreate, async (message) => {
 
         if (isModCommand && targetMember) {
             const isSakha = message.author.id === '1369404203880939650';
-            const isAdmin = message.member?.roles.cache.has('1372987132855058504') ?? false;
+            const isAdmin = message.member.roles.cache.has('1372987132855058504');
 
             if (!isSakha && !isAdmin) {
-                return message.reply("❌ **Access Denied:** You must be my King or a Clan Admin to command me to modify users.").catch(() => {});
+                return message.reply("❌ **Access Denied:** You must be my King or a Clan Admin to command me to modify users.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
             }
 
             if (adminCooldown.has(message.author.id)) {
-                return message.reply("⏳ Please wait a few seconds before issuing another server command.").catch(() => {});
+                return message.reply("⏳ Please wait a few seconds before issuing another server command.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
             }
             adminCooldown.add(message.author.id);
             setTimeout(() => adminCooldown.delete(message.author.id), 5000);
@@ -199,14 +198,14 @@ client.on(Events.MessageCreate, async (message) => {
                 try {
                     await targetMember.kick("Requested by Admin/Creator via INF AI");
                     return message.reply(`👢 Consider it done! I have kicked ${targetMember.user.username} from the server.`);
-                } catch (err) { return message.reply("❌ I don't have permission to kick this user. Check my role hierarchy!").catch(() => {}); }
+                } catch (err) { return message.reply("❌ I don't have permission to kick this user. Check my role hierarchy!").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e)); }
             }
 
             if (lowerClean.includes('ban')) {
                 try {
                     await targetMember.ban({ reason: "Requested by Admin/Creator via INF AI" });
                     return message.reply(`🔨 Handled. ${targetMember.user.username} has been permanently banned.`);
-                } catch (err) { return message.reply("❌ I don't have permission to ban this user.").catch(() => {}); }
+                } catch (err) { return message.reply("❌ I don't have permission to ban this user.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e)); }
             }
 
             const roleBundles = {
@@ -236,10 +235,10 @@ client.on(Events.MessageCreate, async (message) => {
                         return message.reply(`✅ Perfectly executed! I have granted the requested role(s) to ${targetMember.user.username}. 🌸`);
                     }
                 } catch (err) {
-                    return message.reply("❌ **Role Error:** I cannot assign this. Please ensure my 'INF AI' role is placed HIGHER in your server settings than the roles you want me to give out.").catch(() => {});
+                    return message.reply("❌ **Role Error:** I cannot assign this. Please ensure my 'INF AI' role is placed HIGHER in your server settings than the roles you want me to give out.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
                 }
             } else {
-                return message.reply("⚠️ I couldn't figure out which role you want me to give. Try mentioning the role directly or using a bundle word like 'boss' or 'clan'.").catch(() => {});
+                return message.reply("⚠️ I couldn't figure out which role you want me to give. Try mentioning the role directly or using a bundle word like 'boss' or 'clan'.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
             }
         }
 
@@ -273,7 +272,7 @@ client.on(Events.MessageCreate, async (message) => {
             const isAdmin = message.member?.roles.cache.has('1372987132855058504');
 
             if (!isCreator && !isAdmin) {
-                return message.reply("❌ Only my Creator or a Clan Admin can ask me to send announcements.").catch(() => {});
+                return message.reply("❌ Only my Creator or a Clan Admin can ask me to send announcements.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
             }
 
             let announceText = cleanText;
@@ -298,7 +297,7 @@ client.on(Events.MessageCreate, async (message) => {
                 return;
             } catch (err) {
                 console.error('[ANNOUNCEMENT ERROR]', err);
-                return message.reply("❌ I couldn't send that — check my permissions in this channel.").catch(() => {});
+                return message.reply("❌ I couldn't send that — check my permissions in this channel.").catch((e) => console.error("⚠️ [SILENT REPLY FAIL]", e?.message || e));
             }
         }
 
@@ -361,42 +360,35 @@ client.on(Events.MessageCreate, async (message) => {
             console.log(`[GAME ROUTER] Falling through to Melody AI`);
 
             let knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
+
+            // 🚀 AGGRESSIVE STRATEGY CONTEXT INJECTION FOR THE AI
+            let aiPromptContent = cleanText;
+            if (gameResult.context) {
+                const compressedContext = typeof gameResult.context === 'object'
+                    ? compressGameData(gameResult.context)
+                    : gameResult.context;
+                const contextStr = typeof compressedContext === 'object'
+                    ? JSON.stringify(compressedContext)
+                    : compressedContext;
+
+                aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question. Compare the stats directly and provide strategic advice based ONLY on these numbers. Do not invent abilities or stats.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${cleanText}`;
+            }
+
             const roles = message.member ? message.member.roles.cache.map(r => r.name.toLowerCase()) : [];
 
-            // 🚀 THE FIX: game queries now route through askAI() — real
-            // compression + budget-fitting + per-query-type modular
-            // instructions + gatekeeper retries — instead of a raw
-            // JSON-glued-onto-prompt string that was blowing past Groq's
-            // 413 payload limit. Social/non-game turns are untouched.
-            let aiReply, modelUsed = 'fallback';
+            // Execute the AI generation
+            const { text: aiReply, modelUsed, debug } = await melody.generateContent({
+                userId: message.author.id,
+                displayName: message.author.username,
+                roles,
+                channelId: message.channel.id,
+                content: aiPromptContent, // <-- Sends the strictly formatted payload
+                isGroupContext: Boolean(message.guild),
+                mentionedUsers,
+                knowledgeContext,
+            });
 
-            if (gameResult.context) {
-                aiReply = await askAI({
-                    userMessage: cleanText,
-                    intent: gameResult.intent,
-                    context: gameResult.context,
-                    geminiKeys: melody.geminiKeys,
-                    groqKeys: melody.groqKeys,
-                    classification: { intent: gameResult.intent },
-                    queryFlags: gameResult.queryFlags || {},
-                    deterministic: gameResult.deterministic || null,
-                });
-                console.log(`🧠 [MELODY] game path — intent=${gameResult.intent} via askAI()`);
-            } else {
-                const result = await melody.generateContent({
-                    userId: message.author.id,
-                    displayName: message.author.username,
-                    roles,
-                    channelId: message.channel.id,
-                    content: cleanText,
-                    isGroupContext: Boolean(message.guild),
-                    mentionedUsers,
-                    knowledgeContext,
-                });
-                aiReply = result.text;
-                modelUsed = result.modelUsed;
-                console.log(`🧠 [MELODY] social path — model=${modelUsed}`);
-            }
+            console.log(`🧠 [MELODY] intent=${debug?.intent} tier=${debug?.tier} model=${modelUsed}`);
 
             // 👑 EVERYONE MENTION LOGIC
             let finalReply = aiReply;
@@ -575,18 +567,6 @@ client.on(Events.MessageCreate, async (message) => {
             }
         } catch (err) { console.warn("⚠️ Gem popup failed:", err.message); }
     }
-  } catch (fatalErr) {
-    // 🛡️ OUTER SAFETY NET: catches anything above that wasn't already
-    // wrapped in its own try/catch (e.g. an unguarded message.member
-    // access). Without this, such an error kills the handler for this
-    // message with ZERO console output — the bot just goes silent on
-    // that one message with no trace in the logs, which is exactly what
-    // was happening. Now it always logs, so a silent-fail is visible.
-    console.error('❌ [FATAL] Uncaught error in MessageCreate handler:', fatalErr);
-    try {
-      await message.reply('Something went wrong on my end — try that again? 🌸').catch(() => {});
-    } catch (_) {}
-  }
 }); 
 
 // ==========================================
@@ -748,90 +728,42 @@ try {
     // (b) an auth problem — request completes but Discord returns 401, or
     // (c) neither — request succeeds, meaning the gateway WS is the only
     //     thing stuck, which points at a WS-specific network block.
-    //
-    // 🗜️ FIX: this used to run on every single boot, burning one extra
-    // Discord REST call on top of the one client.login() already makes
-    // internally — during a redeploy-heavy debugging session that doubles
-    // how fast you can trip Discord's global rate limit (the 429 we saw).
-    // Gated behind DEBUG_DISCORD_PROBE so it only fires when you actually
-    // set that env var to investigate a connection issue, not on normal
-    // production restarts. To enable: set DEBUG_DISCORD_PROBE=true in
-    // Render's env vars, redeploy, then unset it once you're done debugging.
-    if (process.env.DEBUG_DISCORD_PROBE === 'true') {
-        (async () => {
-            try {
-                const https = require('node:https');
-                const probeResult = await new Promise((resolve, reject) => {
-                    const req = https.get('https://discord.com/api/v10/users/@me', {
-                        headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}` },
-                        timeout: 10000
-                    }, (res) => {
-                        let body = '';
-                        res.on('data', (c) => (body += c));
-                        res.on('end', () => resolve({ status: res.statusCode, body }));
-                    });
-                    req.on('timeout', () => { req.destroy(); reject(new Error('REST probe timed out after 10s')); });
-                    req.on('error', reject);
+    (async () => {
+        try {
+            const https = require('node:https');
+            const probeResult = await new Promise((resolve, reject) => {
+                const req = https.get('https://discord.com/api/v10/users/@me', {
+                    headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}` },
+                    timeout: 10000
+                }, (res) => {
+                    let body = '';
+                    res.on('data', (c) => (body += c));
+                    res.on('end', () => resolve({ status: res.statusCode, body }));
                 });
-                if (probeResult.status === 200) {
-                    console.log('✅ [PROBE] REST API reachable AND token is valid (got 200 from /users/@me).');
-                    console.log('✅ [PROBE] This means the network path to Discord works and the token is good — the problem is specific to the WebSocket gateway connection.');
-                } else if (probeResult.status === 401) {
-                    console.error('❌ [PROBE] REST API reachable but token was REJECTED (401 Unauthorized).');
-                    console.error('❌ [PROBE] The token in DISCORD_TOKEN is invalid/revoked. Regenerate it in the Developer Portal and update the Render env var.');
-                } else {
-                    console.warn(`⚠️ [PROBE] REST API responded with unexpected status ${probeResult.status}:`, probeResult.body.slice(0, 200));
-                }
-            } catch (probeErr) {
-                console.error('❌ [PROBE] Could not reach Discord REST API at all:', probeErr.message);
-                console.error('❌ [PROBE] This points to an outbound network/egress problem on Render, not your code or token.');
+                req.on('timeout', () => { req.destroy(); reject(new Error('REST probe timed out after 10s')); });
+                req.on('error', reject);
+            });
+            if (probeResult.status === 200) {
+                console.log('✅ [PROBE] REST API reachable AND token is valid (got 200 from /users/@me).');
+                console.log('✅ [PROBE] This means the network path to Discord works and the token is good — the problem is specific to the WebSocket gateway connection.');
+            } else if (probeResult.status === 401) {
+                console.error('❌ [PROBE] REST API reachable but token was REJECTED (401 Unauthorized).');
+                console.error('❌ [PROBE] The token in DISCORD_TOKEN is invalid/revoked. Regenerate it in the Developer Portal and update the Render env var.');
+            } else {
+                console.warn(`⚠️ [PROBE] REST API responded with unexpected status ${probeResult.status}:`, probeResult.body.slice(0, 200));
             }
-
-            // ── RAW WEBSOCKET GATEWAY PROBE ──────────────────────────
-            // discord.js's own WS handling can go quiet with almost no debug
-            // output if the raw socket handshake itself is the thing stuck
-            // (as opposed to Discord actively rejecting the connection).
-            // This opens a WebSocket straight to Discord's gateway using
-            // Node's built-in WebSocket (no discord.js, no extra deps) so we
-            // can tell definitively: does the socket ever OPEN at all?
-            try {
-                const wsProbeResult = await new Promise((resolve, reject) => {
-                    const ws = new WebSocket('wss://gateway.discord.gg/?v=10&encoding=json');
-                    const timer = setTimeout(() => {
-                        ws.close();
-                        reject(new Error('Raw WS handshake did not open within 10s'));
-                    }, 10000);
-                    ws.addEventListener('open', () => {
-                        clearTimeout(timer);
-                        resolve('opened');
-                    });
-                    ws.addEventListener('message', (event) => {
-                        clearTimeout(timer);
-                        ws.close();
-                        resolve(`opened + received: ${String(event.data).slice(0, 120)}`);
-                    });
-                    ws.addEventListener('error', (event) => {
-                        clearTimeout(timer);
-                        reject(new Error(event.message || 'raw WS error event fired'));
-                    });
-                });
-                console.log('✅ [WS PROBE] Raw WebSocket to gateway.discord.gg', wsProbeResult + '.');
-                console.log('✅ [WS PROBE] The network path supports WebSocket connections — if the bot still won\'t connect, the problem is in discord.js/client config, not the network.');
-            } catch (wsProbeErr) {
-                console.error('❌ [WS PROBE] Raw WebSocket to gateway.discord.gg FAILED:', wsProbeErr.message);
-                console.error('❌ [WS PROBE] REST works but a raw WS handshake does not — this points at Render\'s outbound network blocking/dropping WebSocket upgrades to Discord, not your code, intents, or token.');
-            }
-        })();
-    } else {
-        console.log('ℹ️ [PROBE] Skipped (set DEBUG_DISCORD_PROBE=true in env vars to enable this diagnostic on next boot).');
-    }
+        } catch (probeErr) {
+            console.error('❌ [PROBE] Could not reach Discord REST API at all:', probeErr.message);
+            console.error('❌ [PROBE] This points to an outbound network/egress problem on Render, not your code or token.');
+        }
+    })();
     // ─────────────────────────────────────────────────────────────────
 
 
     const loginWatchdog = setTimeout(() => {
         console.error('❌ [CRITICAL ERROR] Still not connected 20s after login() was called.');
-        console.error('❌ [POSSIBLE CAUSES] (1) A privileged intent (e.g. MESSAGE CONTENT) isn\'t enabled in the Dev Portal, (2) the token is invalid/regenerated, or (3) Render\'s outbound network is blocking/dropping the WebSocket handshake to Discord\'s gateway — REST calls can succeed while this still fails, since they use a different transport.');
-        console.error('❌ [ACTION] If DEBUG_DISCORD_PROBE=true was set this boot, check the [WS PROBE] lines above — they tell you definitively whether the WebSocket handshake even opens. If it was not set, set DEBUG_DISCORD_PROBE=true in Render\'s env vars and redeploy to get that answer before changing anything else.');
+        console.error('❌ [LIKELY CAUSE] A privileged intent (e.g. MESSAGE CONTENT) requested in code is not enabled for this bot in the Discord Developer Portal, OR the token is invalid/regenerated.');
+        console.error('❌ [ACTION] Go to https://discord.com/developers/applications -> your app -> Bot -> enable "MESSAGE CONTENT INTENT" (and any other intents you request in code), then redeploy.');
     }, 20000);
 
     client.login(process.env.DISCORD_TOKEN)
