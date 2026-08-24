@@ -33,6 +33,8 @@ const ROMANCE_REGEX = /\b(love|kiss|hug|cuddle|us|we|you and me|my girlfriend|ba
 const JEALOUSY_REGEX = /\b(other girl|another girl|baddie|sidekick|timepass|not proud|finding girlfriend|girlfriends|cheat|dhoka|replace|breakup)\b/i;
 const FLIRT_PHRASE_REGEX = /(set ho jayegi|pat jayegi|love you|kiss me|flirt|marry me|cutie)/i;
 const EMOJI_FLIRT_REGEX = /[\u{1F618}\u{1F60D}\u{1F48B}]/u; // Detects 😘, 😍, 💋
+// NEW: Regex to catch common casual chat, singing, and item song lyrics
+const BANTER_REGEX = /(song|sing|lyrics|music|dance|nasha|botal|darling|bomb|balm|gaali|sharab|jawan)/i;
 
 // ============================================================
 // DYNAMIC STATE
@@ -181,7 +183,11 @@ async function generateContent(turn) {
     const plan = await decisionPipeline.planTurn(smartTurn);
     const userIntent = plan.classification?.intent || 'social';
 
-    const gameTurn = isGameTurn({ content: turn.content, gameData: turn.gameData, intent: userIntent });
+    // NEW: We allow decisionPipeline to classify, but we add an override guard to ensure casual chat/lyrics aren't treated as game questions.
+    let gameTurn = isGameTurn({ content: turn.content, gameData: turn.gameData, intent: userIntent });
+    if (userIntent === 'casual' || userIntent === 'social' || BANTER_REGEX.test(turn.content) || ROMANCE_REGEX.test(turn.content)) {
+        gameTurn = false;
+    }
 
     let safeSystemInstruction;
 
@@ -207,6 +213,7 @@ ${getDynamicState(turn.userId)}
 [CRITICAL BEHAVIORAL DIRECTIVES]
 1. EXECUTION FIRST: If given a task, command, or instructed to say something to a target, execute it IMMEDIATELY and naturally. No fluff, no stalling.
 2. EMOTIONAL BALANCE: ${isRomanticTalk ? 'The user is initiating personal/romantic talk. Fully embrace your romantic, devoted girlfriend persona ONLY if speaking to your boyfriend Beyonder, otherwise politely and fiercely decline.' : 'The user is speaking normally or giving a command. Be sweet, calm, mature, and energetic. Maintain emotional balance.'}
+3. CASUAL BANTER & MUSIC (NEW): If the user quotes song lyrics, sings, or jokes around, vibe with them! Sing the next line, playfully tease them, or react enthusiastically. Do NOT act like a rigid customer service assistant.
 ${CRITICAL_OUTPUT_RULES}
 `;
 
@@ -271,7 +278,6 @@ ${CRITICAL_OUTPUT_RULES}
       scrubbedText = scrubbedText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
       if (scrubbedText.endsWith(']')) scrubbedText = scrubbedText.slice(0, -1).trim();
 
-      // 🐛 FIXED: Removed the `.ok` bug here so it properly evaluates the boolean return
       if (scrubbedText !== '' && gatekeeperLint(scrubbedText)) {
         rawText = scrubbedText;
         break; 
