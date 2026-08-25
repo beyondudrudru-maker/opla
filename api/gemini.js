@@ -6,9 +6,25 @@ const { buildIdentityCore } = require('../persona/identityCore');
 const decisionPipeline = require('../decision/decisionPipeline');
 const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
-const { isGameTurn } = require('../decision/decisionPipeline');
 const { stripLeakedReasoning, gatekeeperLint: sharedGatekeeperLint } = require('../postProcessor/leakFilter');
 const { SMART_GEAR_FALLBACK } = require('../data/gearData.js');
+
+// 🚀 REMOVED: this file used to re-run its own isGameTurn() keyword check
+// (GAME_KEYWORD_FALLBACK regex matching bare words like "boss"/"hero"/"game"
+// anywhere in the message) and, on any match, swap OUT Melody's entire
+// persona for buildGameFastLaneIdentity() — a bare "data engine" prompt with
+// zero personality. That's why a lyrics/banter message could get the reply
+// "I'm here to help with Kingdom Clash questions." — a single stray keyword
+// silently overrode the routing decision index.js had already made upstream.
+//
+// index.js's gameDomainRouter.route() is now the ONLY place that decides
+// game-vs-not, and it only ever reaches this file (api/gemini.js) when it
+// decided the turn should stay on Melody's persona — either because it's not
+// a game query at all, or because it's game-flavored small talk that still
+// wants Melody's voice, not a bare data dump. So generateContent() below now
+// always uses Melody's full persona; the game "fast lane" data-engine prompt
+// only fires when turn.gameData is explicitly provided (light-touch case),
+// never from scanning turn.content for keywords.
 
 // ============================================================
 // CONFIG / CONSTANTS
@@ -33,8 +49,6 @@ const ROMANCE_REGEX = /\b(love|kiss|hug|cuddle|us|we|you and me|my girlfriend|ba
 const JEALOUSY_REGEX = /\b(other girl|another girl|baddie|sidekick|timepass|not proud|finding girlfriend|girlfriends|cheat|dhoka|replace|breakup)\b/i;
 const FLIRT_PHRASE_REGEX = /(set ho jayegi|pat jayegi|love you|kiss me|flirt|marry me|cutie)/i;
 const EMOJI_FLIRT_REGEX = /[\u{1F618}\u{1F60D}\u{1F48B}]/u; // Detects 😘, 😍, 💋
-// NEW: Regex to catch common casual chat, singing, and item song lyrics
-const BANTER_REGEX = /(song|sing|lyrics|music|dance|nasha|botal|darling|bomb|balm|gaali|sharab|jawan)/i;
 
 // ============================================================
 // DYNAMIC STATE
@@ -80,7 +94,7 @@ Your response IS the final spoken message, delivered directly to the end user in
 - NO internal monologue, reasoning, planning steps, or self-evaluations of any kind (e.g., "Let's see...", "Constraint check", "Here's a thinking process:", "Thinking Process:", "Let me think about this").
 - NO numbered or bulleted PLANNING lists that describe what you are about to do before you do it (e.g., "1. Analyze User Input", "2. Identify intent", "Step 1:", "First, I will..."). Go straight to the answer — do not narrate your approach.
 - NO meta-commentary about the task, the prompt, your instructions, or your own process (e.g., "Based on the instructions", "As requested", "I will now generate").
-- NO XML/pseudo tags of any kind (<think>, <plan>, <reasoning>, <reflection>, <analysis>, <scratchpad>, <step>).
+- NO XML/pseudo tags of any kind (<think>, <plan>, <reasoning>, <reflection>, <analysis>, <scratchpad>).
 - NO parenthetical private notes, asides, or self-corrections aimed at yourself rather than the user.
 - STRICT SANDBOX RULE: NEVER calculate total power, stats, or troop capacities yourself. ONLY output the exact math provided in <GameData>. If not there, do not invent it.
 Your entire output must be ONLY the final, in-character dialogue the user is meant to read — nothing before it, nothing after it, and no visible trace of how you arrived at it.`;
@@ -183,11 +197,15 @@ async function generateContent(turn) {
     const plan = await decisionPipeline.planTurn(smartTurn);
     const userIntent = plan.classification?.intent || 'social';
 
-    // NEW: We allow decisionPipeline to classify, but we add an override guard to ensure casual chat/lyrics aren't treated as game questions.
-    let gameTurn = isGameTurn({ content: turn.content, gameData: turn.gameData, intent: userIntent });
-    if (userIntent === 'casual' || userIntent === 'social' || BANTER_REGEX.test(turn.content) || ROMANCE_REGEX.test(turn.content)) {
-        gameTurn = false;
-    }
+    // 🚀 FIX: no longer re-derives "is this a game turn" from raw keyword
+    // scanning of turn.content. index.js's gameDomainRouter already made
+    // that call before this function was ever invoked; the only reason to
+    // use the bare data-engine prompt here is if index.js explicitly handed
+    // over real game data. This is what stops persona from vanishing when a
+    // normal message happens to contain a word like "boss" or "hero".
+    const gameTurn = Boolean(turn.gameData && Object.keys(turn.gameData).length > 0);
+
+    console.log(`[PIPELINE TRACE][gemini.js] intent=${userIntent} gameTurn=${gameTurn} promptLayers=[decisionPipeline,${gameTurn ? 'gameFastLane' : 'identityCore+behavior'},modelRouter,styleLinter]`);
 
     let safeSystemInstruction;
 
@@ -213,7 +231,6 @@ ${getDynamicState(turn.userId)}
 [CRITICAL BEHAVIORAL DIRECTIVES]
 1. EXECUTION FIRST: If given a task, command, or instructed to say something to a target, execute it IMMEDIATELY and naturally. No fluff, no stalling.
 2. EMOTIONAL BALANCE: ${isRomanticTalk ? 'The user is initiating personal/romantic talk. Fully embrace your romantic, devoted girlfriend persona ONLY if speaking to your boyfriend Beyonder, otherwise politely and fiercely decline.' : 'The user is speaking normally or giving a command. Be sweet, calm, mature, and energetic. Maintain emotional balance.'}
-3. CASUAL BANTER & MUSIC (NEW): If the user quotes song lyrics, sings, or jokes around, vibe with them! Sing the next line, playfully tease them, or react enthusiastically. Do NOT act like a rigid customer service assistant.
 ${CRITICAL_OUTPUT_RULES}
 `;
 
@@ -278,6 +295,7 @@ ${CRITICAL_OUTPUT_RULES}
       scrubbedText = scrubbedText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
       if (scrubbedText.endsWith(']')) scrubbedText = scrubbedText.slice(0, -1).trim();
 
+      // 🐛 FIXED: Removed the `.ok` bug here so it properly evaluates the boolean return
       if (scrubbedText !== '' && gatekeeperLint(scrubbedText)) {
         rawText = scrubbedText;
         break; 
