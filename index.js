@@ -28,6 +28,18 @@ const gameDomainRouter = require('./router/gameDomainRouter');
 // JSON.stringify(..., null, 2), bypassing compression entirely and
 // contributing to 413 Request Entity Too Large errors from Groq/Gemini.
 const { compressGameData } = require('./promptBuilder/promptAssembler');
+// 🚀 WIRE-UP FIX: gameDomainRouter already computes `queryFlags` and
+// `deterministic` on every unresolved call specifically for aiFallback to
+// consume (cache-first deterministic-explain path, split instruction
+// segments) — but this file was never actually calling aiFallback.askAI().
+// That meant a second, fully separate, purpose-built game-strategy pipeline
+// (gameStrategyEngine -> gameQueryEngine -> gameKnowledge -> strategyCache)
+// existed in the repo but never ran; all real traffic went through Melody's
+// generic persona prompt in api/gemini.js instead, duplicating game data
+// across two systems and inflating payload size. Now genuine game queries
+// (queryFlags present) go to aiFallback; everything else keeps going to
+// Melody so persona/banter/relationship behavior is unaffected.
+const { askAI: askGameAI } = require('./ai/aiFallback');
 
 // 🛡️ DEDUPLICATION SET (Global)
 const processedMessages = new Set();
@@ -357,38 +369,88 @@ client.on(Events.MessageCreate, async (message) => {
             }
 
             // IF UNRESOLVED: Proceed to AI Pipeline
-            console.log(`[GAME ROUTER] Falling through to Melody AI`);
-
-            let knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
-
-            // 🚀 AGGRESSIVE STRATEGY CONTEXT INJECTION FOR THE AI
-            let aiPromptContent = cleanText;
-            if (gameResult.context) {
-                const compressedContext = typeof gameResult.context === 'object'
-                    ? compressGameData(gameResult.context)
-                    : gameResult.context;
-                const contextStr = typeof compressedContext === 'object'
-                    ? JSON.stringify(compressedContext)
-                    : compressedContext;
-
-                aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question. Compare the stats directly and provide strategic advice based ONLY on these numbers. Do not invent abilities or stats.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${cleanText}`;
-            }
+            // 🚀 PIPELINE SPLIT (fixes both the "only answers as a game bot"
+            // bug and the duplicated/oversized game-data payload bug):
+            //
+            //   - genuine game-strategy query (router found real context OR
+            //     set queryFlags on a boss/synergy/comparison/gear question)
+            //     -> ai/aiFallback.js. This is the purpose-built engine
+            //        (strategyCache + promptInstructions + gameStrategyEngine)
+            //        that was already wired for this by gameDomainRouter but
+            //        was never actually being called.
+            //   - everything else (banter, lyrics, romance, casual chat,
+            //     admin talk, or a game question the router couldn't resolve
+            //     with real data) -> api/gemini.js, Melody's full persona.
+            //     Melody's own internal isGameTurn() second-guessing has been
+            //     removed (see decisionPipeline.js) so a stray keyword like
+            //     "boss" or "hero" inside normal conversation can no longer
+            //     silently strip her persona and reply as a bare data engine.
+            const hasRealGameSignal = Boolean(
+                gameResult.context ||
+                (gameResult.queryFlags && (
+                    gameResult.queryFlags.isBossQuery ||
+                    gameResult.queryFlags.isSynergyQuery ||
+                    gameResult.queryFlags.isComparisonQuery ||
+                    gameResult.queryFlags.isSingleEntity ||
+                    gameResult.queryFlags.needsGear
+                ))
+            );
 
             const roles = message.member ? message.member.roles.cache.map(r => r.name.toLowerCase()) : [];
+            let aiReply, modelUsed, debug, pipelineUsed;
 
-            // Execute the AI generation
-            const { text: aiReply, modelUsed, debug } = await melody.generateContent({
-                userId: message.author.id,
-                displayName: message.author.username,
-                roles,
-                channelId: message.channel.id,
-                content: aiPromptContent, // <-- Sends the strictly formatted payload
-                isGroupContext: Boolean(message.guild),
-                mentionedUsers,
-                knowledgeContext,
-            });
+            if (hasRealGameSignal) {
+                pipelineUsed = 'aiFallback (gameStrategyEngine)';
+                console.log(`[PIPELINE TRACE] route=game-strategy | queryFlags=${JSON.stringify(gameResult.queryFlags)} | deterministic=${gameResult.deterministic ? gameResult.deterministic.queryType : 'none'}`);
 
-            console.log(`🧠 [MELODY] intent=${debug?.intent} tier=${debug?.tier} model=${modelUsed}`);
+                aiReply = await askGameAI({
+                    userMessage: cleanText,
+                    intent: gameResult.intent,
+                    context: gameResult.context,
+                    geminiKeys: melody.geminiKeys,
+                    groqKeys: melody.groqKeys,
+                    queryFlags: gameResult.queryFlags,
+                    deterministic: gameResult.deterministic,
+                });
+                modelUsed = 'aiFallback';
+                debug = { intent: gameResult.intent, tier: 'game-strategy' };
+            } else {
+                pipelineUsed = 'melody (api/gemini.js persona)';
+                let knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
+
+                // Light-touch context injection ONLY for genuinely game-flavored
+                // small talk that still needs Melody's in-character voice (e.g.
+                // "which troop do you like best?") — not a full data dump.
+                let aiPromptContent = cleanText;
+                if (gameResult.context) {
+                    const compressedContext = typeof gameResult.context === 'object'
+                        ? compressGameData(gameResult.context)
+                        : gameResult.context;
+                    const contextStr = typeof compressedContext === 'object'
+                        ? JSON.stringify(compressedContext)
+                        : compressedContext;
+
+                    aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question. Compare the stats directly and provide strategic advice based ONLY on these numbers. Do not invent abilities or stats.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${cleanText}`;
+                }
+
+                console.log(`[PIPELINE TRACE] route=melody-persona | hasGameContext=${Boolean(gameResult.context)}`);
+
+                const melodyResult = await melody.generateContent({
+                    userId: message.author.id,
+                    displayName: message.author.username,
+                    roles,
+                    channelId: message.channel.id,
+                    content: aiPromptContent,
+                    isGroupContext: Boolean(message.guild),
+                    mentionedUsers,
+                    knowledgeContext,
+                });
+                aiReply = melodyResult.text;
+                modelUsed = melodyResult.modelUsed;
+                debug = melodyResult.debug;
+            }
+
+            console.log(`🧠 [PIPELINE TRACE] pipeline="${pipelineUsed}" intent=${debug?.intent} tier=${debug?.tier} model=${modelUsed}`);
 
             // 👑 EVERYONE MENTION LOGIC
             let finalReply = aiReply;
