@@ -23,37 +23,24 @@ const BOT_USER_ID = process.env.BOT_USER_ID;
 const DB_TIMEOUT_MS = 2500; // 🛡️ Max time to wait for memory fetches before moving on
 
 // ============================================================
-// 🚀 SMART EMBEDDED GAME TURN DETECTOR
+// 🚀 GAME TURN DETECTOR
 // ============================================================
-// 🐛 FIX: "boss" was missing from this list — a message that only mentions a
-// boss (no "hero"/"troop"/"stats" etc.) could fall through the keyword
-// fast-lane check entirely and rely solely on intent classification to be
-// recognized as a game turn.
-const GAME_KEYWORD_FALLBACK = /\b(stats|hp|damage|hero|troop|boss|game|clash|synergy|best with|use with)\b/i;
-const CASUAL_GREETINGS_REGEX = /\b(khabar|khana|kha liya|kya haal|hello|hi|hey|sup|wassup|gm|gn|kaise ho|batao)\b/i;
-const VS_FALSE_POSITIVE_REGEX = /\b(vs\.?|versus|compare)\b/i; // 🚀 ADDED TO CATCH VS TRAP
-
-function isGameTurn({ content = '', gameData = null, intent = null } = {}) {
-  const hasGameKeywords = GAME_KEYWORD_FALLBACK.test(content);
+// 🚀 FIX: previously fell back to raw keyword regex matching (GAME_KEYWORD_
+// FALLBACK: /\b(stats|hp|damage|hero|troop|boss|game|clash|synergy...)\b/i)
+// against the ENTIRE message. That meant any normal sentence containing a
+// bare word like "boss" or "hero" — even in an unrelated Hinglish/lyrics
+// context — got flagged as a game turn, which in api/gemini.js caused
+// Melody's whole persona to be swapped out for a bare data-engine prompt.
+//
+// index.js's gameDomainRouter.js is now the single source of truth for
+// game-vs-not decisions (it does proper entity/intent extraction, not
+// keyword scanning) and hands its verdict down via explicit `gameData`.
+// This function is intentionally now a thin, honest check of that signal —
+// no independent re-guessing from raw text.
+function isGameTurn({ gameData = null, intent = null } = {}) {
   const hasValidGameData = gameData !== null && Object.keys(gameData).length > 0;
-
-  // 🧠 1. Casual Greeting Guard: Reject fast-lane entry for pure greetings
-  if (CASUAL_GREETINGS_REGEX.test(content) && !hasGameKeywords) {
-    return false;
-  }
-
-  // 🧠 2. THE "VS" BANTER TRAP GUARD (Fix for Apple vs Android)
-  // If the query contains "vs" but has NO game keywords and NO valid game data 
-  // fetched by the router, it is a general knowledge comparison. Route to General AI.
-  if (VS_FALSE_POSITIVE_REGEX.test(content) && !hasGameKeywords && !hasValidGameData) {
-    return false;
-  }
-
-  // 3. Fast-lane approvals
   if (hasValidGameData) return true;
-  if (['STRATEGY', 'CALC', 'FACT', 'GOLD', 'GEM'].includes(intent)) return true;
-
-  return hasGameKeywords;
+  return ['STRATEGY', 'CALC', 'FACT', 'GOLD', 'GEM'].includes(intent);
 }
 
 // 🛡️ Helper function to prevent database hangs from freezing the bot
@@ -78,7 +65,7 @@ async function planTurn({
       // 🚀 GAME FAST-LANE: relationship framing is still cheap/useful for tone
       const relationship = await relationshipEngine.resolve({ userId, displayName, roles }).catch(() => ({}));
 
-      const gameTurn = isGameTurn({ content, gameData, intent: classification.intent });
+      const gameTurn = isGameTurn({ gameData, intent: classification.intent });
 
       if (gameTurn) {
         const prompt = promptAssembler.assemble({
@@ -88,6 +75,8 @@ async function planTurn({
           userMessage: content,
           speakerName: displayName,
         });
+
+        console.log(`[PIPELINE TRACE][decisionPipeline] intent=${classification.intent} layers=[intentClassifier,targetResolver,relationshipEngine,promptAssembler(leanMode)]`);
 
         return {
           prompt,
@@ -151,6 +140,8 @@ async function planTurn({
         targetInfo,
         speakerName: displayName,
       });
+
+      console.log(`[PIPELINE TRACE][decisionPipeline] intent=${classification.intent} isCasualChat=${isCasualChat} layers=[intentClassifier,targetResolver,relationshipEngine,emotionEngine${!isCasualChat ? ',memoryEngine,contextRanker' : ''},behaviorEngine,promptAssembler]`);
 
       return { prompt, classification, behaviorDirective, emotionalState, relationship, channelId, userId };
 
