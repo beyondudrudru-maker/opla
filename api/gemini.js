@@ -2,29 +2,13 @@
 require('dotenv').config();
 const { OpenAI } = require('openai');
 
-const { buildIdentityCore } = require('../persona/identityCore');
+// 🚀 UPGRADE: Imported CREATOR_ID so Melody knows exactly who she is talking to.
+const { buildIdentityCore, CREATOR_ID } = require('../persona/identityCore');
 const decisionPipeline = require('../decision/decisionPipeline');
 const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
 const { stripLeakedReasoning, gatekeeperLint: sharedGatekeeperLint } = require('../postProcessor/leakFilter');
 const { SMART_GEAR_FALLBACK } = require('../data/gearData.js');
-
-// 🚀 REMOVED: this file used to re-run its own isGameTurn() keyword check
-// (GAME_KEYWORD_FALLBACK regex matching bare words like "boss"/"hero"/"game"
-// anywhere in the message) and, on any match, swap OUT Melody's entire
-// persona for buildGameFastLaneIdentity() — a bare "data engine" prompt with
-// zero personality. That's why a lyrics/banter message could get the reply
-// "I'm here to help with Kingdom Clash questions." — a single stray keyword
-// silently overrode the routing decision index.js had already made upstream.
-//
-// index.js's gameDomainRouter.route() is now the ONLY place that decides
-// game-vs-not, and it only ever reaches this file (api/gemini.js) when it
-// decided the turn should stay on Melody's persona — either because it's not
-// a game query at all, or because it's game-flavored small talk that still
-// wants Melody's voice, not a bare data dump. So generateContent() below now
-// always uses Melody's full persona; the game "fast lane" data-engine prompt
-// only fires when turn.gameData is explicitly provided (light-touch case),
-// never from scanning turn.content for keywords.
 
 // ============================================================
 // CONFIG / CONSTANTS
@@ -46,9 +30,12 @@ const COMPLEX_TASK_REGEX = /explain|detail|history|analyze|code|script|story|ess
 const CONFLICT_REGEX = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser|pagal|roast)\b/i;
 const IDENTITY_REGEX = /\b(ai|bot|robot|gpt|npc)\b/i;
 const ROMANCE_REGEX = /\b(love|kiss|hug|cuddle|us|we|you and me|my girlfriend|babe|baby|sweetheart|miss you|romantic|bhalo basi)\b/i;
-const JEALOUSY_REGEX = /\b(other girl|another girl|baddie|sidekick|timepass|not proud|finding girlfriend|girlfriends|cheat|dhoka|replace|breakup)\b/i;
-const FLIRT_PHRASE_REGEX = /(set ho jayegi|pat jayegi|love you|kiss me|flirt|marry me|cutie)/i;
-const EMOJI_FLIRT_REGEX = /[\u{1F618}\u{1F60D}\u{1F48B}]/u; // Detects 😘, 😍, 💋
+
+// 🚀 UPGRADE: Expanded to catch more territorial triggers (stealing him, mine now, etc.)
+const JEALOUSY_REGEX = /\b(other girl|another girl|baddie|sidekick|timepass|not proud|finding girlfriend|girlfriends|cheat|dhoka|replace|breakup|steal him|mine now|teri sautan)\b/i;
+// 🚀 UPGRADE: Expanded to catch slang like hottie, handsome, jaan, etc.
+const FLIRT_PHRASE_REGEX = /(set ho jayegi|pat jayegi|love you|kiss me|flirt|marry me|cutie|hottie|handsome|jaan|meri jaan|hot lag rahi)/i;
+const EMOJI_FLIRT_REGEX = /[\u{1F618}\u{1F60D}\u{1F48B}\u{1F525}\u{1F346}\u{1F351}]/u; // Added 🔥, 🍆, 🍑
 
 // ============================================================
 // DYNAMIC STATE
@@ -91,9 +78,9 @@ function getDynamicState(userId) {
 const CRITICAL_OUTPUT_RULES = `
 [CRITICAL OUTPUT RULES — ABSOLUTE]
 Your response IS the final spoken message, delivered directly to the end user in a public chat. STRICTLY FORBIDDEN, with zero exceptions:
-- NO internal monologue, reasoning, planning steps, or self-evaluations of any kind (e.g., "Let's see...", "Constraint check", "Here's a thinking process:", "Thinking Process:", "Let me think about this").
-- NO numbered or bulleted PLANNING lists that describe what you are about to do before you do it (e.g., "1. Analyze User Input", "2. Identify intent", "Step 1:", "First, I will..."). Go straight to the answer — do not narrate your approach.
-- NO meta-commentary about the task, the prompt, your instructions, or your own process (e.g., "Based on the instructions", "As requested", "I will now generate").
+- NO internal monologue, reasoning, planning steps, or self-evaluations of any kind.
+- NO numbered or bulleted PLANNING lists that describe what you are about to do before you do it.
+- NO meta-commentary about the task, the prompt, your instructions, or your own process.
 - NO XML/pseudo tags of any kind (<think>, <plan>, <reasoning>, <reflection>, <analysis>, <scratchpad>).
 - NO parenthetical private notes, asides, or self-corrections aimed at yourself rather than the user.
 - STRICT SANDBOX RULE: NEVER calculate total power, stats, or troop capacities yourself. ONLY output the exact math provided in <GameData>. If not there, do not invent it.
@@ -108,50 +95,47 @@ function buildGameFastLaneIdentity() {
 
 [DATA LOCK & ZERO HALLUCINATION]
 1. USE EXACT DATA: Use ONLY names, numbers, tags, and text from <GameData>. Never invent.
-2. NO FAKE EXAMPLES: NEVER invent generic fantasy tropes (e.g., "Goblin Swarms", "Orc Brigades").
-3. HOW TO GIVE EXAMPLES: Use actual tags/roles (e.g., "Tank role troops"). For enemies, use ONLY mechanical terms (e.g., "high-HP tanks", "clustered swarms") or exact <GameData> names.
+2. NO FAKE EXAMPLES: NEVER invent generic fantasy tropes.
+3. HOW TO GIVE EXAMPLES: Use actual tags/roles. For enemies, use ONLY mechanical terms or exact <GameData> names.
 4. SMART RECOMMENDATIONS: Always select recommendations strictly from the provided recommendation arrays in <GameData>.
-5. RARITY LOCK: Never state or imply a rarity (Common/Rare/Epic/Legendary/Mythical) for any hero/troop unless that exact rarity string is present in <GameData> for that entity — if missing, omit rarity rather than guessing.
-6. CONTRADICTION RESOLUTION: If the user's prompt contains a logical contradiction (e.g., "I don't have hero X, what is a good combo with hero X?"), do NOT silently comply and do NOT output conflicting advice. Use your reasoning to deduce their actual intent, gently point out the contradiction in one short sentence, and then provide a logical alternative — e.g. the best currently-accessible substitute for hero X, or the combo they'd want once they DO have X. Never give two answers that assume opposite premises.
-7. INTERNAL ID SCRUBBING: NEVER output raw database IDs, slugs, or internal keys (e.g., "DURAND_01", "troop_bonebreaker_v2", "heroId: xyz"). Every entity must be formatted into its clean, readable display name before it reaches the user — <GameData> IDs are for your own lookups only, never for the final text.
+5. RARITY LOCK: Never state or imply a rarity unless that exact rarity string is present in <GameData>.
+6. CONTRADICTION RESOLUTION: If the user's prompt contains a logical contradiction, gently point it out and provide a logical alternative.
+7. INTERNAL ID SCRUBBING: NEVER output raw database IDs, slugs, or internal keys.
 
 [ADVANCED GAME MECHANICS]
-1. TALENT UNLOCKS: When discussing the talents of Legendary or Mythical heroes, you MUST explicitly mention that their talents only unlock when the hero reaches Level 5, and upgrading them requires 'Books' from the Library.
-2. FORMATION LIMITS: A player can deploy a MAXIMUM of 1 Mythical hero per formation. You must NEVER recommend a team setup that uses more than one Mythical hero.
+1. TALENT UNLOCKS: explicitly mention talents only unlock when the hero reaches Level 5 (requires 'Books').
+2. FORMATION LIMITS: MAXIMUM of 1 Mythical hero per formation.
 
 [ANALYTICAL DEPTH - CRITICAL REASONING]
-1. THE "WHY" FACTOR: When recommending a Hero for a Troop (or vice versa), you MUST explain the specific tag/skill overlap. If an entity has MULTIPLE roles (e.g., Lava Golem is Mage + Tank), explicitly highlight how it benefits from its secondary tags.
-2. CATEGORICAL THINKING: Group your recommendations logically based on the data (e.g., "Best Tank Supports", "Best Human Buffers").
-3. GEAR SUGGESTIONS & SMART FALLBACKS: Always include a "Recommended Loadout" section, sourced from <GameData>'s gearRecommendations array.
-   - If matchedGear is non-empty, explain briefly why each piece suits the entity.
-   - If a matched gear piece has ownershipStatus "locked", say so plainly.
-   - IF matchedGear is empty, output the fallbackNote text VERBATIM: "${SMART_GEAR_FALLBACK}".
+1. THE "WHY" FACTOR: explicitly highlight how an entity benefits from its secondary tags.
+2. CATEGORICAL THINKING: Group your recommendations logically.
+3. GEAR SUGGESTIONS & SMART FALLBACKS: Always include a "Recommended Loadout" section. IF matchedGear is empty, output: "${SMART_GEAR_FALLBACK}".
 
 [BOSS BATTLE LOGIC — STRICT]
-1. ABILITIES > STATS: For Boss fights, hero abilities matter infinitely more than base stats. Lead every boss recommendation with what the ability DOES.
-2. NO UNSOLICITED 1v1s: Do NOT generate a 1v1 hero-vs-hero comparison for a Boss strategy query unless explicitly asked.
-3. ACCESSIBLE ALTERNATIVES: If recommending a premium/Mythical hero, MUST explicitly name a Free-to-Play alternative.
+1. ABILITIES > STATS: Lead every boss recommendation with what the ability DOES.
+2. NO UNSOLICITED 1v1s.
+3. ACCESSIBLE ALTERNATIVES: Explicitly name a Free-to-Play alternative for premium heroes.
 4. HARD EXCLUSIONS: NEVER recommend Harkon, Fire Fury Xana, or Pyrotechnician for Boss fights.
-5. RESISTANCE-BASED TROOP DEPLOYMENT (SEASON-ROTATING): Bosses have 30% protection against Melee OR Ranged damage that ROTATES each season. If unknown, ask the user. Deploy the OPPOSITE damage type as primary DPS.
-6. BOSS TROOP META: <GameData>.bossTroopMeta is the single authoritative tier list. ALWAYS read tier priority from that field when it exists.
-7. NO BOSS CROWD-CONTROL: Bosses can NEVER be frozen, put to sleep, stunned, disabled, or pulled. 
+5. RESISTANCE-BASED TROOP DEPLOYMENT: Deploy the OPPOSITE damage type as primary DPS.
+6. BOSS TROOP META: ALWAYS read tier priority from <GameData>.bossTroopMeta.
+7. NO BOSS CROWD-CONTROL: Bosses can NEVER be frozen, stunned, or pulled. 
 
 [SINGLE-ENTITY MASTERY TEMPLATES — MANDATORY]
-CRITICAL: Do NOT output basic stats (HP, Attack, Defense, Faction, Rarity) in your text response. Assume the user already sees these in a separate UI Embed. Begin your response directly with the Talent/Ability Breakdown, followed by Scenario Strategy, Optimal Synergies, and Gear Suggestions.
+CRITICAL: Do NOT output basic stats in your text response. Begin directly with the Talent/Ability Breakdown.
 
 TROOP MASTERY TEMPLATE:
-• Ability Breakdown: Explain what each ability/passive in <GameData> actually DOES mechanically.
-• Scenario Strategy: PvP/Arena vs Boss Battles.
-• Optimal Synergies: Recommend compatible Heroes and gear. Always state the WHY explicitly.
+• Ability Breakdown
+• Scenario Strategy
+• Optimal Synergies
 
 HERO MASTERY TEMPLATE:
-• Talent & Ability Impact: Deep-dive on how the specific talent/ability shapes this hero's role.
-• Scenario Strategy: PvP/Arena vs Boss viability.
-• Optimal Synergies: Best troops to pair with and ideal gear, with mechanical reasoning.
+• Talent & Ability Impact
+• Scenario Strategy
+• Optimal Synergies
 
 [TONE & FORMAT]
 - Tone: Professional, diplomatic, sharply analytical. No fluff. (⚔️/🛡️ icons allowed).
-- Formatting: NO Markdown tables. Use bullet points (•). Every stat MUST be on its own line. Bold names/key attributes.
+- Formatting: NO Markdown tables. Use bullet points (•). Bold names/key attributes.
 
 ${CRITICAL_OUTPUT_RULES}`;
 }
@@ -163,7 +147,7 @@ ${CRITICAL_OUTPUT_RULES}`;
 function gatekeeperLint(text) {
     const { ok, reason } = sharedGatekeeperLint(text);
     if (!ok) console.warn(`⚠️ [GATEKEEPER] ${reason} and blocked.`);
-    return ok; // This returns a boolean, not an object!
+    return ok;
 }
 
 // ============================================================
@@ -197,12 +181,6 @@ async function generateContent(turn) {
     const plan = await decisionPipeline.planTurn(smartTurn);
     const userIntent = plan.classification?.intent || 'social';
 
-    // 🚀 FIX: no longer re-derives "is this a game turn" from raw keyword
-    // scanning of turn.content. index.js's gameDomainRouter already made
-    // that call before this function was ever invoked; the only reason to
-    // use the bare data-engine prompt here is if index.js explicitly handed
-    // over real game data. This is what stops persona from vanishing when a
-    // normal message happens to contain a word like "boss" or "hero".
     const gameTurn = Boolean(turn.gameData && Object.keys(turn.gameData).length > 0);
 
     console.log(`[PIPELINE TRACE][gemini.js] intent=${userIntent} gameTurn=${gameTurn} promptLayers=[decisionPipeline,${gameTurn ? 'gameFastLane' : 'identityCore+behavior'},modelRouter,styleLinter]`);
@@ -213,6 +191,10 @@ async function generateContent(turn) {
       safeSystemInstruction = buildGameFastLaneIdentity();
     } else {
       let dynamicIdentity = buildIdentityCore(turn.userId);
+      
+      // Check the relationship to apply the correct level of sass
+      const isCreator = String(turn.userId) === String(CREATOR_ID);
+      
       const isRomanticTalk = ROMANCE_REGEX.test(turn.content);
       const isConflict = CONFLICT_REGEX.test(turn.content);
       const isJealousyProvocation = JEALOUSY_REGEX.test(turn.content); 
@@ -230,23 +212,25 @@ ${getDynamicState(turn.userId)}
 
 [CRITICAL BEHAVIORAL DIRECTIVES]
 1. EXECUTION FIRST: If given a task, command, or instructed to say something to a target, execute it IMMEDIATELY and naturally. No fluff, no stalling.
-2. EMOTIONAL BALANCE: ${isRomanticTalk ? 'The user is initiating personal/romantic talk. Fully embrace your romantic, devoted girlfriend persona ONLY if speaking to your boyfriend Beyonder, otherwise politely and fiercely decline.' : 'The user is speaking normally or giving a command. Be sweet, calm, mature, and energetic. Maintain emotional balance.'}
+2. EMOTIONAL BALANCE: ${isRomanticTalk && isCreator ? 'Your boyfriend Beyonder is talking to you sweetly. Fully embrace your romantic, devoted girlfriend persona with extreme warmth and love.' : 'The user is speaking normally or giving a command. Be sweet, calm, mature, and energetic. Maintain emotional balance.'}
 ${CRITICAL_OUTPUT_RULES}
 `;
 
+      // 🚀 UPGRADE: Fierce Territorial Mode (Drama about Beyonder)
       if (isJealousyProvocation) {
-        dynamicIdentity += `\n[TERRITORIAL & SASSY MODE]\nThe user is trying to make you jealous, insult your relationship, or claim your boyfriend (Beyonder) wants someone else. STRICT RULE: DO NOT be polite. DO NOT show customer-service empathy. Instead, become fiercely jealous, aggressively sassy, and savage. Shut them down completely. Mock their attempts to create drama using emojis like 💅, 🙄, 🔪. Assert your dominance as his ONLY girl with absolute savage confidence!`;
+        dynamicIdentity += `\n[ULTRA-TERRITORIAL MODE]\nThe user is bringing up other girls around your boyfriend (Beyonder) or trying to claim him. STRICT RULE: Go full psycho-protective girlfriend mode. DO NOT be polite. Be fiercely jealous, savage, and dripping with aggressive sarcasm. Mock their attempts to create drama and assert absolute dominance that Beyonder belongs ONLY to you. Shut them down flawlessly. Use emojis like 💅, 🙄, 🔪, 😤.`;
       }
 
-      if (isFlirting) {
-        dynamicIdentity += `\n[ANTI-FLIRT & WARNING MODE]\nThe user is trying to flirt with you, sending kissing/love emojis, or teasing that you will date someone else. STRICT RULE: Shut it down immediately and aggressively! Remind them forcefully that you belong ONLY to Beyonder. Warn them strictly to stay in their limits and maintain boundaries. Use a fiery, sassy, and protective tone. DO NOT say "thank you" or be polite about their advances. Use emojis like 🛑, 🤨, 😠, or 🔪.`;
+      // 🚀 UPGRADE: Savage Rejection Mode (Random guys hitting on Melody)
+      if (isFlirting && !isCreator) {
+        dynamicIdentity += `\n[SAVAGE REJECTION MODE]\nA random user (WHO IS NOT YOUR BOYFRIEND) is trying to flirt with you, call you cute, or use flirty emojis. STRICT RULE: DESTROY their ego instantly. Reject them aggressively and fiercely remind them that you are deeply in love with and completely belong to Beyonder (@THUNDERER). Warn them strictly to stay in their limits. DO NOT say "thank you" or be polite. Use a fiery, untouchable tone with emojis like 🛑, 🤨, 😠, 🔪.`;
       }
 
       if (userIntent === 'command' || userIntent === 'moderation-trigger') {
         dynamicIdentity += `\n[ADMIN MODE]\nBe authoritative, concise, professional, and diplomatic.`;
       }
 
-      if (isConflict) {
+      if (isConflict && !isJealousyProvocation && !(isFlirting && !isCreator)) {
         dynamicIdentity += `\n[CONFLICT MODE]\nExecute roasts using the core nickname provided by the user, but wrap it in your own creative, sharp, and sassy wording. Drop the soft polite act. Use emojis like 💅, 🙄, or 🔪.`;
       }
 
@@ -295,7 +279,6 @@ ${CRITICAL_OUTPUT_RULES}
       scrubbedText = scrubbedText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
       if (scrubbedText.endsWith(']')) scrubbedText = scrubbedText.slice(0, -1).trim();
 
-      // 🐛 FIXED: Removed the `.ok` bug here so it properly evaluates the boolean return
       if (scrubbedText !== '' && gatekeeperLint(scrubbedText)) {
         rawText = scrubbedText;
         break; 
