@@ -47,15 +47,22 @@ function normalize(str) {
 function _findTroopEntry(name) {
   if (!name) return null;
   const n = normalize(name);
+  
+  // 1. Exact Match Pass
   let hit = troops.find(
     t => normalize(t.name) === n ||
          normalize(t.id)   === n ||
          normalize(t.id.replace(/^tr-/, '')) === n
   );
+  
+  // 2. Safely Gated Substring Pass
   if (!hit) {
-    hit = troops.find(
-      t => normalize(t.name).includes(n) || n.includes(normalize(t.name))
-    );
+    hit = troops.find(t => {
+      const normName = normalize(t.name);
+      // Prevent short names from matching inside unrelated longer words
+      if (normName.length <= 3) return false; 
+      return normName.includes(n) || n.includes(normName);
+    });
   }
   return hit || null;
 }
@@ -63,13 +70,20 @@ function _findTroopEntry(name) {
 function _findHeroEntry(name) {
   if (!name) return null;
   const n = normalize(name);
+  
+  // 1. Exact Match Pass
   let hit = heroes.find(h => normalize(h.name) === n || normalize(h.id) === n);
+  
+  // 2. Safely Gated Substring Pass
   if (!hit) {
-    hit = heroes.find(
-      h => normalize(h.name).includes(n) ||
-           n.includes(normalize(h.name))  ||
-           normalize(h.id).includes(n)
-    );
+    hit = heroes.find(h => {
+      const normName = normalize(h.name);
+      // Prevent short names from matching inside unrelated longer words
+      if (normName.length <= 3) return false; 
+      return normName.includes(n) || 
+             n.includes(normName) || 
+             normalize(h.id).includes(n);
+    });
   }
   return hit || null;
 }
