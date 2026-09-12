@@ -59,8 +59,9 @@ function renderWorkingMemory(workingMemory) {
   const lines = workingMemory
     .slice(-10)
     .map(t => {
-      const role = t.role === 'melody' ? 'Melody' : 'User';
-      return `[${role}]: ${sanitize(t.content)}`;
+      // 🚀 FIX: Pull exact names instead of hardcoding "User"
+      const roleName = t.role === 'melody' ? 'Melody' : (t.playerName || t.name || 'User');
+      return `[${roleName}]: ${sanitize(t.content)}`;
     })
     .join('\n');
 
@@ -107,7 +108,7 @@ function renderTaskDirective(behavior = {}) {
 // Strategy routing only needs the Level-10 ceiling for hp/defense/attack, not
 // the full leveling curve. This collapses both known stat shapes:
 //   - Array of per-level values: [lvl1, lvl2, ..., lvl10]  -> "Max: <lvl10>"
-//   - Range object: { min, max }                            -> "Max: <max>"
+//   - Range object: { min, max }                             -> "Max: <max>"
 // down to a single string, cutting payload size substantially once full stat
 // arrays were added to heroes.js/troops.js. Non-stat fields (synergies, gear,
 // boss records, talents, etc.) pass through untouched.
@@ -770,10 +771,11 @@ function renderGameContext(gameData, userMessage) {
  * EmotionalState, no AudienceTarget, no BehaviorDirectives — those are the
  * blocks that dilute model attention and cause troop/hero name mixups.
  */
-function assembleLean({ relationship, gameData, userMessage, speakerName }) {
+function assembleLean({ relationship, gameData, userMessage, speakerName, recentChatLog }) {
   const blocks = [
     renderRelationshipFraming(relationship || {}),
     renderGameContext(gameData, userMessage),
+    recentChatLog ? `<RecentChatLog>\n${recentChatLog}\n</RecentChatLog>` : '', // 🚀 NEW
     `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`,
   ];
 
@@ -790,10 +792,11 @@ function assemble({
   gameData,
   userMessage,
   targetInfo,
-  speakerName
+  speakerName,
+  recentChatLog // 🚀 NEW
 }) {
   if (leanMode) {
-    return assembleLean({ relationship, gameData, userMessage, speakerName });
+    return assembleLean({ relationship, gameData, userMessage, speakerName, recentChatLog });
   }
 
   // Assemble the blocks using clean XML structures that modern LLMs parse perfectly
@@ -805,6 +808,7 @@ function assemble({
     renderGameContext(gameData, userMessage),
     renderMemoryBlock(rankedMemories),
     renderWorkingMemory(workingMemory),
+    recentChatLog ? `<RecentChatLog>\n${recentChatLog}\n</RecentChatLog>` : '', // 🚀 NEW
     `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`
   ];
 
