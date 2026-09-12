@@ -7,15 +7,10 @@
  * UPGRADES IN THIS VERSION
  * ─────────────────────────
  * Pillar 2: Confidence Scoring & Clarification Mode
- *   - decide() now accepts an optional `needsClarification` flag (set upstream
- *     by gameDomainRouter.js when a short/ambiguous entity match collides with
- *     a non-STRATEGY intent, e.g. "Imp" matched as a hero name inside banter).
- *   - When true, the engine switches to a dedicated 'clarify' mode: shorter
- *     target length, no forced bullet-point format, a gentle confirming tone,
- *     and the emoji budget is toned down so the check-in doesn't read like a
- *     confident data dump.
- *   - This never overrides isModeration or isConflict — safety and roast
- *     execution paths still take priority over a low-confidence entity match.
+ *   - decide() now accepts an optional `needsClarification` flag.
+ *   - When true, the engine switches to a dedicated 'clarify' mode.
+ *   🚀 UPGRADE: Expanded CONFLICT_PATTERN to catch Hinglish trolling and apologies demands.
+ *   🚀 UPGRADE: Forbid 'Apologetic' and 'CustomerService' traits when provoked.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -26,8 +21,8 @@ const INFORMATIONAL_INTENTS = new Set([INTENTS.QUESTION, INTENTS.HEAVY_TASK, INT
 // Game-specific intents for specialized rule routing
 const GAME_INTENTS = new Set(['FACT', 'STRATEGY', 'CALC', 'GOLD', 'GEM', 'game-query', 'UNKNOWN']);
 
-// Conflict pattern to detect roasts, sassy commands, or targeted insults
-const CONFLICT_PATTERN = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser|pagal|roast)\b/i;
+// Conflict pattern to detect roasts, sassy commands, targeted insults, or Hinglish trolling
+const CONFLICT_PATTERN = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser|pagal|roast|aukat|sorry\s*bol|chup|bakwas|bitch|gay|lesbian|body\s*count)\b/i;
 
 function decideLength(intent, userMessageLength, needsClarification) {
   if (needsClarification) return 'short'; // a check-in question, not a data dump
@@ -65,7 +60,7 @@ function decideTone(intent, isModeration, isCreatorPath, isConflict, needsClarif
   if (isConflict) {
     return isCreatorPath
       ? ['Fierce', 'Merciless', 'Loyal', 'Sassy']
-      : ['Fierce', 'Sassy', 'Defensive'];
+      : ['Fierce', 'Sassy', 'Defensive', 'Ruthless'];
   }
 
   // Low-confidence entity match: ask, don't assert
@@ -90,8 +85,7 @@ function decideTone(intent, isModeration, isCreatorPath, isConflict, needsClarif
 }
 
 function decideFormat(isGameQuery, needsClarification) {
-  // A clarification check-in is a single light question, not a stat breakdown —
-  // forcing bullet points here would make an unsure guess look authoritative.
+  // A clarification check-in is a single light question, not a stat breakdown
   if (needsClarification) return 'Conversational';
   // Enforce point-wise answers strictly for game-related questions
   if (isGameQuery) return 'Bullet-Points';
@@ -116,8 +110,7 @@ function decide({
     // Dynamically flag conflicts or explicit commands to prevent accidental romantic loops
     const isConflict = CONFLICT_PATTERN.test(content) || intent === INTENTS.COMMAND;
 
-    // Clarification only applies when it isn't already overridden by a stronger,
-    // higher-priority path — moderation and conflict handling always win.
+    // Clarification only applies when it isn't already overridden by a stronger path
     const effectiveClarify = !!needsClarification && !isModeration && !isConflict;
 
     let forbidTraits = ['Ego', 'Robotic', 'MetaLogic'];
@@ -130,19 +123,17 @@ function decide({
         forbidTraits.push('Hallucination', 'GuessingLyrics', 'FusingWorks');
     }
 
-    // Block fake stats and messy formatting in game mode
     if (isGameQuery) {
         forbidTraits.push('MarkdownTables', 'StatHallucination', 'AssumingData', 'Fluff');
     }
 
-    // A clarification check-in must never assert unverified stats or roster facts
     if (effectiveClarify) {
         forbidTraits.push('StatHallucination', 'AssumingData', 'OverConfidence');
     }
 
-    // Block romance during roasts/commands
-    if (isConflict && isCreatorPath) {
-        forbidTraits.push('Romance', 'Flirting', 'Softness');
+    // 🚀 STRONGER CONFLICT BLOCKS: Forbid apologizing or acting like a customer service bot
+    if (isConflict) {
+        forbidTraits.push('Romance', 'Flirting', 'Softness', 'Apologetic', 'CustomerService', 'Polite');
     }
 
     return {
@@ -151,9 +142,7 @@ function decide({
       emojiBudget: decideEmojiBudget(emotionalState, isCreatorPath && !isModeration, isInformational, isGameQuery, isConflict, effectiveClarify),
       mode: decideMode(intent, isModeration, isConflict, effectiveClarify),
       format: decideFormat(isGameQuery, effectiveClarify),
-      // Disable random reactions and follow-up questions when doing analytical game reporting or roasting
       preferReact: !isCreatorPath && (intent === INTENTS.BANTER || intent === INTENTS.SOCIAL) && !isGameQuery && !isConflict && !effectiveClarify,
-      // A clarification turn IS a follow-up question by definition — always ask in that case.
       askFollowUp: effectiveClarify || (!isGameQuery && !isConflict && (intent === INTENTS.EMOTIONAL_DISCLOSURE || (emotionalState.curiosity && emotionalState.curiosity > 55))),
       needsClarification: effectiveClarify,
       forbidTraits: forbidTraits,
