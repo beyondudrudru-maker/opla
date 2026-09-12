@@ -1,6 +1,6 @@
 /**
  * router/modelRouter/registry.js
- *
+ *6
  * MODEL CAPABILITY REGISTRY (scores 0-10 — routing heuristics, not
  * objective benchmark claims) plus the weight-class and provider-tier
  * constants used to score candidates in classification.js.
