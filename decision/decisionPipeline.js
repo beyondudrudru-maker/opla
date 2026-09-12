@@ -8,6 +8,7 @@
  *   🚀 UPGRADE: Added "VS Banter Guard" to prevent general knowledge 
  *   comparisons (e.g., Apple vs Android) from getting trapped in the game lane.
  *   🚀 UPGRADE: Nullified gameData payload on non-game turns to prevent 413 errors.
+ *   🚀 UPGRADE: Aggressive pre-compression applied to gameData to save tokens.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -19,24 +20,15 @@ const behaviorEngine = require('../behavior/behaviorEngine');
 const promptAssembler = require('../promptBuilder/promptAssembler');
 const targetResolver = require('./targetResolver');
 
+// 🚀 IMPORT COMPRESSION UTILITIES
+const { compressGameData, deepCompress } = require('../promptBuilder/promptAssembler');
+
 const BOT_USER_ID = process.env.BOT_USER_ID;
 const DB_TIMEOUT_MS = 2500; // 🛡️ Max time to wait for memory fetches before moving on
 
 // ============================================================
 // 🚀 GAME TURN DETECTOR
 // ============================================================
-// 🚀 FIX: previously fell back to raw keyword regex matching (GAME_KEYWORD_
-// FALLBACK: /\b(stats|hp|damage|hero|troop|boss|game|clash|synergy...)\b/i)
-// against the ENTIRE message. That meant any normal sentence containing a
-// bare word like "boss" or "hero" — even in an unrelated Hinglish/lyrics
-// context — got flagged as a game turn, which in api/gemini.js caused
-// Melody's whole persona to be swapped out for a bare data-engine prompt.
-//
-// index.js's gameDomainRouter.js is now the single source of truth for
-// game-vs-not decisions (it does proper entity/intent extraction, not
-// keyword scanning) and hands its verdict down via explicit `gameData`.
-// This function is intentionally now a thin, honest check of that signal —
-// no independent re-guessing from raw text.
 function isGameTurn({ gameData = null, intent = null } = {}) {
   const hasValidGameData = gameData !== null && Object.keys(gameData).length > 0;
   if (hasValidGameData) return true;
@@ -68,10 +60,16 @@ async function planTurn({
       const gameTurn = isGameTurn({ gameData, intent: classification.intent });
 
       if (gameTurn) {
+        // 🚀 AGGRESSIVE DATA COMPRESSION: Shrink the payload before assembly
+        let optimizedGameData = null;
+        if (gameData) {
+            optimizedGameData = deepCompress(compressGameData(gameData));
+        }
+
         const prompt = promptAssembler.assemble({
           leanMode: true,
           relationship,
-          gameData,
+          gameData: optimizedGameData,
           userMessage: content,
           speakerName: displayName,
         });
@@ -135,7 +133,7 @@ async function planTurn({
         rankedMemories,
         workingMemory,
         // 🚀 THE FIX: Nullify heavy game data for casual chat to prevent 413 Payload Errors!
-        gameData: gameTurn ? gameData : null, 
+        gameData: null, 
         userMessage: content,
         targetInfo,
         speakerName: displayName,
