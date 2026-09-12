@@ -965,29 +965,22 @@ function findEntityByName(query) {
   return null;
 }
 
+// 🚀 DATA COMPRESSION TWEAK: Minified labels and omitting null fields
 function formatEntityContext(entity) {
   if (!entity) return null;
   const { type, data } = entity;
 
   if (type === 'hero') {
-    return `
-[EXACT DATABASE RECORD FOR HERO: ${data.name}]
-• Faction: ${data.faction}
-• Rarity: ${data.rarity}
-• Description: ${data.description}
-• Stats: HP: ${data.stats.hp}, Defense: ${data.stats.defense}, Attack: ${data.stats.attack}, Collection Bonus: ${data.stats.collectionBonus}
-• Talent: ${data.talent ? `${data.talent.name} — ${data.talent.description}` : 'None'}
-• Ability: ${data.ability ? `${data.ability.name} — ${data.ability.description}` : 'None'}
-    `.trim();
+    let text = `[EXACT RECORD: HERO ${data.name}]\n• Faction: ${data.faction}\n• Rarity: ${data.rarity}\n• Stats: HP:${data.stats.hp} | Def:${data.stats.defense} | Atk:${data.stats.attack} | Col.Bonus:${data.stats.collectionBonus}`;
+    if (data.description) text += `\n• Desc: ${data.description}`;
+    if (data.talent) text += `\n• Talent: ${data.talent.name} - ${data.talent.description}`;
+    if (data.ability) text += `\n• Ability: ${data.ability.name} - ${data.ability.description}`;
+    return text;
   } else {
-    return `
-[EXACT DATABASE RECORD FOR TROOP: ${data.name}]
-• Rarity: ${data.rarity}
-• Categories: ${data.categories.join(', ')}
-• Description: ${data.description}
-• Base Stats: HP (Lv1): ${data.levels.hp[0]}, Damage (Lv1): ${data.levels.damage[0]}, Defense (Lv1): ${data.levels.defense[0]}
-• Ability: ${data.ability ? `${data.ability.name} — ${data.ability.description}` : 'None'}
-    `.trim();
+    let text = `[EXACT RECORD: TROOP ${data.name}]\n• Rarity: ${data.rarity}\n• Categories: ${data.categories.join(', ')}\n• Base Stats: HP:${data.levels.hp[0]} | Dmg:${data.levels.damage[0]} | Def:${data.levels.defense[0]}`;
+    if (data.description) text += `\n• Desc: ${data.description}`;
+    if (data.ability) text += `\n• Ability: ${data.ability.name} - ${data.ability.description}`;
+    return text;
   }
 }
 
