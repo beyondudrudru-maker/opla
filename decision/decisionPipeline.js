@@ -5,10 +5,6 @@
  *   The central nervous system of the bot. Orchestrates the flow of data
  *   between engines to build the prompt, while ensuring maximum CPU
  *   efficiency, parallel database operations, and crash resistance.
- *   🚀 UPGRADE: Added "VS Banter Guard" to prevent general knowledge 
- *   comparisons (e.g., Apple vs Android) from getting trapped in the game lane.
- *   🚀 UPGRADE: Nullified gameData payload on non-game turns to prevent 413 errors.
- *   🚀 UPGRADE: Aggressive pre-compression applied to gameData to save tokens.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -20,22 +16,17 @@ const behaviorEngine = require('../behavior/behaviorEngine');
 const promptAssembler = require('../promptBuilder/promptAssembler');
 const targetResolver = require('./targetResolver');
 
-// 🚀 IMPORT COMPRESSION UTILITIES
 const { compressGameData, deepCompress } = require('../promptBuilder/promptAssembler');
 
 const BOT_USER_ID = process.env.BOT_USER_ID;
-const DB_TIMEOUT_MS = 2500; // 🛡️ Max time to wait for memory fetches before moving on
+const DB_TIMEOUT_MS = 2500;
 
-// ============================================================
-// 🚀 GAME TURN DETECTOR
-// ============================================================
 function isGameTurn({ gameData = null, intent = null } = {}) {
   const hasValidGameData = gameData !== null && Object.keys(gameData).length > 0;
   if (hasValidGameData) return true;
   return ['STRATEGY', 'CALC', 'FACT', 'GOLD', 'GEM'].includes(intent);
 }
 
-// 🛡️ Helper function to prevent database hangs from freezing the bot
 function withTimeout(promise, ms, fallbackValue) {
   let timeoutHandle;
   const timeoutPromise = new Promise((resolve) => {
@@ -47,20 +38,17 @@ function withTimeout(promise, ms, fallbackValue) {
 async function planTurn({
   userId, displayName, roles = [], channelId, content,
   isGroupContext = false, mentions = { everyone: false, users: [] },
-  gameData = null // 🚀 Accepts game data context from the router
+  gameData = null, 
+  recentChatLog = null // 🚀 NEW: Receive the transcript from index.js
 }) {
   try {
-      // 1. Execute fast, synchronous local tasks first
       const classification = intentClassifier.classify({ content });
       const targetInfo = targetResolver.resolve({ mentions, botUserId: BOT_USER_ID });
 
-      // 🚀 GAME FAST-LANE: relationship framing is still cheap/useful for tone
       const relationship = await relationshipEngine.resolve({ userId, displayName, roles }).catch(() => ({}));
-
       const gameTurn = isGameTurn({ gameData, intent: classification.intent });
 
       if (gameTurn) {
-        // 🚀 AGGRESSIVE DATA COMPRESSION: Shrink the payload before assembly
         let optimizedGameData = null;
         if (gameData) {
             optimizedGameData = deepCompress(compressGameData(gameData));
@@ -72,6 +60,7 @@ async function planTurn({
           gameData: optimizedGameData,
           userMessage: content,
           speakerName: displayName,
+          recentChatLog // 🚀 Pass Transcript to prompt builder
         });
 
         console.log(`[PIPELINE TRACE][decisionPipeline] intent=${classification.intent} layers=[intentClassifier,targetResolver,relationshipEngine,promptAssembler(leanMode)]`);
@@ -88,7 +77,6 @@ async function planTurn({
       }
 
       // --- FULL PATH (Social / Banter / General Tasks) ---
-
       const emotionalState = await emotionEngine.updateState({
         userId,
         intent: classification.intent,
@@ -101,7 +89,6 @@ async function planTurn({
       let workingMemory = [];
       let rankedMemories = [];
 
-      // 2. 🚀 Bulletproof Parallel Supabase reads with Strict Timeouts & Isolation
       if (!isCasualChat) {
           const [workingMemoryRaw, longTermCandidates] = await Promise.all([
             withTimeout(memoryEngine.getWorkingMemory(channelId), DB_TIMEOUT_MS, []),
@@ -125,18 +112,17 @@ async function planTurn({
         ? emotionEngine.toBrief(emotionalState, relationship)
         : '';
 
-      // 3. Assemble the final prompt
       const prompt = promptAssembler.assemble({
         emotionalBrief,
         relationship,
         behaviorDirective,
         rankedMemories,
         workingMemory,
-        // 🚀 THE FIX: Nullify heavy game data for casual chat to prevent 413 Payload Errors!
         gameData: null, 
         userMessage: content,
         targetInfo,
         speakerName: displayName,
+        recentChatLog // 🚀 Pass Transcript to prompt builder
       });
 
       console.log(`[PIPELINE TRACE][decisionPipeline] intent=${classification.intent} isCasualChat=${isCasualChat} layers=[intentClassifier,targetResolver,relationshipEngine,emotionEngine${!isCasualChat ? ',memoryEngine,contextRanker' : ''},behaviorEngine,promptAssembler]`);
