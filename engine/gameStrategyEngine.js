@@ -1127,6 +1127,53 @@ function answerStrategyQuery(query) {
   }
 }
 
+/**
+ * 🗜️ MINIFY FOR AI (Token Saver)
+ * Strips out developer-facing logs, null values, and empty arrays
+ * to save hundreds of tokens before this payload is sent to Gemini/Groq.
+ */
+function minifyStrategyPayload(payload) {
+  if (!payload) return null;
+  const minified = JSON.parse(JSON.stringify(payload)); // Deep copy to avoid mutating original
+
+  // 1. Remove verbose developer strings
+  if (minified.calculations && minified.calculations.methodology) {
+    delete minified.calculations.methodology; 
+  }
+  
+  // 2. Remove internal confidence scores (AI doesn't need this)
+  if (minified.confidence) {
+    delete minified.confidence;
+  }
+
+  // 3. Remove empty arrays to save brackets/keys
+  if (Array.isArray(minified.missingInformation) && minified.missingInformation.length === 0) {
+    delete minified.missingInformation;
+  }
+  if (Array.isArray(minified.candidates) && minified.candidates.length === 0) {
+    delete minified.candidates;
+  }
+  if (Array.isArray(minified.ranking) && minified.ranking.length === 0) {
+    delete minified.ranking;
+  }
+
+  // 4. Recursively strip all 'null' or 'undefined' values
+  function stripNulls(obj) {
+    for (let key in obj) {
+      if (obj[key] === null || obj[key] === undefined) {
+        delete obj[key];
+      } else if (typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
+        stripNulls(obj[key]);
+        // Delete empty objects left behind
+        if (Object.keys(obj[key]).length === 0) delete obj[key];
+      }
+    }
+  }
+  
+  stripNulls(minified);
+  return minified;
+}
+
 // ---------------------------------------------------------------
 // EXPORTS
 // ---------------------------------------------------------------
@@ -1142,5 +1189,6 @@ module.exports = {
   answerStrategyQuery,
   compareEntities,
   resolveBossScenario,
-  buildCounterFormation
+  buildCounterFormation,
+  minifyStrategyPayload
 };
