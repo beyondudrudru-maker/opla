@@ -23,6 +23,7 @@ const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/g
 const gameDomainRouter = require('./router/gameDomainRouter');
 const { compressGameData } = require('./promptBuilder/promptAssembler');
 const { askAI: askGameAI } = require('./ai/aiFallback');
+const requestQueue = require('./utils/requestQueue');
 
 const processedMessages = new Set();
 
@@ -77,6 +78,16 @@ setInterval(async () => {
         if (!error) console.log('🧹 5-Hour Memory Wiped.');
     } catch (err) { console.error('❌ Cleanup Error:', err); }
 }, 3600000);
+
+// 🚀 SUPABASE KEEP-ALIVE HEARTBEAT
+setInterval(async () => {
+    try {
+        await ramClient.from('chat_ram').select('id').limit(1);
+        console.log('💓 Database connection heartbeat sent.');
+    } catch (err) {
+        console.error('⚠️ Heartbeat failed, connection might be sleeping:', err.message);
+    }
+}, 300000); 
 
 client.on('guildMemberRemove', async (member) => {
     try {
@@ -142,20 +153,24 @@ client.on(Events.MessageCreate, async (message) => {
         }
     }
 
-    // UNIFIED CONTEXT PRE-FETCHING
+    // 🚀 UNIFIED CONTEXT PRE-FETCHING (UPGRADED)
     let sharedHistory = [];
     let recentContext = '';
+    let chatContextForAI = '';
     
     try {
+        // 🚀 Fetch player_name so Melody knows exactly who said what!
         const { data } = await ramClient.from('chat_ram')
-            .select('message_content')
+            .select('player_name, message_content') 
             .eq('channel_id', message.channel.id)
             .order('created_at', { ascending: false })
-            .limit(5);
+            .limit(10);
             
         if (data) {
             sharedHistory = data;
             recentContext = data.slice(0, 3).map(r => r.message_content).join(' ');
+            // Reverse so it reads top-to-bottom chronologically
+            chatContextForAI = data.slice().reverse().map(r => `[${r.player_name || 'User'}]: ${r.message_content}`).join('\n');
         }
     } catch (err) {
         console.warn('⚠️ Unified history fetch failed:', err.message);
@@ -343,9 +358,8 @@ client.on(Events.MessageCreate, async (message) => {
 
             if (hasRealGameSignal) {
                 pipelineUsed = 'aiFallback (gameStrategyEngine)';
-                console.log(`[PIPELINE TRACE] route=game-strategy | queryFlags=${JSON.stringify(gameResult.queryFlags)} | deterministic=${gameResult.deterministic ? gameResult.deterministic.queryType : 'none'}`);
-
-                aiReply = await askGameAI({
+                
+                aiReply = await requestQueue.enqueue(() => askGameAI({
                     userMessage: cleanText,
                     intent: gameResult.intent,
                     context: gameResult.context,
@@ -353,7 +367,8 @@ client.on(Events.MessageCreate, async (message) => {
                     groqKeys: melody.groqKeys,
                     queryFlags: gameResult.queryFlags,
                     deterministic: gameResult.deterministic,
-                });
+                }));
+                
                 modelUsed = 'aiFallback';
                 debug = { intent: gameResult.intent, tier: 'game-strategy' };
             } else {
@@ -374,7 +389,8 @@ client.on(Events.MessageCreate, async (message) => {
 
                 console.log(`[PIPELINE TRACE] route=melody-persona | hasGameContext=${Boolean(gameResult.context)}`);
 
-                const melodyResult = await melody.generateContent({
+                // 🚀 PASS THE PRE-FETCHED CHAT TRANSCRIPT DIRECTLY TO MELODY
+                const melodyResult = await requestQueue.enqueue(() => melody.generateContent({
                     userId: message.author.id,
                     displayName: message.author.username,
                     roles,
@@ -383,7 +399,9 @@ client.on(Events.MessageCreate, async (message) => {
                     isGroupContext: Boolean(message.guild),
                     mentionedUsers,
                     knowledgeContext,
-                });
+                    recentChatLog: chatContextForAI
+                }));
+                
                 aiReply = melodyResult.text;
                 modelUsed = melodyResult.modelUsed;
                 debug = melodyResult.debug;
@@ -679,7 +697,6 @@ try {
             console.error('❌ [PROBE] This points to an outbound network/egress problem on Render, not your code or token.');
         }
     })();
-
 
     const loginWatchdog = setTimeout(() => {
         console.error('❌ [CRITICAL ERROR] Still not connected 20s after login() was called.');
