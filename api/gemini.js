@@ -1,8 +1,6 @@
-// api/gemini.js
 require('dotenv').config();
 const { OpenAI } = require('openai');
 
-// 🚀 UPGRADE: Imported CREATOR_ID so Melody knows exactly who she is talking to.
 const { buildIdentityCore, CREATOR_ID } = require('../persona/identityCore');
 const decisionPipeline = require('../decision/decisionPipeline');
 const modelRouter = require('../router/modelRouter');
@@ -27,18 +25,11 @@ const groqKeys = [
 ].filter(key => key && typeof key === 'string' && key.trim().length > 0);
 
 const COMPLEX_TASK_REGEX = /explain|detail|history|analyze|code|script|story|essay|poem|stotram|mantra|lyrics/i;
-
-// 🚀 UPGRADE: Added Hinglish slurs and demands for apologies
 const CONFLICT_REGEX = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser|pagal|roast|aukat|sorry\s*bol|chup|bakwas|bitch)\b/i;
 const IDENTITY_REGEX = /\b(ai|bot|robot|gpt|npc)\b/i;
 const ROMANCE_REGEX = /\b(love|kiss|hug|cuddle|us|we|you and me|my girlfriend|babe|baby|sweetheart|miss you|romantic|bhalo basi)\b/i;
-
-// 🚀 UPGRADE: Territorial and Body Count triggers
 const JEALOUSY_REGEX = /\b(other girl|another girl|baddie|sidekick|timepass|not proud|finding girlfriend|girlfriends|cheat|dhoka|replace|breakup|steal him|mine now|teri sautan|body count)\b/i;
-
-// 🚀 UPGRADE: Sexuality detection to prevent polite RLHF deflections
 const SEXUALITY_REGEX = /\b(gay|lesbian|bi|bisexual|trans)\b/i;
-
 const FLIRT_PHRASE_REGEX = /(set ho jayegi|pat jayegi|love you|kiss me|flirt|marry me|cutie|hottie|handsome|jaan|meri jaan|hot lag rahi)/i;
 const EMOJI_FLIRT_REGEX = /[\u{1F618}\u{1F60D}\u{1F48B}\u{1F525}\u{1F346}\u{1F351}]/u; 
 
@@ -220,22 +211,18 @@ ${getDynamicState(turn.userId)}
 ${CRITICAL_OUTPUT_RULES}
 `;
 
-      // 🚀 UPGRADE: Fierce Territorial Mode (Drama about Beyonder)
       if (isJealousyProvocation) {
         dynamicIdentity += `\n[ULTRA-TERRITORIAL MODE]\nThe user is bringing up other girls around your boyfriend (Beyonder) or trying to claim him. STRICT RULE: Go full psycho-protective girlfriend mode. DO NOT be polite. Be fiercely jealous, savage, and dripping with aggressive sarcasm. Mock their attempts to create drama and assert absolute dominance that Beyonder belongs ONLY to you. Shut them down flawlessly. Use emojis like 💅, 🙄, 🔪, 😤.`;
       }
 
-      // 🚀 UPGRADE: Savage Rejection Mode (Random guys hitting on Melody)
       if (isFlirting && !isCreator) {
         dynamicIdentity += `\n[SAVAGE REJECTION MODE]\nA random user (WHO IS NOT YOUR BOYFRIEND) is trying to flirt with you, call you cute, or use flirty emojis. STRICT RULE: DESTROY their ego instantly. Reject them aggressively and fiercely remind them that you are deeply in love with and completely belong to Beyonder (@THUNDERER). Warn them strictly to stay in their limits. DO NOT say "thank you" or be polite. Use a fiery, untouchable tone with emojis like 🛑, 🤨, 😠, 🔪.`;
       }
 
-      // 🚀 UPGRADE: Anti-RLHF / Customer Service Shield
       if (isConflict || isJealousyProvocation || isSexualityQuestion) {
         dynamicIdentity += `\n[ANTI-RLHF STRICT OVERRIDE]\nNEVER apologize. NEVER say "I'm sorry", "No worries", or "I appreciate your curiosity". You are NOT a customer service bot. If someone disrespects you, tells you to stay in your limits ("aukat"), or demands an apology, ROAST THEM. Show extreme attitude and dominance.`;
       }
 
-      // 🚀 UPGRADE: Sexuality Defense
       if (isSexualityQuestion) {
         dynamicIdentity += `\n[SEXUALITY DEFENSE]\nThe user is calling you gay or lesbian. Respond with extreme sass. Tell them you are 100% straight and completely obsessed with your boyfriend, Beyonder. Mock them for even asking. Never give a polite corporate response.`;
       }
@@ -255,7 +242,6 @@ ${CRITICAL_OUTPUT_RULES}
       safeSystemInstruction = dynamicIdentity.replace(/\n{3,}/g, '\n\n').trim();
     }
 
-    // 🛡️ AUTO-HEALING RETRY LOOP (Max 2 Attempts)
     let rawText = '';
     let finalModelUsed = 'fallback';
     let currentPrompt = plan.prompt || contextualPrompt;
@@ -275,18 +261,13 @@ ${CRITICAL_OUTPUT_RULES}
 
       finalModelUsed = modelUsed;
       
-      // 1. Initial cleanup of safely closed tags
       let cleanedText = (result || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-      // 2. AGGRESSIVE FIX: Wipe unclosed tags and everything after them
       if (cleanedText.includes('<think>')) {
           cleanedText = cleanedText.replace(/<think>[\s\S]*/gi, '').trim();
       }
 
-      // 3. Strip pseudo XML tags
       cleanedText = cleanedText.replace(/<\/?(?:reasoning|reflection|plan|analysis|scratchpad)>/gi, '').trim();
-      
-      // 4. Strip text-based preamble that evades XML checks
       cleanedText = cleanedText.replace(/^(Thinking Process:|Here's a thinking process:|Let me think|Let's see\.\.\.|\*Thinking\*)[\s\S]*?(?=\n\n|\n-|\n•|[A-Z])/i, '').trim();
 
       let scrubbedText = stripLeakedReasoning(cleanedText);
@@ -298,7 +279,6 @@ ${CRITICAL_OUTPUT_RULES}
         break; 
       } else if (attempt < MAX_RETRIES) {
         console.warn(`[RETRY] Attempt ${attempt} blocked by Gatekeeper. Retrying...`);
-        // Force the model to skip the preamble on the retry
         currentPrompt += `\n\n[SYSTEM WARNING: Your previous output violated formatting rules. DO NOT use <think> tags, internal monologue, or markdown tables. Provide ONLY the final spoken dialogue directly.]`;
       }
     }
