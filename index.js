@@ -38,7 +38,8 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMessageReactions
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildMembers // Required to resolve names from text
     ],
     partials: [
         Partials.Message, 
@@ -52,12 +53,66 @@ const goldCooldown = new Set();
 const gemCooldown = new Set();
 const adminCooldown = new Set();
 
+// ─────────────────────────────────────────────────────────────
+// 🔍 Helper: Resolve plain text names to Guild Members
+// ─────────────────────────────────────────────────────────────
+const COMMON_IGNORE_WORDS = new Set([
+    'alert', 'them', 'play', 'complete', 'their', 'clan', 'clash', 'battle', 
+    'tell', 'with', 'about', 'from', 'this', 'that', 'here', 'there', 'what',
+    'please', 'help', 'roast', 'insult', 'kick', 'babe', 'honey', 'love'
+]);
+
+function resolveMembersFromText(text, guild, botId) {
+    if (!guild || !text) return [];
+
+    const foundMembers = new Map();
+    const cleanLower = text.toLowerCase();
+
+    guild.members.cache.forEach(member => {
+        if (member.id === botId) return;
+
+        const possibleNames = [
+            member.nickname,
+            member.displayName,
+            member.user.username,
+            member.user.globalName
+        ].filter(Boolean);
+
+        for (const name of possibleNames) {
+            const trimmed = name.trim().toLowerCase();
+            // Avoid matching common filler words or names that are too short
+            if (trimmed.length < 3 || COMMON_IGNORE_WORDS.has(trimmed)) continue;
+
+            const regex = new RegExp(`\\b${trimmed.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'i');
+            if (regex.test(cleanLower)) {
+                foundMembers.set(member.id, {
+                    id: member.id,
+                    username: member.displayName || member.user.username
+                });
+                break;
+            }
+        }
+    });
+
+    return Array.from(foundMembers.values());
+}
+
 client.once(Events.ClientReady, async (readyClient) => {
     console.log('----------------------------------------');
     console.log(`🌸 System Online: ${readyClient.user.tag} is awake.`);
     console.log(`👁️  Engines Active: Contextual Support, AI, Banter, Smart Data & Hall of Fame.`);
     console.log('----------------------------------------');
     client.user.setActivity('over the !NF!N!TY family 💅', { type: 3 });
+
+    // Pre-cache guild members for instant name resolution
+    for (const guild of readyClient.guilds.cache.values()) {
+        try {
+            await guild.members.fetch();
+            console.log(`👥 Cached ${guild.members.cache.size} members for guild: ${guild.name}`);
+        } catch (err) {
+            console.warn(`⚠️ Could not pre-fetch members for guild ${guild.name}:`, err.message);
+        }
+    }
 
     try {
         const startupChannelId = '1524748262765101176';
@@ -153,13 +208,12 @@ client.on(Events.MessageCreate, async (message) => {
         }
     }
 
-    // 🚀 UNIFIED CONTEXT PRE-FETCHING (UPGRADED)
+    // 🚀 UNIFIED CONTEXT PRE-FETCHING
     let sharedHistory = [];
     let recentContext = '';
     let chatContextForAI = '';
     
     try {
-        // 🚀 Fetch player_name so Melody knows exactly who said what!
         const { data } = await ramClient.from('chat_ram')
             .select('player_name, message_content') 
             .eq('channel_id', message.channel.id)
@@ -169,7 +223,6 @@ client.on(Events.MessageCreate, async (message) => {
         if (data) {
             sharedHistory = data;
             recentContext = data.slice(0, 3).map(r => r.message_content).join(' ');
-            // Reverse so it reads top-to-bottom chronologically
             chatContextForAI = data.slice().reverse().map(r => `[${r.player_name || 'User'}]: ${r.message_content}`).join('\n');
         }
     } catch (err) {
@@ -305,9 +358,19 @@ client.on(Events.MessageCreate, async (message) => {
         try {
             await message.channel.sendTyping();
 
-            const mentionedUsers = message.mentions.users
+            // 1. Gather users directly tagged via @
+            const directMentions = message.mentions.users
                 .filter(u => u.id !== client.user.id)
                 .map(u => ({ id: u.id, username: u.username }));
+
+            // 2. Gather users mentioned in plain text (e.g., "Srikar, Anwar, Ashkash")
+            const textResolvedUsers = resolveMembersFromText(cleanText, message.guild, client.user.id);
+
+            // 3. Deduplicate combined mentions
+            const mentionMap = new Map();
+            directMentions.forEach(u => mentionMap.set(u.id, u));
+            textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
+            const mentionedUsers = Array.from(mentionMap.values());
 
             let gameResult = { resolved: false, context: null, intent: 'UNKNOWN' };
             try {
@@ -389,7 +452,6 @@ client.on(Events.MessageCreate, async (message) => {
 
                 console.log(`[PIPELINE TRACE] route=melody-persona | hasGameContext=${Boolean(gameResult.context)}`);
 
-                // 🚀 PASS THE PRE-FETCHED CHAT TRANSCRIPT DIRECTLY TO MELODY
                 const melodyResult = await requestQueue.enqueue(() => melody.generateContent({
                     userId: message.author.id,
                     displayName: message.author.username,
@@ -397,7 +459,7 @@ client.on(Events.MessageCreate, async (message) => {
                     channelId: message.channel.id,
                     content: aiPromptContent,
                     isGroupContext: Boolean(message.guild),
-                    mentionedUsers,
+                    mentionedUsers, // Contains resolved names & IDs
                     knowledgeContext,
                     recentChatLog: chatContextForAI
                 }));
@@ -418,9 +480,13 @@ client.on(Events.MessageCreate, async (message) => {
                 finalReply = `@everyone\n\n${finalReply}`;
             }
 
+            // 🚀 ALLOW USER PINGS: Enables Discord to deliver notifications for <@id> tags
+            const allowedParse = ['users'];
+            if (allowedToPingEveryone) allowedParse.push('everyone');
+
             const mentionOptions = {
                 repliedUser: false,
-                parse: allowedToPingEveryone ? ['everyone'] : []
+                parse: allowedParse
             };
 
             const replyPayload = { 
