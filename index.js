@@ -411,21 +411,33 @@ client.on(Events.MessageCreate, async (message) => {
                     await message.reply(`✅ Sent your message to ${targetChannel}!`);
                 }
 
-                // 4. Send Personal DMs
+                // 4. Send Personal DMs (With Anti-Spam Delay)
                 if (wantsDM && mentionedUsers.length > 0) {
                     let dmSuccessCount = 0;
-                    for (const u of mentionedUsers) {
+                    
+                    if (mentionedUsers.length > 3) {
+                        await message.channel.send(`⏳ Sending DMs to ${mentionedUsers.length} members. Delivering them slowly to avoid Discord's spam filters... 💅`);
+                    }
+
+                    for (let i = 0; i < mentionedUsers.length; i++) {
+                        const u = mentionedUsers[i];
                         try {
                             // We must fetch the actual Discord User object to send a DM
                             const discordUser = await client.users.fetch(u.id);
                             await discordUser.send(`🔔 **Clan Alert from ${message.author.username}:**\n${announceText}`);
                             dmSuccessCount++;
+
+                            // 🚀 STAGGER SYSTEM: Wait 3.5 seconds before sending the next DM
+                            if (i < mentionedUsers.length - 1) {
+                                await new Promise(resolve => setTimeout(resolve, 3500));
+                            }
                         } catch (dmErr) {
                             console.warn(`Could not DM ${u.username} (DMs locked).`);
                         }
                     }
+                    
                     if (dmSuccessCount > 0) {
-                        await message.channel.send(`📩 I also successfully sent DMs to ${dmSuccessCount} members! 💅`);
+                        await message.channel.send(`📩 I successfully delivered DMs to ${dmSuccessCount} members! 💅`);
                     } else {
                         await message.channel.send(`⚠️ I tried to DM them, but their Direct Messages are locked/private.`);
                     }
