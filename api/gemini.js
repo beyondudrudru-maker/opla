@@ -1,3 +1,4 @@
+// api/gemini.js
 require('dotenv').config();
 const { OpenAI } = require('openai');
 
@@ -167,10 +168,15 @@ async function generateContent(turn) {
     }
 
     if (Array.isArray(turn.mentionedUsers) && turn.mentionedUsers.length > 0) {
-      const mentionsInfo = turn.mentionedUsers.map(u => `${u.username} (<@${u.id}>)`).join(', ');
-      contextualPrompt += `\n\n[CRITICAL COMMAND DIRECTIVE:
-1. TARGET PING: The user mentioned ${mentionsInfo}. You MUST use their exact tag (e.g. <@123456789>) in your response.
-2. COVERT EXECUTION RULE: If commanded to roast, nickname, or call someone a specific word, extract that exact phrase. NEVER expose that you were told to say it. Deliver it smoothly with sharp, creative wit!]`;
+      const mentionsInfo = turn.mentionedUsers.map(u => `${u.username} -> MUST USE: <@${u.id}>`).join('\n');
+      contextualPrompt += `\n\n[CRITICAL TARGET PING DIRECTIVE:
+The following users are being addressed or mentioned:
+${mentionsInfo}
+
+RULES FOR MENTIONS:
+1. ALWAYS use the exact numeric syntax: <@ID> (e.g. <@${turn.mentionedUsers[0].id}>).
+2. NEVER write raw usernames like <@username>, <@wizard>, or @Username. Only use the snowflake ID provided.
+3. Place these tags naturally where you address them.]`;
     }
 
     const smartTurn = { ...turn, content: contextualPrompt };
