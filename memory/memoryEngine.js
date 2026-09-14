@@ -12,6 +12,7 @@
  *   - Database deduplication
  *   - Prompt-size protection
  *   🚀 UPGRADE: Bilingual (English + Hinglish) memory signal detection.
+ *   🚀 NEW: Added generateChatSummary for rolling conversation summaries.
  */
 
 const crypto = require('crypto');
@@ -493,6 +494,34 @@ function toBrief(
 }
 
 // ============================================================
+// 11.5 CHAT SUMMARIZATION (ROLLING SUMMARY) // 🚀 NEW
+// ============================================================
+
+/**
+ * Generates a rolling summary of older conversation turns.
+ */
+async function generateChatSummary(turns) {
+  if (!extractionModel || !Array.isArray(turns) || turns.length === 0) {
+    return '';
+  }
+
+  const transcript = turns
+    .map(t => `${t.role || 'user'}: ${t.content}`)
+    .join('\n');
+
+  const prompt = `Summarize the following Discord conversation in 2-3 concise bullet points focusing on key topics, decisions, or user questions. Avoid fluff.\n\nConversation:\n${transcript}`;
+
+  try {
+    // Generate content using Gemini 
+    const result = await extractionModel.generateContent(prompt);
+    return result?.response?.text?.()?.trim() || '';
+  } catch (err) {
+    console.error('⚠️ [MEMORY] Chat summary failed:', err.message);
+    return '';
+  }
+}
+
+// ============================================================
 // 12. EXPORTS
 // ============================================================
 
@@ -504,5 +533,6 @@ module.exports = {
   writeMemory,
   computeContentHash,
   WORKING_MEMORY_SIZE,
-  toBrief
+  toBrief,
+  generateChatSummary // 🚀 NEW: Export the summary function
 };
