@@ -4,18 +4,15 @@
  * PURPOSE
  *   Cleans and formats the raw AI text before it is sent to Discord.
  *   Enforces emoji limits, prevents repetitive AI loops, and ensures perfect grammar.
- *   🚀 UPGRADE: Deep reasoning stripper added to catch rogue model drafts.
- *   🐛 FIX: enforceEmojiBudget now counts each visual emoji separately instead
- *   of globbing adjacent-but-distinct emojis (e.g. "🌸✨") into a single match,
- *   which let budgets get silently exceeded whenever the model produced two+
- *   emojis back-to-back with no separating space/text.
+ *   🚀 UPGRADE: Hinglish conversational crutches added to BANNED_OPENERS.
+ *   🚀 UPGRADE: XML tag reasoning stripper added as a final failsafe.
  */
 
 const RECENT_REPLY_LIMIT = 8;
 const MAX_TRACKED_CHANNELS = 100; // 🛡️ Memory leak protection limit
 
-// Expanded list of LLM conversational crutches
-const BANNED_OPENERS = /^(oh[,.]?|well[,.]?|hmm[,.]?|umm[,.]?|honestly[,.]?|anyway[,.]?|so[,.]?|ah[,.]?|alright[,.]?|look[,.]?|basically[,.]?|actually[,.]?|okay[,.]?)\s+/i;
+// Expanded list of LLM conversational crutches (Now includes Hinglish)
+const BANNED_OPENERS = /^(oh[,.]?|well[,.]?|hmm[,.]?|umm[,.]?|honestly[,.]?|anyway[,.]?|so[,.]?|ah[,.]?|alright[,.]?|look[,.]?|basically[,.]?|actually[,.]?|okay[,.]?|arre[,.]?|arey[,.]?|yaar[,.]?|accha[,.]?|dekho[,.]?|suno[,.]?|bhai[,.]?)\s+/i;
 const recentRepliesByChannel = new Map();
 
 /**
@@ -79,16 +76,6 @@ function stripBannedOpenerIfRepeated(channelId, text) {
 /**
  * Advanced Regex handles complex emojis and cleans up leftover horizontal whitespace 
  * while strictly preserving vertical line breaks (\n).
- *
- * 🐛 FIX: previously used a single `+`-quantified class match, which globbed
- * ADJACENT-BUT-DISTINCT emojis (e.g. "🌸✨", no separating space/text) into
- * one regex match — so two visually separate emojis were counted and
- * budgeted as if they were one, letting the actual on-screen emoji count
- * exceed the budget. This now matches one emoji cluster at a time: a base
- * pictograph optionally followed by a variation selector, optionally chained
- * via ZWJ (\u200D) into a legitimate multi-codepoint FAMILY emoji (which
- * correctly still counts as a single emoji) — without silently absorbing a
- * second, unrelated emoji that just happens to sit next to it.
  */
 function enforceEmojiBudget(text, budget) {
   const emojiClusterRegex = /(?:\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])\u{FE0F}?(?:\u{200D}(?:\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])\u{FE0F}?)*/gu;
@@ -109,11 +96,14 @@ function enforceEmojiBudget(text, budget) {
 }
 
 /**
- * 🚀 UPGRADE: Removes internal AI thinking, drafts, and numbering
+ * 🚀 UPGRADE: Removes internal AI thinking, XML tags, drafts, and numbering
  */
 function stripReasoning(text) {
     let cleanText = text;
     
+    // 🛡️ Final Failsafe: Strip leaked <think> or <reflection> tags entirely
+    cleanText = cleanText.replace(/<(?:think|reasoning|reflection|plan|scratchpad)>[\s\S]*?(?:<\/(?:think|reasoning|reflection|plan|scratchpad)>|$)/gi, '');
+
     // If the model leaked its "Draft:" section, grab ONLY what comes after "Draft:"
     const draftMatch = cleanText.match(/\bDraft:\s*([\s\S]*)$/i);
     if (draftMatch) {
