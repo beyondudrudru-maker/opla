@@ -5,80 +5,71 @@
  *   Scheduled maintenance job (run nightly, or every N turns per user).
  *   Keeps long-term memory curated and bounded instead of growing forever,
  *   and keeps emotional state from sitting stale for inactive users.
- *
- * RESPONSIBILITIES
- *   - Pull recent conversation_turns per active user.
- *   - Extract candidate long-term memories using the AI-powered lightweight 
- *     model (Gemini Flash-Lite) inside memoryEngine.
- *   - Write new memories, prune each user's table to top-50 by score.
- *
- * SUGGESTED SCHEDULING
- *   node-cron or a Supabase Edge Function on a nightly trigger. Keep this
- *   job idempotent — re-running it on the same turns should not duplicate
- *   memories: memory/memoryEngine.js computes a content_hash per candidate
- *   at extraction time, and database/supabaseClient.js's addLongTermMemory
- *   upserts against the (user_id, content_hash) unique constraint in
- *   schema.sql, so a repeat run over overlapping turns is a no-op insert
- *   rather than a duplicate row.
- *
- * NOTE ON PRUNING (per project requirement)
- *   The "prune to top-50" step below is intentionally a recommendation
- *   log only, not a real delete. Project 2 / coreClient (user_profiles,
- *   emotional_state, conversation_turns, long_term_memories — permanent
- *   personality/memory data for a ~52-member server) must never have data
- *   removed from it by any automated process. If real pruning is wanted
- *   later, it must be a separate, explicitly requested change.
- *
- * FUTURE SCALABILITY
- *   As user count grows, batch this per-shard/per-guild rather than a
- *   single global sweep, and consider moving extraction to a queue
- *   (e.g. a lightweight job runner) so a slow LLM call doesn't block the
- *   next scheduled run.
+ *   🚀 UPGRADE: Integrated requestQueue to prevent background jobs from 
+ *   rate-limiting or crashing the live chat bot.
  */
 
 const db = require('../database/supabaseClient');
 const memoryEngine = require('../memory/memoryEngine');
+const requestQueue = require('../utils/requestQueue');
 
 const MAX_MEMORIES_PER_USER = 50;
 
 async function runForUser(userId, channelIds) {
   let allCandidates = [];
+  
   for (const channelId of channelIds) {
-    const turns = await db.getRecentTurns(channelId, 200);
-    
-    // IMPORTANT FIX: We must 'await' the extraction because it now makes
-    // an asynchronous call to the Gemini API behind the scenes.
-    const extracted = await memoryEngine.extractCandidateMemories(turns, userId);
-    allCandidates = allCandidates.concat(extracted);
+    try {
+      const turns = await db.getRecentTurns(channelId, 200);
+      
+      // 🚀 UPGRADE: Queued extraction ensures background processing 
+      // doesn't starve the live bot of API bandwidth.
+      const extracted = await requestQueue.enqueue(() => 
+        memoryEngine.extractCandidateMemories(turns, userId)
+      );
+      
+      allCandidates = allCandidates.concat(extracted);
+    } catch (channelErr) {
+      console.warn(`⚠️ [REFLECTION] Failed to extract memories for user ${userId} in channel ${channelId}:`, channelErr.message);
+    }
   }
 
   for (const candidate of allCandidates) {
-    await memoryEngine.writeMemory(userId, candidate);
+    try {
+      await memoryEngine.writeMemory(userId, candidate);
+    } catch (writeErr) {
+      console.warn(`⚠️ [REFLECTION] Failed to write memory for user ${userId}:`, writeErr.message);
+    }
   }
 
-  // Prune: keep only top-N by score (real implementation would do this via
-  // a single SQL DELETE ... WHERE id NOT IN (SELECT ... ORDER BY score
-  // LIMIT N) — left as a TODO for the Supabase migration pass).
-  //
+  // Prune: keep only top-N by score.
   // NOTE: this stays a log-only recommendation, not a real delete, per
   // project requirement that Project 2 / coreClient data is never
   // automatically removed. Do not wire this up to an actual DELETE
   // without an explicit, separate request.
-  const all = await memoryEngine.getLongTermCandidates(userId);
-  if (all.length > MAX_MEMORIES_PER_USER) {
-    console.log(`[reflection] user ${userId} has ${all.length} memories, prune to ${MAX_MEMORIES_PER_USER} recommended.`);
+  try {
+    const all = await memoryEngine.getLongTermCandidates(userId);
+    if (all.length > MAX_MEMORIES_PER_USER) {
+      console.log(`[REFLECTION] User ${userId} has ${all.length} memories. Pruning to ${MAX_MEMORIES_PER_USER} recommended.`);
+    }
+  } catch (err) {
+    console.error(`⚠️ [REFLECTION] Failed to check memory limits for user ${userId}:`, err.message);
   }
 }
 
 async function runNightly(activeUserChannelMap) {
+  console.log('🌙 [REFLECTION] Nightly memory sweep initiated...');
+  
   // activeUserChannelMap: { [userId]: string[] channelIds }
   for (const [userId, channelIds] of Object.entries(activeUserChannelMap)) {
     try {
       await runForUser(userId, channelIds);
     } catch (err) {
-      console.error(`[reflection] failed for user ${userId}:`, err.message);
+      console.error(`❌ [REFLECTION] Critical failure for user ${userId}:`, err.message);
     }
   }
+  
+  console.log('✅ [REFLECTION] Nightly memory sweep completed.');
 }
 
 module.exports = { runForUser, runNightly };
