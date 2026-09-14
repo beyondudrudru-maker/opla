@@ -54,40 +54,64 @@ const gemCooldown = new Set();
 const adminCooldown = new Set();
 
 // ─────────────────────────────────────────────────────────────
-// 🔍 Helper: Resolve plain text names to Guild Members
+// 🔍 Helper: Fuzzy & Normalized Member Name Resolver
 // ─────────────────────────────────────────────────────────────
 const COMMON_IGNORE_WORDS = new Set([
     'alert', 'them', 'play', 'complete', 'their', 'clan', 'clash', 'battle', 
     'tell', 'with', 'about', 'from', 'this', 'that', 'here', 'there', 'what',
-    'please', 'help', 'roast', 'insult', 'kick', 'babe', 'honey', 'love'
+    'please', 'help', 'roast', 'insult', 'kick', 'babe', 'honey', 'love',
+    'notify', 'events', 'event', 'other', 'guys', 'karo', 'both', 'also'
 ]);
+
+function cleanName(str) {
+    if (!str) return '';
+    // Strip common clan tags like !N, [IND], emojis, and punctuation
+    return str
+        .toLowerCase()
+        .replace(/[!|\[\(].*?[\]\)]/g, '') // strip brackets like [IND]
+        .replace(/[^a-z0-9\s]/g, ' ')     // replace special symbols with spaces
+        .replace(/\s+/g, ' ')
+        .trim();
+}
 
 function resolveMembersFromText(text, guild, botId) {
     if (!guild || !text) return [];
 
     const foundMembers = new Map();
-    const cleanLower = text.toLowerCase();
+    const words = text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 3 && !COMMON_IGNORE_WORDS.has(w));
+
+    if (words.length === 0) return [];
 
     guild.members.cache.forEach(member => {
         if (member.id === botId) return;
 
-        const possibleNames = [
+        const candidateNames = [
             member.nickname,
             member.displayName,
             member.user.username,
             member.user.globalName
         ].filter(Boolean);
 
-        for (const name of possibleNames) {
-            const trimmed = name.trim().toLowerCase();
-            // Avoid matching common filler words or names that are too short
-            if (trimmed.length < 3 || COMMON_IGNORE_WORDS.has(trimmed)) continue;
+        for (const rawName of candidateNames) {
+            const cleaned = cleanName(rawName);
+            if (cleaned.length < 3 || COMMON_IGNORE_WORDS.has(cleaned)) continue;
 
-            const regex = new RegExp(`\\b${trimmed.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'i');
-            if (regex.test(cleanLower)) {
+            const nameTokens = cleaned.split(' ');
+
+            // Check if any query word matches a token or starts with it
+            const isMatch = words.some(word => 
+                nameTokens.some(token => token === word || (token.startsWith(word) && word.length >= 4))
+            );
+
+            if (isMatch) {
                 foundMembers.set(member.id, {
                     id: member.id,
-                    username: member.displayName || member.user.username
+                    username: member.displayName || member.user.username,
+                    matchedName: rawName
                 });
                 break;
             }
@@ -439,349 +463,4 @@ client.on(Events.MessageCreate, async (message) => {
                 let knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
 
                 let aiPromptContent = cleanText;
-                if (gameResult.context) {
-                    const compressedContext = typeof gameResult.context === 'object'
-                        ? compressGameData(gameResult.context)
-                        : gameResult.context;
-                    const contextStr = typeof compressedContext === 'object'
-                        ? JSON.stringify(compressedContext)
-                        : compressedContext;
-
-                    aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question. Compare the stats directly and provide strategic advice based ONLY on these numbers. Do not invent abilities or stats.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${cleanText}`;
-                }
-
-                console.log(`[PIPELINE TRACE] route=melody-persona | hasGameContext=${Boolean(gameResult.context)}`);
-
-                const melodyResult = await requestQueue.enqueue(() => melody.generateContent({
-                    userId: message.author.id,
-                    displayName: message.author.username,
-                    roles,
-                    channelId: message.channel.id,
-                    content: aiPromptContent,
-                    isGroupContext: Boolean(message.guild),
-                    mentionedUsers, // Contains resolved names & IDs
-                    knowledgeContext,
-                    recentChatLog: chatContextForAI
-                }));
                 
-                aiReply = melodyResult.text;
-                modelUsed = melodyResult.modelUsed;
-                debug = melodyResult.debug;
-            }
-
-            console.log(`🧠 [PIPELINE TRACE] pipeline="${pipelineUsed}" intent=${debug?.intent} tier=${debug?.tier} model=${modelUsed}`);
-
-            let finalReply = aiReply;
-            const isCreator = message.author.id === '1369404203880939650';
-            const isAdmin = message.member?.roles.cache.has('1372987132855058504');
-            const allowedToPingEveryone = message.mentions.everyone && (isCreator || isAdmin);
-
-            if (allowedToPingEveryone && !finalReply.includes('@everyone')) {
-                finalReply = `@everyone\n\n${finalReply}`;
-            }
-
-            // 🚀 ALLOW USER PINGS: Enables Discord to deliver notifications for <@id> tags
-            const allowedParse = ['users'];
-            if (allowedToPingEveryone) allowedParse.push('everyone');
-
-            const mentionOptions = {
-                repliedUser: false,
-                parse: allowedParse
-            };
-
-            const replyPayload = { 
-                content: finalReply, 
-                allowedMentions: mentionOptions 
-            };
-            
-            if (gameResult.embeds && gameResult.embeds.length > 0) {
-                replyPayload.embeds = gameResult.embeds;
-            }
-                    
-            if (finalReply.length > 1950) {
-                const chunks = finalReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
-                for (let i = 0; i < chunks.length; i++) {
-                    if (i === 0) {
-                        await message.reply({ ...replyPayload, content: chunks[i] });
-                    } else {
-                        await new Promise(resolve => setTimeout(resolve, 600)); 
-                        await message.channel.send({ content: chunks[i], allowedMentions: { parse: mentionOptions.parse } });
-                    }
-                }
-            } else {
-                await message.reply(replyPayload);
-            }
-
-            try {
-                await ramClient.from('chat_ram').insert([{
-                    player_id: client.user.id,
-                    player_name: "INF AI",
-                    channel_id: message.channel.id,
-                    message_content: finalReply
-                }]);
-            } catch (dbErr) {
-                console.warn('⚠️ Failed to log AI reply to Supabase:', dbErr.message);
-            }
-
-        } catch (error) {
-            console.error('❌ AI Error:', error.message);
-            try { 
-                await message.reply('My cognitive processors are cooling down, I am very busy right now! 🌸'); 
-            } catch (e) {}
-        }
-    } 
-
-    if (!supportCooldown.has(message.channel.id) && sharedHistory.length >= 2) {
-        const triggers = ['boss', 'tough', 'hard', 'score', 'stuck', 'impossible'];
-        const isDifficultyConvo = sharedHistory.slice(0, 2).every(m => 
-            triggers.some(t => m.message_content.toLowerCase().includes(t))
-        );
-
-        if (isDifficultyConvo) {
-            supportCooldown.add(message.channel.id);
-            setTimeout(() => supportCooldown.delete(message.channel.id), 120000);
-            
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_yes_help').setLabel('Yes, Please!').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('btn_no_thanks').setLabel('No, I got this').setStyle(ButtonStyle.Secondary)
-            );
-            
-            await message.channel.send({
-                content: `💅 I noticed you boys are struggling. Do you need me to ping the Advisors for a strategy breakdown?`,
-                components: [row]
-            }).catch(()=>{});
-        }
-    }
-
-    if (!goldCooldown.has(message.channel.id) && sharedHistory.length > 0) {
-        const goldTriggers = ['gold', 'need gold', 'farm gold', 'how to farm', 'broke', 'no gold', 'out of gold'];
-        let goldMentionCount = 0;
-        
-        sharedHistory.forEach(m => {
-            if (goldTriggers.some(t => m.message_content.toLowerCase().includes(t))) goldMentionCount++;
-        });
-
-        if (goldMentionCount >= 2) {
-            goldCooldown.add(message.channel.id);
-            setTimeout(() => goldCooldown.delete(message.channel.id), 300000);
-
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_yes_gold').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('btn_no_gold').setLabel('No, I am rich.').setStyle(ButtonStyle.Secondary)
-            );
-
-            await message.channel.send({
-                content: `💅 I noticed you guys are discussing gold farming. Do you want me to pull up the Ultimate Gold Blueprint?`,
-                components: [row]
-            }).catch(()=>{});
-        }
-    }
-
-    if (!gemCooldown.has(message.channel.id) && sharedHistory.length > 0) {
-        const gemTriggers = ['gem', 'need gems', 'low on gems', 'out of gems', 'how to farm gems', 'gem farming'];
-        let gemMentionCount = 0;
-        
-        sharedHistory.forEach(m => {
-            if (gemTriggers.some(t => m.message_content.toLowerCase().includes(t))) gemMentionCount++;
-        });
-
-        if (gemMentionCount >= 2) {
-            gemCooldown.add(message.channel.id);
-            setTimeout(() => gemCooldown.delete(message.channel.id), 300000);
-
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_yes_gem').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('btn_no_gem').setLabel('No, I have plenty.').setStyle(ButtonStyle.Secondary)
-            );
-
-            await message.channel.send({
-                content: `💎 I noticed you guys are discussing gems. Do you want me to pull up the Gem Matrix?`,
-                components: [row]
-            }).catch(()=>{});
-        }
-    }
-}); 
-
-client.on(Events.InteractionCreate, async (interaction) => {
-    if (!interaction.isButton()) return;
-
-    try {
-        if (interaction.customId === 'btn_yes_help') {
-            await interaction.message.edit({ components: [] });
-            await interaction.reply({
-                content: `🔔 **Tactical Support Initiated!** \n<@&1524079498646126662>, the team needs your breakdown! \n\n*Analysis complete. Protocols engaged.*`
-            });
-        } else if (interaction.customId === 'btn_no_thanks') {
-            await interaction.message.edit({ components: [] });
-            await interaction.reply({ content: `Fine, tough guys! Don't come crying to me when you lose. 💅` });
-        }
-
-        else if (interaction.customId === 'btn_yes_gold') {
-            await interaction.message.edit({ components: [] });
-            const goldEmbed = getGoldGuide();
-            await interaction.reply({ 
-                content: `✨ Here is the Ultimate Gold Blueprint, ${interaction.user}:`, 
-                embeds: [goldEmbed] 
-            });
-        } else if (interaction.customId === 'btn_no_gold') {
-            await interaction.message.edit({ components: [] });
-            await interaction.reply({ content: `No worries, King! Let me know if you ever need the Blueprint. 💰` });
-        }
-
-        else if (interaction.customId === 'btn_yes_gem') {
-            await interaction.message.edit({ components: [] });
-            const gemEmbed = getGemGuide();
-            await interaction.reply({ 
-                content: `💎 Here is the Gem Matrix for you, ${interaction.user}:`, 
-                embeds: [gemEmbed] 
-            });
-        } else if (interaction.customId === 'btn_no_gem') {
-            await interaction.message.edit({ components: [] });
-            await interaction.reply({ content: `Alright! I'll keep the Gem Matrix ready for whenever you need it. 💎` });
-        }
-    } catch (error) {
-        console.warn('⚠️ Interaction failed (possibly expired/timeout):', error.message);
-    }
-});
-
-const TARGET_EMOJI = '✅'; 
-const HALL_OF_FAME_CHANNEL_ID = '1527749743483158558'; 
-const REQUIRED_REACTIONS = 1; 
-
-client.on(Events.MessageReactionAdd, async (reaction, user) => {
-    if (reaction.partial) {
-        try { 
-            await reaction.fetch(); 
-        } catch (error) { 
-            console.error('Failed to fetch partial reaction:', error);
-            return; 
-        }
-    }
-
-    if (user.bot) return;
-
-    const isTargetEmoji = reaction.emoji.name === '✅' || reaction.emoji.name === 'white_check_mark';
-
-    if (isTargetEmoji && reaction.count >= REQUIRED_REACTIONS) {
-        const message = reaction.message;
-
-        try {
-            const hallOfFameChannel = await client.channels.fetch(HALL_OF_FAME_CHANNEL_ID);
-            if (!hallOfFameChannel) return;
-
-            const embed = new EmbedBuilder()
-                .setColor('#00FF00') 
-                .setAuthor({ 
-                    name: message.author.username, 
-                    iconURL: message.author.displayAvatarURL({ dynamic: true }) 
-                })
-                .setDescription(message.content || '✅ *Highlighted Moment*')
-                .setFooter({ text: `Archived by ${user.username} | ✅ !NF!N!TY Hall of Fame` })
-                .setTimestamp(message.createdAt);
-
-            if (message.attachments.size > 0) {
-                const attachment = message.attachments.first();
-                if (attachment?.contentType?.startsWith('image/')) {
-                    embed.setImage(attachment.url);
-                }
-            }
-
-            await hallOfFameChannel.send({ embeds: [embed] });
-            console.log(`[SUCCESS] Message archived by ${user.username}`);
-        } catch (error) {
-            console.error('Error creating Hall of Fame entry:', error);
-        }
-    }
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-process.on('uncaughtException', (err) => {
-    console.error('❌ Uncaught Exception thrown:', err);
-});
-
-client.on('error', (error) => {
-    console.error('⚠️ [DISCORD CLIENT ERROR]:', error);
-});
-
-client.on('shardError', (error, shardId) => {
-    console.error(`⚠️ [DISCORD SHARD ${shardId} ERROR]:`, error);
-});
-
-client.on('shardDisconnect', (event, shardId) => {
-    console.warn(`⚠️ [DISCORD SHARD ${shardId} DISCONNECTED]: code=${event?.code} reason=${event?.reason}`);
-});
-
-client.on('disconnect', () => {
-    console.warn('⚠️ [DISCORD DISCONNECTED]: The WebSocket disconnected.');
-});
-
-client.on('debug', (info) => {
-    if (typeof info === 'string' && info.toLowerCase().includes('token')) return;
-    console.log('[DISCORD DEBUG]', info);
-});
-
-try {
-    console.log("🛠️ [DIAGNOSTICS] Checking Environment Variables...");
-    
-    if (!process.env.DISCORD_TOKEN || process.env.DISCORD_TOKEN.trim() === '') {
-        console.error("❌ [CRITICAL ERROR] The DISCORD_TOKEN is missing or completely empty in Render!");
-    } else {
-        console.log(`✅ [DIAGNOSTICS] Token found! Length: ${process.env.DISCORD_TOKEN.length} characters.`);
-    }
-
-    console.log("🛠️ [DIAGNOSTICS] Attempting to connect to Discord WebSocket...");
-
-    (async () => {
-        try {
-            const https = require('node:https');
-            const probeResult = await new Promise((resolve, reject) => {
-                const req = https.get('https://discord.com/api/v10/users/@me', {
-                    headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}` },
-                    timeout: 10000
-                }, (res) => {
-                    let body = '';
-                    res.on('data', (c) => (body += c));
-                    res.on('end', () => resolve({ status: res.statusCode, body }));
-                });
-                req.on('timeout', () => { req.destroy(); reject(new Error('REST probe timed out after 10s')); });
-                req.on('error', reject);
-            });
-            if (probeResult.status === 200) {
-                console.log('✅ [PROBE] REST API reachable AND token is valid (got 200 from /users/@me).');
-                console.log('✅ [PROBE] This means the network path to Discord works and the token is good — the problem is specific to the WebSocket gateway connection.');
-            } else if (probeResult.status === 401) {
-                console.error('❌ [PROBE] REST API reachable but token was REJECTED (401 Unauthorized).');
-                console.error('❌ [PROBE] The token in DISCORD_TOKEN is invalid/revoked. Regenerate it in the Developer Portal and update the Render env var.');
-            } else {
-                console.warn(`⚠️ [PROBE] REST API responded with unexpected status ${probeResult.status}:`, probeResult.body.slice(0, 200));
-            }
-        } catch (probeErr) {
-            console.error('❌ [PROBE] Could not reach Discord REST API at all:', probeErr.message);
-            console.error('❌ [PROBE] This points to an outbound network/egress problem on Render, not your code or token.');
-        }
-    })();
-
-    const loginWatchdog = setTimeout(() => {
-        console.error('❌ [CRITICAL ERROR] Still not connected 20s after login() was called.');
-        console.error('❌ [LIKELY CAUSE] A privileged intent (e.g. MESSAGE CONTENT) requested in code is not enabled for this bot in the Discord Developer Portal, OR the token is invalid/regenerated.');
-        console.error('❌ [ACTION] Go to https://discord.com/developers/applications -> your app -> Bot -> enable "MESSAGE CONTENT INTENT" (and any other intents you request in code), then redeploy.');
-    }, 20000);
-
-    client.login(process.env.DISCORD_TOKEN)
-        .then(() => {
-            console.log("✅ [DIAGNOSTICS] Login Promise resolved successfully! Waiting for ready event...");
-        })
-        .catch(error => {
-            clearTimeout(loginWatchdog);
-            console.error('❌ [CRITICAL ERROR] Discord rejected the login request!');
-            console.error('❌ [DETAILS]:', error);
-        });
-
-    client.once(Events.ClientReady, () => clearTimeout(loginWatchdog));
-
-} catch (syncError) {
-    console.error('❌ [CRITICAL ERROR] A synchronous crash occurred during login:', syncError);
-}
