@@ -9,6 +9,7 @@
  *   🚀 UPGRADE: Explicitly injects Discord <@ID> mentionTags into the Audience block.
  *   🚀 UPGRADE: Lean mode now supports Audience targets so you can ping users in game queries.
  *   🗜️ UPGRADE: GameData compression.
+ *   🚀 NEW: Chat summary injection block.
  */
 
 // 🛡️ SECURITY & STABILITY: Escapes XML tags while preserving newlines and spacing.
@@ -589,6 +590,7 @@ function assemble({
   behaviorDirective,
   rankedMemories,
   workingMemory,
+  chatSummary, // 🚀 NEW: Receive chat summary from pipeline
   gameData,
   userMessage,
   targetInfo,
@@ -605,9 +607,11 @@ function assemble({
     renderRelationshipFraming(relationship),
     renderTargetBlock(targetInfo),
     renderTaskDirective(behaviorDirective),
-    renderGameContext(gameData, userMessage),
-    renderMemoryBlock(rankedMemories),
-    renderWorkingMemory(workingMemory),
+    gameData ? renderGameContext(gameData, userMessage) : '',
+    rankedMemories ? renderMemoryBlock(rankedMemories) : '',
+    workingMemory ? renderWorkingMemory(workingMemory) : '',
+    // 🚀 NEW: Inject Chat Summary block here
+    chatSummary ? `<PreviousChatSummary>\n${sanitize(chatSummary)}\n</PreviousChatSummary>` : '',
     recentChatLog ? `<RecentChatLog>\n${recentChatLog}\n</RecentChatLog>` : '', 
     `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`
   ];
@@ -617,7 +621,7 @@ function assemble({
 
 module.exports = {
   assemble,
-  compressGameData,       
+  compressGameData,        
   extractTargetedContext, 
   resolveSynergyLinks,    
   fitGameDataToBudget,    
