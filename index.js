@@ -20,6 +20,8 @@ const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval');
 const reflectionJob = require('./reflection/reflectionJob');
 const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData');
 
+// 🚀 NEW: Import decisionPipeline to properly execute AI logic
+const decisionPipeline = require('./decision/decisionPipeline');
 const gameDomainRouter = require('./router/gameDomainRouter');
 const { compressGameData } = require('./promptBuilder/promptAssembler');
 const { askAI: askGameAI } = require('./ai/aiFallback');
@@ -147,6 +149,12 @@ client.once(Events.ClientReady, async (readyClient) => {
         }
     } catch (err) {
         console.error('⚠️ Could not send startup message:', err.message);
+    }
+
+    // 🚀 NEW: Start background reflection job for summarizing old chats
+    if (reflectionJob && typeof reflectionJob.start === 'function') {
+        reflectionJob.start();
+        console.log('🔄 Reflection Job started for background summarization.');
     }
 });
 
@@ -534,7 +542,7 @@ client.on(Events.MessageCreate, async (message) => {
                 modelUsed = 'aiFallback';
                 debug = { intent: gameResult.intent, tier: 'game-strategy' };
             } else {
-                pipelineUsed = 'melody (api/gemini.js persona)';
+                pipelineUsed = 'decisionPipeline';
                 let knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
 
                 // 🕒 LIVE EVENT CLOCK (Asia/Kolkata)
@@ -557,16 +565,32 @@ client.on(Events.MessageCreate, async (message) => {
                     aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question. Compare the stats directly and provide strategic advice based ONLY on these numbers. Do not invent abilities or stats.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${aiPromptContent}`;
                 }
 
-                console.log(`[PIPELINE TRACE] route=melody-persona | hasGameContext=${Boolean(gameResult.context)} | liveEvent=${activeEvent}`);
+                console.log(`[PIPELINE TRACE] route=decisionPipeline | hasGameContext=${Boolean(gameResult.context)} | liveEvent=${activeEvent}`);
+
+                // 🚀 NEW: Use the proper decisionPipeline to generate the prompt and call AI
+                const turnData = await decisionPipeline.planTurn({
+                    userId: message.author.id,
+                    displayName: message.author.username,
+                    roles: roles,
+                    channelId: message.channel.id,
+                    content: aiPromptContent,
+                    isGroupContext: Boolean(message.guild),
+                    mentions: {
+                        everyone: message.mentions.everyone,
+                        users: mentionedUsers
+                    },
+                    gameData: gameResult.context,
+                    recentChatLog: chatContextForAI
+                });
 
                 const melodyResult = await requestQueue.enqueue(() => melody.generateContent({
                     userId: message.author.id,
                     displayName: message.author.username,
                     roles,
                     channelId: message.channel.id,
-                    content: aiPromptContent,
+                    content: turnData.prompt, // Use the prompt built by the pipeline
                     isGroupContext: Boolean(message.guild),
-                    mentionedUsers, // Contains resolved names & IDs
+                    mentionedUsers, 
                     knowledgeContext,
                     recentChatLog: chatContextForAI
                 }));
@@ -574,6 +598,14 @@ client.on(Events.MessageCreate, async (message) => {
                 aiReply = melodyResult.text;
                 modelUsed = melodyResult.modelUsed;
                 debug = melodyResult.debug;
+
+                // 🚀 NEW: Finalize the turn in the pipeline (saves to long-term memory etc)
+                await decisionPipeline.finalizeTurn({
+                    channelId: message.channel.id,
+                    userId: message.author.id,
+                    content: cleanText,
+                    responseText: aiReply
+                });
             }
 
             console.log(`🧠 [PIPELINE TRACE] pipeline="${pipelineUsed}" intent=${debug?.intent} tier=${debug?.tier} model=${modelUsed}`);
