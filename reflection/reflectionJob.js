@@ -7,6 +7,7 @@
  *   and keeps emotional state from sitting stale for inactive users.
  *   🚀 UPGRADE: Integrated requestQueue to prevent background jobs from 
  *   rate-limiting or crashing the live chat bot.
+ *   🚀 NEW: Added start() function to initialize the background cron-like loop.
  */
 
 const db = require('../database/supabaseClient');
@@ -14,6 +15,7 @@ const memoryEngine = require('../memory/memoryEngine');
 const requestQueue = require('../utils/requestQueue');
 
 const MAX_MEMORIES_PER_USER = 50;
+const SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 Hours
 
 async function runForUser(userId, channelIds) {
   let allCandidates = [];
@@ -72,4 +74,56 @@ async function runNightly(activeUserChannelMap) {
   console.log('✅ [REFLECTION] Nightly memory sweep completed.');
 }
 
-module.exports = { runForUser, runNightly };
+// 🚀 NEW: The initialization function called by index.js
+function start() {
+  // We set an interval to run this automatically in the background
+  setInterval(async () => {
+    console.log('🔄 [REFLECTION] Starting scheduled background job...');
+    try {
+      // We look at the RAM DB to find which users were active in which channels in the last 24 hours
+      if (!db.ramClient) {
+        console.warn('⚠️ [REFLECTION] No ramClient found. Skipping sweep.');
+        return;
+      }
+
+      const twentyFourHoursAgo = new Date(Date.now() - SWEEP_INTERVAL_MS).toISOString();
+      const { data, error } = await db.ramClient
+        .from('chat_ram')
+        .select('player_id, channel_id')
+        .gte('created_at', twentyFourHoursAgo);
+
+      if (error) throw error;
+
+      const activeUserChannelMap = {};
+      
+      if (data && data.length > 0) {
+        data.forEach(row => {
+          // Ignore bot messages and empty IDs
+          if (!row.player_id || row.player_id === process.env.BOT_USER_ID) return;
+          
+          if (!activeUserChannelMap[row.player_id]) {
+            activeUserChannelMap[row.player_id] = new Set();
+          }
+          activeUserChannelMap[row.player_id].add(row.channel_id);
+        });
+      }
+
+      // Convert Sets back to Arrays for runNightly
+      const mapForSweep = {};
+      for (const [uid, cSet] of Object.entries(activeUserChannelMap)) {
+        mapForSweep[uid] = Array.from(cSet);
+      }
+
+      if (Object.keys(mapForSweep).length > 0) {
+        await runNightly(mapForSweep);
+      } else {
+        console.log('⏩ [REFLECTION] No active users in the last 24h. Nothing to sweep.');
+      }
+
+    } catch (err) {
+      console.error('❌ [REFLECTION] Background job failed:', err.message);
+    }
+  }, SWEEP_INTERVAL_MS);
+}
+
+module.exports = { runForUser, runNightly, start };
