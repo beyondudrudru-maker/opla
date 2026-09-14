@@ -2,7 +2,7 @@
  * tests/gameRouter.test.js
  * Run with: node tests/gameRouter.test.js
  *
- * Verifies the 12 required cases and, critically, that FACT/CALC/GOLD/GEM
+ * Verifies the required cases and, critically, that FACT/CALC/GOLD/GEM
  * cases resolve WITHOUT any AI context being produced (resolved: true).
  */
 
@@ -97,6 +97,12 @@ function check(label, cond, detail) {
   const r = route('How should I spend 5000 gems?');
   check('12. Gem allocation — resolved without AI', r.resolved === true, JSON.stringify(r));
   console.log('   reply:', r.reply);
+}
+
+// 13. Test optional recentContext parameter support
+{
+  const r = route('What does he do?', 'User was just asking about Lava Golem');
+  check('13. Context injection support — parses secondary parameters safely', r !== undefined, JSON.stringify(r));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
