@@ -355,7 +355,7 @@ client.on(Events.MessageCreate, async (message) => {
         const mentionedUsers = Array.from(mentionMap.values());
 
         // 2. 🚀 CROSS-CHANNEL & DM ANNOUNCEMENT LOGIC
-        const announceTriggers = ['mention everyone', 'tag everyone', 'announce', 'leave message', 'send message', 'ping everyone', 'inform', 'alert', 'sabko bol', 'boldo', 'bol do', 'dm kardo', 'dm them', 'message kardo'];
+        const announceTriggers = ['mention everyone', 'tag everyone', 'announce', 'leave message', 'send message', 'ping everyone', 'inform', 'alert', 'sabko bol', 'boldo', 'bol do', 'dm kardo', 'dm them', 'message kardo', 'notify', 'notify everyone', 'dm me bolo', 'dm me', 'msg kardo', 'send them dm', 'message bhejo'];
         const wantsAnnouncement = announceTriggers.some(t => lowerClean.includes(t));
 
         if (wantsAnnouncement) {
@@ -366,19 +366,15 @@ client.on(Events.MessageCreate, async (message) => {
                 return message.reply("❌ Only my Creator or a Clan Admin can ask me to send official alerts.").catch(() => {});
             }
 
-            // Target channel logic
             const targetChannel = message.mentions.channels.first() || message.channel;
 
-            // Clean up the text so commands/names aren't repeated awkwardly
             let announceText = cleanText;
             for (const trigger of announceTriggers) {
-                announceText = announceText.replace(new RegExp(trigger, 'i'), '');
+                announceText = announceText.replace(new RegExp(trigger, 'gi'), '');
             }
             announceText = announceText.replace(/<#\d+>/g, ''); 
-            announceText = announceText.replace(/dm them|dm bhejdo|send dm|dm kardo/gi, ''); 
-            announceText = announceText.replace(/<@!?\d+>/g, ''); // Remove raw tags
+            announceText = announceText.replace(/<@!?\d+>/g, ''); 
 
-            // Remove the matched plain names from the message body
             mentionedUsers.forEach(u => {
                 const nameRegex = new RegExp(`\\b${u.username}\\b`, 'gi');
                 announceText = announceText.replace(nameRegex, '');
@@ -388,30 +384,55 @@ client.on(Events.MessageCreate, async (message) => {
                 }
             });
 
-            announceText = announceText.trim();
+            // 🚀 GRAMMAR FIX: Clean up leftover connector words
+            announceText = announceText.replace(/\b(and|ko|me|to|also)\s*$/gi, '');
+            announceText = announceText.replace(/\s+/g, ' ').trim();
 
             if (announceText.length === 0) {
                 announceText = 'Please complete your clan events and attacks! ⚔️🌸';
+            }
+
+            // 🚀 AI INTELLIGENCE INJECTION: Let Melody rephrase the raw command into a natural message
+            try {
+                await message.channel.sendTyping();
+                const aiPrompt = `[SYSTEM INSTRUCTION: You are Melody. Your Admin just told you to send a message to other members. Rephrase their raw instruction into a natural, in-character message from YOU. If the Admin says "tell them I am going to the bathroom", you should say something like "Hey! Beyonder is stepping away for a moment, but he wanted me to tell you..." Be helpful, warm, or firm depending on the context. ONLY output the final message. Do not add quotes, introductions, or confirmations.]\n\nRaw Instruction from Admin: "${announceText}"`;
+                
+                const aiResponse = await requestQueue.enqueue(() => melody.generateContent({
+                    userId: message.author.id,
+                    displayName: message.author.username,
+                    roles: message.member?.roles.cache.map(r => r.name.toLowerCase()) || [],
+                    channelId: message.channel.id,
+                    content: aiPrompt,
+                    isGroupContext: false,
+                    mentionedUsers: [],
+                    knowledgeContext: "",
+                    recentChatLog: recentContext
+                }));
+                
+                if (aiResponse && aiResponse.text) {
+                    announceText = aiResponse.text.trim();
+                }
+            } catch (err) {
+                console.error('[AI REPHRASE ERROR]', err.message);
+                // Gracefully falls back to the original raw text if the API fails
             }
 
             const targetsEveryone = message.mentions.everyone || lowerClean.includes('everyone') || lowerClean.includes('sabko');
             const wantsDM = lowerClean.includes('dm');
 
             try {
-                // 3. Send to Channel
                 if (targetsEveryone) {
                     await targetChannel.send({ content: `@everyone ${announceText}`, allowedMentions: { parse: ['everyone'] } });
                     await message.reply(`✅ Done, love! I announced it to everyone in ${targetChannel}.`);
                 } else if (mentionedUsers.length > 0) {
                     const pings = mentionedUsers.map(u => `<@${u.id}>`).join(' ');
-                    await targetChannel.send({ content: `${pings} ${announceText}`, allowedMentions: { parse: ['users'] } });
+                    await targetChannel.send({ content: `${pings}\n${announceText}`, allowedMentions: { parse: ['users'] } });
                     await message.reply(`✅ Done! I pinged them in ${targetChannel}.`);
                 } else {
                     await targetChannel.send(announceText);
                     await message.reply(`✅ Sent your message to ${targetChannel}!`);
                 }
 
-                // 4. Send Personal DMs (With Anti-Spam Delay)
                 if (wantsDM && mentionedUsers.length > 0) {
                     let dmSuccessCount = 0;
                     
@@ -422,12 +443,10 @@ client.on(Events.MessageCreate, async (message) => {
                     for (let i = 0; i < mentionedUsers.length; i++) {
                         const u = mentionedUsers[i];
                         try {
-                            // We must fetch the actual Discord User object to send a DM
                             const discordUser = await client.users.fetch(u.id);
                             await discordUser.send(`🔔 **Clan Alert from ${message.author.username}:**\n${announceText}`);
                             dmSuccessCount++;
 
-                            // 🚀 STAGGER SYSTEM: Wait 3.5 seconds before sending the next DM
                             if (i < mentionedUsers.length - 1) {
                                 await new Promise(resolve => setTimeout(resolve, 3500));
                             }
@@ -442,7 +461,7 @@ client.on(Events.MessageCreate, async (message) => {
                         await message.channel.send(`⚠️ I tried to DM them, but their Direct Messages are locked/private.`);
                     }
                 }
-                return; // Stop AI from generating a normal chat reply
+                return; 
             } catch (err) {
                 console.error('[ANNOUNCEMENT ERROR]', err);
                 return message.reply("❌ I couldn't send that — check my permissions in that channel.").catch(() => {});
@@ -518,7 +537,15 @@ client.on(Events.MessageCreate, async (message) => {
                 pipelineUsed = 'melody (api/gemini.js persona)';
                 let knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
 
-                let aiPromptContent = cleanText;
+                // 🕒 LIVE EVENT CLOCK (Asia/Kolkata)
+                const currentDay = new Date().toLocaleString('en-US', { weekday: 'short', timeZone: 'Asia/Kolkata' });
+                let activeEvent = 'None';
+                if (['Mon', 'Tue', 'Wed'].includes(currentDay)) activeEvent = '🛡️ Glorious Boss Hunt (Players must use 3 daily attacks)';
+                else if (currentDay === 'Thu') activeEvent = '⚙️ Clan Clash Prep Day (Players must save their formations)';
+                else if (['Fri', 'Sat', 'Sun'].includes(currentDay)) activeEvent = '⚔️ Clan Clash PvP (Players must fight 3 battles today)';
+
+                let aiPromptContent = `[SYSTEM EVENT STATUS: Today is ${currentDay} in India. The current active clan event is: ${activeEvent}. If the user asks what to do today, refer to this event.]\n\n${cleanText}`;
+
                 if (gameResult.context) {
                     const compressedContext = typeof gameResult.context === 'object'
                         ? compressGameData(gameResult.context)
@@ -527,10 +554,10 @@ client.on(Events.MessageCreate, async (message) => {
                         ? JSON.stringify(compressedContext)
                         : compressedContext;
 
-                    aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question. Compare the stats directly and provide strategic advice based ONLY on these numbers. Do not invent abilities or stats.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${cleanText}`;
+                    aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question. Compare the stats directly and provide strategic advice based ONLY on these numbers. Do not invent abilities or stats.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${aiPromptContent}`;
                 }
 
-                console.log(`[PIPELINE TRACE] route=melody-persona | hasGameContext=${Boolean(gameResult.context)}`);
+                console.log(`[PIPELINE TRACE] route=melody-persona | hasGameContext=${Boolean(gameResult.context)} | liveEvent=${activeEvent}`);
 
                 const melodyResult = await requestQueue.enqueue(() => melody.generateContent({
                     userId: message.author.id,
@@ -557,11 +584,9 @@ client.on(Events.MessageCreate, async (message) => {
             if (mentionedUsers.length > 0) {
                 mentionedUsers.forEach(u => {
                     const cleanUName = u.username.replace(/[^a-zA-Z0-9]/g, '');
-                    // Fix malformed mentions like <@wizard> or <@moon>
                     const malformedRegex = new RegExp(`<@!?${cleanUName}>`, 'gi');
                     finalReply = finalReply.replace(malformedRegex, `<@${u.id}>`);
                     
-                    // Also handle generic <@word> patterns if matchedName exists
                     if (u.matchedName) {
                         const firstWord = u.matchedName.split(' ')[0].replace(/[^a-zA-Z0-9]/g, '');
                         if (firstWord.length >= 3) {
@@ -580,7 +605,6 @@ client.on(Events.MessageCreate, async (message) => {
                 finalReply = `@everyone\n\n${finalReply}`;
             }
 
-            // 🚀 ALLOW USER PINGS: Enables Discord to deliver notifications for <@id> tags
             const allowedParse = ['users'];
             if (allowedToPingEveryone) allowedParse.push('everyone');
 
