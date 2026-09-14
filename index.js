@@ -355,7 +355,7 @@ client.on(Events.MessageCreate, async (message) => {
         const mentionedUsers = Array.from(mentionMap.values());
 
         // 2. 🚀 CROSS-CHANNEL & DM ANNOUNCEMENT LOGIC
-        const announceTriggers = ['mention everyone', 'tag everyone', 'announce', 'leave message', 'send message', 'ping everyone', 'inform', 'alert', 'sabko bol'];
+        const announceTriggers = ['mention everyone', 'tag everyone', 'announce', 'leave message', 'send message', 'ping everyone', 'inform', 'alert', 'sabko bol', 'boldo', 'bol do', 'dm kardo', 'dm them', 'message kardo'];
         const wantsAnnouncement = announceTriggers.some(t => lowerClean.includes(t));
 
         if (wantsAnnouncement) {
@@ -375,7 +375,7 @@ client.on(Events.MessageCreate, async (message) => {
                 announceText = announceText.replace(new RegExp(trigger, 'i'), '');
             }
             announceText = announceText.replace(/<#\d+>/g, ''); 
-            announceText = announceText.replace(/dm them|dm bhejdo|send dm/gi, ''); 
+            announceText = announceText.replace(/dm them|dm bhejdo|send dm|dm kardo/gi, ''); 
             announceText = announceText.replace(/<@!?\d+>/g, ''); // Remove raw tags
 
             // Remove the matched plain names from the message body
