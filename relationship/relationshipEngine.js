@@ -1,5 +1,10 @@
 /**
  * relationship/relationshipEngine.js
+ * 
+ * PURPOSE:
+ *   Tracks long-term relationship metrics (trust, respect, affection) per user.
+ *   🚀 UPGRADE: Maximized Creator baseline stats to match the devoted persona.
+ *   🚀 UPGRADE: Added severe penalty events for flirting and hostility.
  */
 
 const db = require('../database/supabaseClient');
@@ -18,6 +23,7 @@ const TIERS = Object.freeze({
   UNKNOWN: 'unknown',
 });
 
+// 🚀 UPGRADE: Added specific penalties for boundary violations and flirting
 const SALIENT_EVENTS = {
   vulnerable_disclosure: { trust: +3, affection: +1 },
   boundary_violation: { trust: -6, respect: -4 },
@@ -26,6 +32,9 @@ const SALIENT_EVENTS = {
   defended_creator: { affection: +2, protectiveness: +1 },
   rule_broken: { respect: -5, trust: -3 },
   helped_others: { respect: +2 },
+  unwanted_flirt: { respect: -15, trust: -10, affection: -10 },
+  hostile_attack: { respect: -20, trust: -10 },
+  jealousy_trigger: { trust: -5, affection: -2 }
 };
 
 function clamp(n, min = 0, max = 100) {
@@ -38,8 +47,9 @@ async function resolveTier({ userId, displayName = '', roles = [] }) {
   const flags = (await db.getUserProfile(userId))?.moderation_flag_count || 0;
   if (flags >= TROUBLEMAKER_FLAG_THRESHOLD) return TIERS.TROUBLEMAKER;
 
-  if (roles.includes('admin') || roles.includes('owner')) return TIERS.ADMIN;
-  if (roles.includes('moderator')) return TIERS.MODERATOR;
+  const safeRoles = roles || [];
+  if (safeRoles.includes('admin') || safeRoles.includes('owner')) return TIERS.ADMIN;
+  if (safeRoles.includes('moderator')) return TIERS.MODERATOR;
   if (VIP_NAMES.some((n) => displayName.toLowerCase().includes(n))) return TIERS.VIP;
 
   const profile = await db.getUserProfile(userId);
@@ -54,17 +64,19 @@ async function resolve({ userId, displayName = '', roles = [] }) {
     profile = await db.upsertUserProfile(userId, {
       display_name: displayName,
       tier,
-      trust: tier === TIERS.CREATOR ? 70 : 30,
-      respect: 30,
-      affection: tier === TIERS.CREATOR ? 60 : 15,
-      familiarity: 0,
-      protectiveness: 20,
+      // 🚀 UPGRADE: Creator starts completely maxed out in affection and trust
+      trust: tier === TIERS.CREATOR ? 100 : 30,
+      respect: tier === TIERS.CREATOR ? 100 : 30,
+      affection: tier === TIERS.CREATOR ? 100 : 15,
+      familiarity: tier === TIERS.CREATOR ? 100 : 0,
+      protectiveness: tier === TIERS.CREATOR ? 100 : 20,
       interaction_count: 0,
     });
   }
 
   const interaction_count = (profile.interaction_count || 0) + 1;
-  const familiarity = clamp(Math.round(Math.log2(interaction_count + 1) * 8));
+  // Creator bypasses the familiarity log curve
+  const familiarity = tier === TIERS.CREATOR ? 100 : clamp(Math.round(Math.log2(interaction_count + 1) * 8));
 
   await db.upsertUserProfile(userId, {
     interaction_count,
@@ -82,6 +94,9 @@ async function applyEvent(userId, eventKey) {
 
   const profile = await db.getUserProfile(userId);
   if (!profile) return null;
+
+  // Protect the Creator from stat decay
+  if (profile.tier === TIERS.CREATOR) return profile;
 
   const updated = {
     trust: clamp((profile.trust || 30) + (deltas.trust || 0)),
