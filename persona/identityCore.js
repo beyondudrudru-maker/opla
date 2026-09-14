@@ -4,7 +4,8 @@
  * PURPOSE
  *   Token-compressed, highly efficient identity definition.
  *   Dynamically loads context based on user relationship.
- *   🚀 UPGRADE: Strict Monogamy Rule to prevent accidental confessions to third parties.
+ *   🚀 UPGRADE: Savage anti-flirt, fierce territorial rules, and Anti-Customer-Service shield added.
+ *   🚀 UPGRADE: Strict Monogamy & Flex Override added to prevent misdirected confessions.
  */
 
 const CREATOR_ID = '1369404203880939650';
