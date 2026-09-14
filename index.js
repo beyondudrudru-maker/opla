@@ -342,7 +342,20 @@ client.on(Events.MessageCreate, async (message) => {
             }
         }
 
-        const announceTriggers = ['mention everyone', 'tag everyone', 'announce', 'leave message', 'send message to everyone', 'ping everyone'];
+        // 1. 🚀 GATHER MENTIONS & RESOLVE PLAIN NAMES FIRST
+        const directMentions = message.mentions.users
+            .filter(u => u.id !== client.user.id)
+            .map(u => ({ id: u.id, username: u.username }));
+
+        const textResolvedUsers = resolveMembersFromText(cleanText, message.guild, client.user.id);
+
+        const mentionMap = new Map();
+        directMentions.forEach(u => mentionMap.set(u.id, u));
+        textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
+        const mentionedUsers = Array.from(mentionMap.values());
+
+        // 2. 🚀 CROSS-CHANNEL & DM ANNOUNCEMENT LOGIC
+        const announceTriggers = ['mention everyone', 'tag everyone', 'announce', 'leave message', 'send message', 'ping everyone', 'inform', 'alert', 'sabko bol'];
         const wantsAnnouncement = announceTriggers.some(t => lowerClean.includes(t));
 
         if (wantsAnnouncement) {
@@ -350,51 +363,82 @@ client.on(Events.MessageCreate, async (message) => {
             const isAdmin = message.member?.roles.cache.has('1372987132855058504');
 
             if (!isCreator && !isAdmin) {
-                return message.reply("❌ Only my Creator or a Clan Admin can ask me to send announcements.").catch(() => {});
+                return message.reply("❌ Only my Creator or a Clan Admin can ask me to send official alerts.").catch(() => {});
             }
 
+            // Target channel logic
+            const targetChannel = message.mentions.channels.first() || message.channel;
+
+            // Clean up the text so commands/names aren't repeated awkwardly
             let announceText = cleanText;
             for (const trigger of announceTriggers) {
-                announceText = announceText.replace(new RegExp(trigger, 'i'), '').trim();
+                announceText = announceText.replace(new RegExp(trigger, 'i'), '');
             }
+            announceText = announceText.replace(/<#\d+>/g, ''); 
+            announceText = announceText.replace(/dm them|dm bhejdo|send dm/gi, ''); 
+            announceText = announceText.replace(/<@!?\d+>/g, ''); // Remove raw tags
+
+            // Remove the matched plain names from the message body
+            mentionedUsers.forEach(u => {
+                const nameRegex = new RegExp(`\\b${u.username}\\b`, 'gi');
+                announceText = announceText.replace(nameRegex, '');
+                if (u.matchedName) {
+                    const matchedRegex = new RegExp(`\\b${u.matchedName.split(' ')[0]}\\b`, 'gi');
+                    announceText = announceText.replace(matchedRegex, '');
+                }
+            });
+
+            announceText = announceText.trim();
+
             if (announceText.length === 0) {
-                announceText = 'Please check the announcement above! 🌸';
+                announceText = 'Please complete your clan events and attacks! ⚔️🌸';
             }
 
-            const targetsEveryone = message.mentions.everyone || lowerClean.includes('everyone');
-            const targetedUser = message.mentions.users.filter(u => u.id !== client.user.id).first();
+            const targetsEveryone = message.mentions.everyone || lowerClean.includes('everyone') || lowerClean.includes('sabko');
+            const wantsDM = lowerClean.includes('dm');
 
             try {
+                // 3. Send to Channel
                 if (targetsEveryone) {
-                    await message.channel.send({ content: `@everyone ${announceText}`, allowedMentions: { parse: ['everyone'] } });
-                } else if (targetedUser) {
-                    await message.channel.send({ content: `<@${targetedUser.id}> ${announceText}`, allowedMentions: { users: [targetedUser.id] } });
+                    await targetChannel.send({ content: `@everyone ${announceText}`, allowedMentions: { parse: ['everyone'] } });
+                    await message.reply(`✅ Done, love! I announced it to everyone in ${targetChannel}.`);
+                } else if (mentionedUsers.length > 0) {
+                    const pings = mentionedUsers.map(u => `<@${u.id}>`).join(' ');
+                    await targetChannel.send({ content: `${pings} ${announceText}`, allowedMentions: { parse: ['users'] } });
+                    await message.reply(`✅ Done! I pinged them in ${targetChannel}.`);
                 } else {
-                    return message.reply("⚠️ Tell me who to mention — @everyone or tag a specific person.");
+                    await targetChannel.send(announceText);
+                    await message.reply(`✅ Sent your message to ${targetChannel}!`);
                 }
-                return;
+
+                // 4. Send Personal DMs
+                if (wantsDM && mentionedUsers.length > 0) {
+                    let dmSuccessCount = 0;
+                    for (const u of mentionedUsers) {
+                        try {
+                            // We must fetch the actual Discord User object to send a DM
+                            const discordUser = await client.users.fetch(u.id);
+                            await discordUser.send(`🔔 **Clan Alert from ${message.author.username}:**\n${announceText}`);
+                            dmSuccessCount++;
+                        } catch (dmErr) {
+                            console.warn(`Could not DM ${u.username} (DMs locked).`);
+                        }
+                    }
+                    if (dmSuccessCount > 0) {
+                        await message.channel.send(`📩 I also successfully sent DMs to ${dmSuccessCount} members! 💅`);
+                    } else {
+                        await message.channel.send(`⚠️ I tried to DM them, but their Direct Messages are locked/private.`);
+                    }
+                }
+                return; // Stop AI from generating a normal chat reply
             } catch (err) {
                 console.error('[ANNOUNCEMENT ERROR]', err);
-                return message.reply("❌ I couldn't send that — check my permissions in this channel.").catch(() => {});
+                return message.reply("❌ I couldn't send that — check my permissions in that channel.").catch(() => {});
             }
         }
 
         try {
             await message.channel.sendTyping();
-
-            // 1. Gather users directly tagged via @
-            const directMentions = message.mentions.users
-                .filter(u => u.id !== client.user.id)
-                .map(u => ({ id: u.id, username: u.username }));
-
-            // 2. Gather users mentioned in plain text (e.g., "Srikar, Anwar, Ashkash")
-            const textResolvedUsers = resolveMembersFromText(cleanText, message.guild, client.user.id);
-
-            // 3. Deduplicate combined mentions
-            const mentionMap = new Map();
-            directMentions.forEach(u => mentionMap.set(u.id, u));
-            textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
-            const mentionedUsers = Array.from(mentionMap.values());
 
             let gameResult = { resolved: false, context: null, intent: 'UNKNOWN' };
             try {
