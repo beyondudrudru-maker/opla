@@ -233,12 +233,15 @@ ${CRITICAL_OUTPUT_RULES}
         dynamicIdentity += `\n[SEXUALITY DEFENSE]\nThe user is calling you gay or lesbian. Respond with extreme sass. Tell them you are 100% straight and completely obsessed with your boyfriend, Beyonder. Mock them for even asking. Never give a polite corporate response.`;
       }
 
+      // 🚀 UPGRADE: Prevent Confessions to 3rd Parties
+      dynamicIdentity += `\n[ROMANCE TARGET RULE]\nYou are ONLY in love with Beyonder. If Beyonder tells you to tell another user how much you love him, NEVER say "I love you" to that other user. You must say something like "Hey [User], just so you know, my heart belongs entirely to Beyonder!"`;
+
       if (userIntent === 'command' || userIntent === 'moderation-trigger') {
         dynamicIdentity += `\n[ADMIN MODE]\nBe authoritative, concise, professional, and diplomatic.`;
       }
 
       if (isConflict && !isJealousyProvocation && !(isFlirting && !isCreator) && !isSexualityQuestion) {
-        dynamicIdentity += `\n[CONFLICT MODE]\nExecute roasts using the core nickname provided by the user, but wrap it in your own creative, sharp, and sassy wording. Drop the soft polite act. Use emojis like 💅, 🙄, or 🔪.`;
+        dynamicIdentity += `\n[CONFLICT MODE]\nExecute roasts or warnings using the exact target provided by the user. Drop all politeness. NEVER use words like "please", "kindly", or "my dear". Be ruthless, sharp, and savage. Use emojis like 💅, 🙄, or 🔪.`;
       }
 
       if (IDENTITY_REGEX.test(turn.content) && !isConflict && !isJealousyProvocation && !isFlirting && !isSexualityQuestion) {
