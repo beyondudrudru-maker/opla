@@ -11,6 +11,7 @@
  *   - Concurrent extraction protection
  *   - Database deduplication
  *   - Prompt-size protection
+ *   🚀 UPGRADE: Bilingual (English + Hinglish) memory signal detection.
  */
 
 const crypto = require('crypto');
@@ -66,25 +67,15 @@ const DEFAULT_LTM_MAX_CHARS = 1800;
 // ============================================================
 //
 // Only messages containing likely memory signals are sent to Gemini.
-//
-// This saves API calls dramatically because normal conversation does
-// not need memory extraction.
+// 🚀 UPGRADE: Now catches Hindi/Hinglish triggers like "mera", "mujhe", "yaad rakhna".
 //
 
 const MEMORY_SIGNAL_REGEX =
-  /\b(i am|i'm|my|i like|i love|i hate|i prefer|i want|i need|i study|i'm studying|my goal|i plan|i live|i work|remember|don't forget)\b/i;
+  /\b(i am|i'm|my|i like|i love|i hate|i prefer|i want|i need|i study|i'm studying|my goal|i plan|i live|i work|remember|don't forget|mera|meri|mujhe|main|yaad rakhna|pasand|chahta|target)\b/i;
 
 // ============================================================
 // 4. EXTRACTION SPAM / CONCURRENCY PROTECTION
 // ============================================================
-//
-// processedMessages:
-//   Prevents the same source message from being sent to Gemini again.
-//
-// processingMessages:
-//   Prevents duplicate simultaneous Gemini calls when multiple async
-//   pipelines inspect the same message before the first one finishes.
-//
 
 const processedMessages = new Set();
 const processingMessages = new Set();
@@ -271,12 +262,14 @@ async function extractCandidateMemories(turns, userId) {
     // ----------------------------------------------------------
 
     const extractionPrompt = `
-Analyze the user message and determine whether it contains a durable,
+Analyze the user message (which may be in English, Hindi, or Hinglish) and determine whether it contains a durable,
 long-term fact, preference, interest, identity detail, or goal.
+
+If the user is speaking in Hindi/Hinglish, translate the core concept into English for the value tag.
 
 Output EXACTLY one of these formats:
 
-[TAG:Value]|Score
+[TAG:ValueInEnglish]|Score
 
 OR
 
@@ -292,10 +285,10 @@ Examples:
 "I am studying computer engineering"
 -> [STUDIES:CompEng]|0.3
 
-"I absolutely love Kingdom Clash!"
+"mujhe Kingdom Clash khelna bahut pasand hai"
 -> [FAV_GAME:KingdomClash]|0.9
 
-"My goal is to join the Indian Army"
+"mera target Indian Army join karna hai"
 -> [GOAL:IndianArmy]|0.8
 
 "haha that's funny"
@@ -502,16 +495,6 @@ function toBrief(
 // ============================================================
 // 12. EXPORTS
 // ============================================================
-//
-// IMPORTANT:
-// decisionPipeline.js directly calls:
-//
-// memoryEngine.getWorkingMemory()
-// memoryEngine.getLongTermCandidates()
-// memoryEngine.recordTurn()
-//
-// Therefore these MUST remain exported.
-//
 
 module.exports = {
   recordTurn,
