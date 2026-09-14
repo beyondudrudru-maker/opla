@@ -88,6 +88,7 @@ async function planTurn({
 
       let workingMemory = [];
       let rankedMemories = [];
+      let chatSummary = ""; // 🚀 NEW: Initialize chatSummary variable
 
       if (!isCasualChat) {
           const [workingMemoryRaw, longTermCandidates] = await Promise.all([
@@ -97,6 +98,15 @@ async function planTurn({
 
           workingMemory = contextRanker.filterWorkingMemory({ turns: workingMemoryRaw, currentUserId: userId, isGroupContext });
           rankedMemories = contextRanker.rankMemories({ currentMessage: content, candidates: longTermCandidates }).slice(0, 6);
+
+          // 🚀 NEW: If there is enough conversation history, generate a rolling summary
+          if (workingMemoryRaw && workingMemoryRaw.length >= 3) {
+              chatSummary = await withTimeout(
+                  memoryEngine.generateChatSummary(workingMemoryRaw), 
+                  DB_TIMEOUT_MS, 
+                  ""
+              );
+          }
       }
 
       const behaviorDirective = behaviorEngine.decide({
@@ -118,6 +128,7 @@ async function planTurn({
         behaviorDirective,
         rankedMemories,
         workingMemory,
+        chatSummary, // 🚀 NEW: Pass the generated summary to the prompt assembler
         gameData: null, 
         userMessage: content,
         targetInfo,
