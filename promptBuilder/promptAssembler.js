@@ -10,16 +10,19 @@
  *   🚀 UPGRADE: Lean mode now supports Audience targets so you can ping users in game queries.
  *   🗜️ UPGRADE: GameData compression.
  *   🚀 NEW: Chat summary injection block.
+ *   🛡️ FIX: Complete XML attribute sanitization (Quotes escaped).
  */
 
-// 🛡️ SECURITY & STABILITY: Escapes XML tags while preserving newlines and spacing.
-// This prevents prompt injection while ensuring code snippets or text formatting aren't destroyed!
+// 🛡️ SECURITY & STABILITY: Escapes XML tags and quotes while preserving newlines.
+// This prevents prompt injection and ensures attributes (like speaker="...") never break!
 function sanitize(text) {
   if (typeof text !== 'string') return '';
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
 function renderRelationshipFraming(relationship = {}) {
@@ -625,5 +628,5 @@ module.exports = {
   extractTargetedContext, 
   resolveSynergyLinks,    
   fitGameDataToBudget,    
-  deepCompress,           
+  deepCompress,            
 };
