@@ -30,6 +30,7 @@ async function runCandidate(candidate, ctx) {
   if (provider === 'gemini') {
     if (!ENABLE_GEMINI || !geminiKeys || geminiKeys.length === 0) return null;
     const order = nextKeyOrder(`gemini:${modelName}`, geminiKeys);
+    
     for (const { key, index } of order) {
       const id = breakerId('gemini', modelName, key);
       if (isBreakerOpen(id)) continue;
@@ -42,7 +43,10 @@ async function runCandidate(candidate, ctx) {
       } catch (error) {
         const type = classifyFailure(error);
         wlog(`gemini/${modelName} key=${index + 1} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
-        if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
+        
+        if (isHardLimitError(error)) tripBreaker(id, error); 
+        else releaseProbe(id);
+        
         lastFailureType = type;
       }
     }
@@ -51,11 +55,8 @@ async function runCandidate(candidate, ctx) {
 
   if (provider === 'groq') {
     if (!ENABLE_GROQ || !groqKeys || groqKeys.length === 0) return null;
-    // Rotate through both configured Groq keys (opla/OPLA/GROQ_API_KEY/
-    // GROQ_API_KEY_2, deduped upstream by the caller) the same way Gemini
-    // rotates through its keys, so a rate-limited/quota-exhausted key
-    // doesn't take the whole Groq tier down with it.
     const order = nextKeyOrder(`groq:${modelName}`, groqKeys);
+    
     for (const { key, index } of order) {
       const id = breakerId('groq', modelName, key);
       if (isBreakerOpen(id)) continue;
@@ -71,7 +72,10 @@ async function runCandidate(candidate, ctx) {
       } catch (error) {
         const type = classifyFailure(error);
         wlog(`groq/${modelName} key=${index + 1} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
-        if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
+        
+        if (isHardLimitError(error)) tripBreaker(id, error); 
+        else releaseProbe(id);
+        
         lastFailureType = type;
       }
     }
@@ -81,13 +85,16 @@ async function runCandidate(candidate, ctx) {
   if (provider === 'openrouter') {
     const client = getOpenRouterClient();
     if (!client) return null;
+    
     const entry = MODEL_REGISTRY.openrouter[modelName] || discoveredModels.get(`openrouter:${modelName}`);
     if (openRouterFreeOnly && entry && entry.costTier !== 'free') {
       dlog(`skipping openrouter/${modelName} — not free and OPENROUTER_FREE_ONLY is set`);
       return null;
     }
+    
     const id = breakerId('openrouter', modelName, process.env.OPENROUTER_API_KEY);
     if (isBreakerOpen(id)) return null;
+    
     const start = Date.now();
     try {
       const { text, quota } = await withRetry(() => execOpenAICompatible(client, { modelName, prompt, systemInstruction, maxTokens, temp }));
@@ -96,7 +103,10 @@ async function runCandidate(candidate, ctx) {
     } catch (error) {
       const type = classifyFailure(error);
       wlog(`openrouter/${modelName} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
-      if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
+      
+      if (isHardLimitError(error)) tripBreaker(id, error); 
+      else releaseProbe(id);
+      
       return { result: null, failureType: type };
     }
   }
@@ -104,8 +114,10 @@ async function runCandidate(candidate, ctx) {
   if (provider === 'cloudflare') {
     const cfg = getCloudflareConfig();
     if (!cfg) return null;
+    
     const id = breakerId('cloudflare', modelName, cfg.apiToken);
     if (isBreakerOpen(id)) return null;
+    
     const start = Date.now();
     try {
       const { text, quota } = await withRetry(() => execCloudflare({ modelName, prompt, systemInstruction, maxTokens, temp }));
@@ -114,7 +126,10 @@ async function runCandidate(candidate, ctx) {
     } catch (error) {
       const type = classifyFailure(error);
       wlog(`cloudflare/${modelName} -> ${type}: ${String(error.message || error).slice(0, 120)}`);
-      if (isHardLimitError(error)) tripBreaker(id, error); else releaseProbe(id);
+      
+      if (isHardLimitError(error)) tripBreaker(id, error); 
+      else releaseProbe(id);
+      
       return { result: null, failureType: type };
     }
   }
