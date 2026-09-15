@@ -5,6 +5,8 @@
  *   The central nervous system of the bot. Orchestrates the flow of data
  *   between engines to build the prompt, while ensuring maximum CPU
  *   efficiency, parallel database operations, and crash resistance.
+ *   🚀 UPGRADE: Parallelized engine execution for ultra-fast response times.
+ *   🚀 UPGRADE: Fixed "Amnesia Bug" - Working memory is now always fetched.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -39,15 +41,21 @@ async function planTurn({
   userId, displayName, roles = [], channelId, content,
   isGroupContext = false, mentions = { everyone: false, users: [] },
   gameData = null, 
-  recentChatLog = null // 🚀 NEW: Receive the transcript from index.js
+  recentChatLog = null
 }) {
   try {
+      // 1. Fast Synchronous Operations
       const classification = intentClassifier.classify({ content });
       const targetInfo = targetResolver.resolve({ mentions, botUserId: BOT_USER_ID });
-
-      const relationship = await relationshipEngine.resolve({ userId, displayName, roles }).catch(() => ({}));
       const gameTurn = isGameTurn({ gameData, intent: classification.intent });
 
+      // 🚀 UPGRADE: Fire off the Working Memory fetch IMMEDIATELY to save time
+      const workingMemoryPromise = withTimeout(memoryEngine.getWorkingMemory(channelId), DB_TIMEOUT_MS, []);
+
+      // Resolve relationship (needed for emotion engine)
+      const relationship = await relationshipEngine.resolve({ userId, displayName, roles }).catch(() => ({}));
+
+      // --- GAME FAST-LANE ---
       if (gameTurn) {
         let optimizedGameData = null;
         if (gameData) {
@@ -60,53 +68,48 @@ async function planTurn({
           gameData: optimizedGameData,
           userMessage: content,
           speakerName: displayName,
-          recentChatLog // 🚀 Pass Transcript to prompt builder
+          recentChatLog 
         });
 
-        console.log(`[PIPELINE TRACE][decisionPipeline] intent=${classification.intent} layers=[intentClassifier,targetResolver,relationshipEngine,promptAssembler(leanMode)]`);
+        console.log(`[PIPELINE TRACE] intent=${classification.intent} route=GameFastLane`);
 
-        return {
-          prompt,
-          classification,
-          behaviorDirective: null,
-          emotionalState: null,
-          relationship,
-          channelId,
-          userId,
-        };
+        return { prompt, classification, behaviorDirective: null, emotionalState: null, relationship, channelId, userId };
       }
 
-      // --- FULL PATH (Social / Banter / General Tasks) ---
-      const emotionalState = await emotionEngine.updateState({
+      // --- FULL SOCIAL/BANTER PATH ---
+      const isCasualChat = classification.intent === 'banter' || classification.intent === 'social' || classification.intent === 'UNKNOWN';
+
+      // 🚀 UPGRADE: Run Emotion calculation and Long-Term Memory fetch in PARALLEL
+      const emotionalStatePromise = emotionEngine.updateState({
         userId,
         intent: classification.intent,
         relationship,
         isModeration: classification.isModeration,
       }).catch(() => ({ current: 'neutral' }));
 
-      const isCasualChat = classification.intent === 'banter' || classification.intent === 'social' || classification.intent === 'UNKNOWN';
+      // Only search deep long-term memory if it's not casual chat
+      const longTermPromise = !isCasualChat 
+        ? withTimeout(memoryEngine.getLongTermCandidates(userId), DB_TIMEOUT_MS, [])
+        : Promise.resolve([]);
 
-      let workingMemory = [];
-      let rankedMemories = [];
-      let chatSummary = ""; // 🚀 NEW: Initialize chatSummary variable
+      // Await all parallel promises together
+      const [emotionalState, workingMemoryRaw, longTermCandidates] = await Promise.all([
+          emotionalStatePromise,
+          workingMemoryPromise,
+          longTermPromise
+      ]);
 
-      if (!isCasualChat) {
-          const [workingMemoryRaw, longTermCandidates] = await Promise.all([
-            withTimeout(memoryEngine.getWorkingMemory(channelId), DB_TIMEOUT_MS, []),
-            withTimeout(memoryEngine.getLongTermCandidates(userId), DB_TIMEOUT_MS, [])
-          ]);
+      // Process and Rank Memories
+      const workingMemory = contextRanker.filterWorkingMemory({ turns: workingMemoryRaw, currentUserId: userId, isGroupContext });
+      const rankedMemories = !isCasualChat ? contextRanker.rankMemories({ currentMessage: content, candidates: longTermCandidates }).slice(0, 6) : [];
 
-          workingMemory = contextRanker.filterWorkingMemory({ turns: workingMemoryRaw, currentUserId: userId, isGroupContext });
-          rankedMemories = contextRanker.rankMemories({ currentMessage: content, candidates: longTermCandidates }).slice(0, 6);
-
-          // 🚀 NEW: If there is enough conversation history, generate a rolling summary
-          if (workingMemoryRaw && workingMemoryRaw.length >= 3) {
-              chatSummary = await withTimeout(
-                  memoryEngine.generateChatSummary(workingMemoryRaw), 
-                  DB_TIMEOUT_MS, 
-                  ""
-              );
-          }
+      let chatSummary = "";
+      if (!isCasualChat && workingMemoryRaw && workingMemoryRaw.length >= 3) {
+          chatSummary = await withTimeout(
+              memoryEngine.generateChatSummary(workingMemoryRaw), 
+              DB_TIMEOUT_MS, 
+              ""
+          );
       }
 
       const behaviorDirective = behaviorEngine.decide({
@@ -128,15 +131,15 @@ async function planTurn({
         behaviorDirective,
         rankedMemories,
         workingMemory,
-        chatSummary, // 🚀 NEW: Pass the generated summary to the prompt assembler
+        chatSummary,
         gameData: null, 
         userMessage: content,
         targetInfo,
         speakerName: displayName,
-        recentChatLog // 🚀 Pass Transcript to prompt builder
+        recentChatLog
       });
 
-      console.log(`[PIPELINE TRACE][decisionPipeline] intent=${classification.intent} isCasualChat=${isCasualChat} layers=[intentClassifier,targetResolver,relationshipEngine,emotionEngine${!isCasualChat ? ',memoryEngine,contextRanker' : ''},behaviorEngine,promptAssembler]`);
+      console.log(`[PIPELINE TRACE] intent=${classification.intent} isCasual=${isCasualChat} layers=[classifier,target,relationship,emotion,memory,behavior,assembler]`);
 
       return { prompt, classification, behaviorDirective, emotionalState, relationship, channelId, userId };
 
@@ -157,4 +160,4 @@ async function finalizeTurn({ channelId, userId, content, responseText }) {
   }
 }
 
-module.exports = { planTrust: planTurn, planTurn, finalizeTurn, isGameTurn };
+module.exports = { planTurn, finalizeTurn, isGameTurn };
