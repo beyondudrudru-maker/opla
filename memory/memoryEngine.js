@@ -13,6 +13,7 @@
  *   - Prompt-size protection
  *   🚀 UPGRADE: Bilingual (English + Hinglish) memory signal detection.
  *   🚀 NEW: Added generateChatSummary for rolling conversation summaries.
+ *   🗜️ UPGRADE: Token-compressed extraction prompt to save API costs.
  */
 
 const crypto = require('crypto');
@@ -68,11 +69,11 @@ const DEFAULT_LTM_MAX_CHARS = 1800;
 // ============================================================
 //
 // Only messages containing likely memory signals are sent to Gemini.
-// 🚀 UPGRADE: Now catches Hindi/Hinglish triggers like "mera", "mujhe", "yaad rakhna".
+// 🚀 UPGRADE: Now catches Hindi/Hinglish triggers like "mera", "mujhe", "yaad rakhna", "hum", "apna".
 //
 
 const MEMORY_SIGNAL_REGEX =
-  /\b(i am|i'm|my|i like|i love|i hate|i prefer|i want|i need|i study|i'm studying|my goal|i plan|i live|i work|remember|don't forget|mera|meri|mujhe|main|yaad rakhna|pasand|chahta|target)\b/i;
+  /\b(i am|i'm|my|i like|i love|i hate|i prefer|i want|i need|i study|i'm studying|my goal|i plan|i live|i work|remember|don't forget|mera|meri|mujhe|main|yaad rakhna|pasand|chahta|target|hum|hamara|apna|apni)\b/i;
 
 // ============================================================
 // 4. EXTRACTION SPAM / CONCURRENCY PROTECTION
@@ -259,47 +260,22 @@ async function extractCandidateMemories(turns, userId) {
     processingMessages.add(sourceHash);
 
     // ----------------------------------------------------------
-    // EXTRACTION PROMPT
+    // EXTRACTION PROMPT (🚀 UPGRADE: Token-Compressed Version)
     // ----------------------------------------------------------
 
     const extractionPrompt = `
-Analyze the user message (which may be in English, Hindi, or Hinglish) and determine whether it contains a durable,
-long-term fact, preference, interest, identity detail, or goal.
+TASK: Extract durable facts, preferences, or goals from the user message.
+LANG: Input may be English, Hindi, or Hinglish. Translate core concept to English for the tag.
+OUTPUT: ONLY output format "[TAG:Value]|Score" OR "NONE". No markdown, no explanations.
+SCORE: 0.1 (weak) to 1.0 (strong).
 
-If the user is speaking in Hindi/Hinglish, translate the core concept into English for the value tag.
+EXAMPLES:
+"I study computer engineering" -> [STUDIES:CompEng]|0.3
+"mujhe Kingdom Clash pasand hai" -> [FAV_GAME:KingdomClash]|0.9
+"mera target Indian army hai" -> [GOAL:IndianArmy]|0.8
+"haha lol" -> NONE
 
-Output EXACTLY one of these formats:
-
-[TAG:ValueInEnglish]|Score
-
-OR
-
-NONE
-
-Score must be between 0.1 and 1.0:
-0.1 = weak / neutral
-0.5 = meaningful
-1.0 = highly important / strongly emotional
-
-Examples:
-
-"I am studying computer engineering"
--> [STUDIES:CompEng]|0.3
-
-"mujhe Kingdom Clash khelna bahut pasand hai"
--> [FAV_GAME:KingdomClash]|0.9
-
-"mera target Indian Army join karna hai"
--> [GOAL:IndianArmy]|0.8
-
-"haha that's funny"
--> NONE
-
-Do not explain.
-Do not output multiple tags.
-Do not use markdown.
-
-User Message:
+MESSAGE:
 "${content}"
 `.trim();
 
@@ -534,5 +510,5 @@ module.exports = {
   computeContentHash,
   WORKING_MEMORY_SIZE,
   toBrief,
-  generateChatSummary // 🚀 NEW: Export the summary function
+  generateChatSummary
 };
