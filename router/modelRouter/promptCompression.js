@@ -4,6 +4,7 @@
  * TOKEN COMPRESSION & DYNAMIC CONTEXT ROLLING
  * Intelligently shrinks context blocks to fit emergency API limits without 
  * severing words, breaking JSON keys, or destroying conversation flow.
+ * 🚀 UPGRADE: Fixed mismatched XML tags (RecentChatLog) and integrated Chat Summary.
  */
 
 'use strict';
@@ -54,10 +55,17 @@ function compressForEmergency(prompt) {
   compressed = compressed.replace(/<LongTermMemory>[\s\S]*?<\/LongTermMemory>/i, '');
   compressed = compressed.replace(/<ChatHistory>[\s\S]*?<\/ChatHistory>/i, '');
   
-  // 2. Dynamically roll recent history to keep complete thoughts intact
-  compressed = compressed.replace(/<RecentChatHistory>([\s\S]*?)<\/RecentChatHistory>/i, (match, inner) => {
+  // 🚀 NEW: Handle the new PreviousChatSummary tag safely
+  compressed = compressed.replace(/<PreviousChatSummary>([\s\S]*?)<\/PreviousChatSummary>/i, (match, inner) => {
+    // If the summary is small, keep it. If it's abnormally large, strip it for the emergency.
+    if (inner.length > 300) return ''; 
+    return match;
+  });
+
+  // 2. 🚀 FIX: Changed to <RecentChatLog> to match promptAssembler.js exactly
+  compressed = compressed.replace(/<RecentChatLog>([\s\S]*?)<\/RecentChatLog>/i, (match, inner) => {
     const smartMemory = rollContextDynamically(inner, EMERGENCY_MEMORY_CHAR_CAP);
-    return `<RecentChatHistory>\n${smartMemory}\n</RecentChatHistory>`;
+    return `<RecentChatLog>\n${smartMemory}\n</RecentChatLog>`;
   });
   
   // 3. Priority-aware GameData trimmer
