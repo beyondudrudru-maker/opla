@@ -256,17 +256,16 @@ client.on(Events.MessageCreate, async (message) => {
 
     if (isExplicitlyTagged) {
         const cleanText = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
-        const flattenedCleanText = cleanText.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-        const lowerClean = flattenedCleanText.toLowerCase();
-
+        
         if (cleanText.length === 0) {
             return message.reply("Yes, my Beyonder? 🌸").catch(() => {});
         }
 
-        const isModCommand = lowerClean.includes('assign') || lowerClean.includes('give') || lowerClean.includes('remove') || lowerClean.includes('take') || lowerClean.includes('kick') || lowerClean.includes('ban');
+        const isModCommand = cleanText.toLowerCase().includes('assign') || cleanText.toLowerCase().includes('give') || cleanText.toLowerCase().includes('remove') || cleanText.toLowerCase().includes('take') || cleanText.toLowerCase().includes('kick') || cleanText.toLowerCase().includes('ban');
         const targetMember = message.mentions.members.filter(m => m.id !== client.user.id).first();
 
         if (isModCommand && targetMember) {
+            const lowerClean = cleanText.toLowerCase();
             const isSakha = message.author.id === '1369404203880939650';
             const isAdmin = message.member?.roles.cache.has('1372987132855058504');
 
@@ -328,7 +327,7 @@ client.on(Events.MessageCreate, async (message) => {
             }
         }
 
-        if (lowerClean.startsWith('say ') && message.author.id === '1369404203880939650') {
+        if (cleanText.toLowerCase().startsWith('say ') && message.author.id === '1369404203880939650') {
             const speechText = cleanText.substring(4).trim();
             if (speechText.length > 0) {
                 try {
@@ -345,10 +344,38 @@ client.on(Events.MessageCreate, async (message) => {
         }
 
         // ─────────────────────────────────────────────────────────────
-        // 🚀 2. ROBUST DM & ANNOUNCEMENT ROUTING (FLATTENED INPUT)
+        // 🚀 DM & ANNOUNCEMENT ROUTING (MULTILINE AND PRECISE PARSING FIX)
         // ─────────────────────────────────────────────────────────────
+        const flattenedCleanText = cleanText.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+        const lowerCleanFlat = flattenedCleanText.toLowerCase();
+
+        const directMentions = message.mentions.users
+            .filter(u => u.id !== client.user.id)
+            .map(u => ({ id: u.id, username: u.username }));
+
+        const dmTargetPattern = /(?:send\s+dm\s+to|dm\s+to|dm\s+kardo\s+ko|ko\s+dm\s+(?:kardo|karo|bhejo)|dm)\s+([a-zA-Z0-9_]+)/i;
+        const dmTargetMatch = lowerCleanFlat.match(dmTargetPattern);
+
+        let targetUsers = [];
+
+        if (dmTargetMatch && dmTargetMatch[1] && !['everyone', 'them', 'sabko'].includes(dmTargetMatch[1])) {
+            const targetQuery = dmTargetMatch[1];
+            const resolved = resolveMembersFromText(targetQuery, message.guild, client.user.id);
+            if (resolved.length > 0) {
+                targetUsers = [resolved[0]];
+            }
+        }
+
+        if (targetUsers.length === 0) {
+            const textResolvedUsers = resolveMembersFromText(flattenedCleanText, message.guild, client.user.id);
+            const mentionMap = new Map();
+            directMentions.forEach(u => mentionMap.set(u.id, u));
+            textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
+            targetUsers = Array.from(mentionMap.values());
+        }
+
         const announceRegex = /\b(announce|notify|alert|ping everyone|sabko bol|bol do|boldo|message kardo|msg kardo|in dm|send dm to|dm to|send dm|message bhejo|send apology|tell them|dm me bolo|dm me|dm kardo|dm them|dm)\b/i;
-        const wantsAnnouncement = announceRegex.test(lowerClean);
+        const wantsAnnouncement = announceRegex.test(lowerCleanFlat);
 
         if (wantsAnnouncement) {
             const isCreator = message.author.id === '1369404203880939650';
@@ -360,71 +387,44 @@ client.on(Events.MessageCreate, async (message) => {
 
             const targetChannel = message.mentions.channels.first() || message.channel;
 
-            // Target extraction: Extract specific recipient ("send dm to rudra", "dm rudra")
-            const dmTargetPattern = /(?:send\s+dm\s+to|dm\s+to|dm\s+kardo\s+ko|ko\s+dm\s+(?:kardo|karo|bhejo)|dm)\s+([a-zA-Z0-9_]+)/i;
-            const dmTargetMatch = lowerClean.match(dmTargetPattern);
-
-            let targetUsers = [];
-
-            if (dmTargetMatch && dmTargetMatch[1] && !['everyone', 'them', 'sabko'].includes(dmTargetMatch[1])) {
-                const targetQuery = dmTargetMatch[1];
-                const resolvedTarget = resolveMembersFromText(targetQuery, message.guild, client.user.id);
-                if (resolvedTarget.length > 0) {
-                    targetUsers = [resolvedTarget[0]];
-                }
-            }
-
-            if (targetUsers.length === 0) {
-                const directMentions = message.mentions.users
-                    .filter(u => u.id !== client.user.id)
-                    .map(u => ({ id: u.id, username: u.username }));
-                const textResolvedUsers = resolveMembersFromText(flattenedCleanText, message.guild, client.user.id);
-                const mentionMap = new Map();
-                directMentions.forEach(u => mentionMap.set(u.id, u));
-                textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
-                targetUsers = Array.from(mentionMap.values());
-            }
-
-            // Strip commands to extract raw payload
-            let rawAnnounceText = flattenedCleanText;
-            const wordsToStrip = [
+            let rawMessagePayload = flattenedCleanText;
+            const triggersToStrip = [
                 'announce', 'notify everyone', 'notify', 'alert', 'ping everyone',
                 'sabko bol', 'bol do', 'boldo', 'message kardo', 'msg kardo',
                 'in dm', 'send dm to', 'dm to', 'send dm', 'message bhejo',
                 'send apology msg', 'send apology', 'tell them', 'dm me bolo',
                 'dm me', 'dm kardo', 'dm them', 'dm'
             ];
-            
-            for (const trigger of wordsToStrip) {
-                rawAnnounceText = rawAnnounceText.replace(new RegExp(`\\b${trigger}\\b`, 'gi'), '');
+
+            for (const trigger of triggersToStrip) {
+                rawMessagePayload = rawMessagePayload.replace(new RegExp(`\\b${trigger}\\b`, 'gi'), '');
             }
-            rawAnnounceText = rawAnnounceText.replace(/<#\d+>/g, ''); 
-            rawAnnounceText = rawAnnounceText.replace(/<@!?\d+>/g, ''); 
+            rawMessagePayload = rawMessagePayload.replace(/<#\d+>/g, '');
+            rawMessagePayload = rawMessagePayload.replace(/<@!?\d+>/g, '');
 
             targetUsers.forEach(u => {
                 const nameRegex = new RegExp(`\\b${u.username}\\b`, 'gi');
-                rawAnnounceText = rawAnnounceText.replace(nameRegex, '');
+                rawMessagePayload = rawMessagePayload.replace(nameRegex, '');
                 if (u.matchedName) {
                     const matchedRegex = new RegExp(`\\b${u.matchedName.split(' ')[0]}\\b`, 'gi');
-                    rawAnnounceText = rawAnnounceText.replace(matchedRegex, '');
+                    rawMessagePayload = rawMessagePayload.replace(matchedRegex, '');
                 }
             });
 
             let previousText;
             do {
-                previousText = rawAnnounceText;
-                rawAnnounceText = rawAnnounceText.replace(/^[\s]*(and|ki|ko|ke|me|to|also|bolo|bol|say|tell|that|usko|because|a request regarding)[\s]+/gi, '');
-            } while (rawAnnounceText !== previousText);
+                previousText = rawMessagePayload;
+                rawMessagePayload = rawMessagePayload.replace(/^[\s]*(and|ki|ko|ke|me|to|also|bolo|bol|say|tell|that|usko|because|a request regarding)[\s]+/gi, '');
+            } while (rawMessagePayload !== previousText);
 
-            rawAnnounceText = rawAnnounceText.replace(/\b(and|ko|me|to|also|because)\s*$/gi, '');
-            rawAnnounceText = rawAnnounceText.replace(/\s+/g, ' ').trim();
+            rawMessagePayload = rawMessagePayload.replace(/\b(and|ko|me|to|also|because)\s*$/gi, '').trim();
 
-            if (rawAnnounceText.length === 0) {
-                rawAnnounceText = 'Please check with your Clan Admin for updates! ⚔️🌸';
+            if (rawMessagePayload.length === 0) {
+                rawMessagePayload = 'Please check with your Clan Admin for updates! ⚔️🌸';
             }
 
-            const targetsEveryone = message.mentions.everyone || lowerClean.includes('everyone') || lowerClean.includes('sabko');
-            const wantsDM = /\b(dm|message|msg)\b/i.test(lowerClean);
+            const targetsEveryone = message.mentions.everyone || lowerCleanFlat.includes('everyone') || lowerCleanFlat.includes('sabko');
+            const wantsDM = /\b(dm|message|msg)\b/i.test(lowerCleanFlat);
 
             try {
                 let dmTargets = [];
@@ -439,56 +439,62 @@ client.on(Events.MessageCreate, async (message) => {
                     }
                 }
 
-                if (wantsDM && dmTargets.length > 0) {
+                if (wantsDM) {
+                    if (dmTargets.length === 0) {
+                        return message.reply("⚠️ Could not locate that user in the server to send a DM. Please mention them directly using `@`.").catch(() => {});
+                    }
+
                     let dmSuccessCount = 0;
-                    
+
                     if (dmTargets.length > 3) {
-                        await message.channel.send(`⏳ Sending DMs to ${dmTargets.length} members. Delivering slowly to prevent Discord rate limits... 💅`);
+                        await message.channel.send(`⏳ Sending DMs to ${dmTargets.length} members. Spreading requests to respect Discord rate limits... 💅`);
                     }
 
                     for (let i = 0; i < dmTargets.length; i++) {
-                        const u = dmTargets[i];
+                        const target = dmTargets[i];
                         try {
-                            const discordUser = await client.users.fetch(u.id);
-                            await discordUser.send(`🔔 **Clan Request/Alert from ${message.author.username}:**\n${rawAnnounceText}`);
+                            const discordUser = await client.users.fetch(target.id);
+                            await discordUser.send(rawMessagePayload);
                             dmSuccessCount++;
 
                             if (i < dmTargets.length - 1) {
                                 await new Promise(resolve => setTimeout(resolve, 3500));
                             }
-                        } catch (dmErr) {
-                            console.warn(`Could not DM ${u.username} (DMs locked/closed).`);
+                        } catch (err) {
+                            console.warn(`Could not deliver DM to ${target.username}:`, err.message);
                         }
                     }
 
                     if (dmSuccessCount > 0) {
-                        await message.reply(`✅ I successfully delivered the DM to ${dmTargets.map(u => u.username).join(', ')}! 💌`);
+                        await message.reply(`✅ DM delivered cleanly to ${dmTargets.map(u => u.username).join(', ')}! 💌`);
                     } else {
-                        await message.reply(`⚠️ I attempted to send the DM, but the recipient has their Direct Messages disabled.`);
+                        await message.reply(`⚠️ Unable to deliver DM. The recipient likely has DMs closed or blocked.`);
                     }
-                    return;
+
+                    return; // 🛑 Stops AI execution
                 }
 
                 if (targetsEveryone) {
-                    await targetChannel.send({ content: `@everyone ${rawAnnounceText}`, allowedMentions: { parse: ['everyone'] } });
+                    await targetChannel.send({ content: `@everyone ${rawMessagePayload}`, allowedMentions: { parse: ['everyone'] } });
                     await message.reply(`✅ Announced to everyone in ${targetChannel}.`);
                 } else if (targetUsers.length > 0) {
                     const pings = targetUsers.map(u => `<@${u.id}>`).join(' ');
-                    await targetChannel.send({ content: `${pings}\n${rawAnnounceText}`, allowedMentions: { parse: ['users'] } });
+                    await targetChannel.send({ content: `${pings}\n${rawMessagePayload}`, allowedMentions: { parse: ['users'] } });
                     await message.reply(`✅ Notified them in ${targetChannel}.`);
                 } else {
-                    await targetChannel.send(rawAnnounceText);
+                    await targetChannel.send(rawMessagePayload);
                     await message.reply(`✅ Sent your message to ${targetChannel}!`);
                 }
-                return;
+
+                return; // 🛑 Stops AI execution
             } catch (err) {
                 console.error('[ANNOUNCEMENT ERROR]', err);
-                return message.reply("❌ Encountered an error sending the message. Please verify my permissions.").catch(() => {});
+                return message.reply("❌ Error sending message. Please check bot permissions.").catch(() => {});
             }
         }
 
         // ─────────────────────────────────────────────────────────────
-        // 🚀 3. GENERAL STRATEGY & DECISION PIPELINE
+        // 🚀 4. GENERAL STRATEGY & DECISION PIPELINE (AI REPLIES)
         // ─────────────────────────────────────────────────────────────
         try {
             await message.channel.sendTyping();
@@ -522,7 +528,7 @@ client.on(Events.MessageCreate, async (message) => {
             }
 
             const gameKeywords = ['stats', 'hero', 'troop', 'boss', 'use', 'good', 'bad', 'vs', 'guide', 'best', 'counter', 'synergy'];
-            const hasGameKeyword = gameKeywords.some(kw => lowerClean.includes(kw));
+            const hasGameKeyword = gameKeywords.some(kw => lowerCleanFlat.includes(kw));
 
             const hasRealGameSignal = Boolean(
                 gameResult.context ||
