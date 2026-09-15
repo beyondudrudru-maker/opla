@@ -423,6 +423,41 @@ client.on(Events.MessageCreate, async (message) => {
                 rawMessagePayload = 'Please check with your Clan Admin for updates! ⚔️🌸';
             }
 
+            // ─────────────────────────────────────────────────────────────
+            // 🚀 AI DRAFTING MODE: Smart Message Generation
+            // ─────────────────────────────────────────────────────────────
+            try {
+                await message.channel.sendTyping();
+                
+                const aiPrompt = `[SYSTEM INSTRUCTION: You are acting as the Official Clan Representative drafting a message for the Admin.
+RULES FOR DRAFTING:
+1. GREETINGS/CASUAL: If the Admin asks to write a nice message (e.g., "happy diwali", "welcome"), draft a warm, engaging, and beautiful message.
+2. SERIOUS/FACTUAL MATTERS: If the instruction is a direct warning, factual, or serious (e.g., "tell him he is a spy", "you are kicked"), keep it STRICTLY professional, sharp, and direct. NO emotional drama, NO romance, NO mention of your relationship with the Admin.
+3. OUTPUT: ONLY output the final message that will be sent. No quotes, no intro, no "Here is the message:".]
+
+Raw Instruction from Admin: "${rawMessagePayload}"`;
+
+                const melodyResult = await requestQueue.enqueue(() => melody.generateContent({
+                    userId: message.author.id,
+                    displayName: message.author.username,
+                    roles: message.member?.roles.cache.map(r => r.name.toLowerCase()) || [],
+                    channelId: message.channel.id,
+                    content: aiPrompt,
+                    isGroupContext: Boolean(message.guild),
+                    mentionedUsers: targetUsers, 
+                    knowledgeContext: "",
+                    recentChatLog: recentContext
+                }));
+
+                if (melodyResult && melodyResult.text) {
+                    rawMessagePayload = melodyResult.text.trim();
+                }
+            } catch (err) {
+                console.error('❌ [AI DRAFTING ERROR]', err.message);
+                // If AI fails, it gracefully falls back to sending your exact raw text
+            }
+            // ─────────────────────────────────────────────────────────────
+
             const targetsEveryone = message.mentions.everyone || lowerCleanFlat.includes('everyone') || lowerCleanFlat.includes('sabko');
             const wantsDM = /\b(dm|message|msg)\b/i.test(lowerCleanFlat);
 
