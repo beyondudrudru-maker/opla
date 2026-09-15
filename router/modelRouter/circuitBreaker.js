@@ -4,12 +4,8 @@
  * CIRCUIT BREAKER (per provider+model+credential, concurrency-safe) +
  * ROUND-ROBIN KEY SELECTOR (Gemini/Groq multi-key support).
  *
- * `breakers` is a module-level singleton Map. Every other file that needs
- * breaker state (candidateRunner.js, candidateBuilder.js, the main
- * generate()/getRouterHealth() in ../modelRouter.js) MUST require this
- * exact file — Node's require cache guarantees they all get the same Map
- * instance, so breaker state stays consistent across the whole router
- * regardless of how many files touch it.
+ * 🚀 UPGRADE: Added Probe Timeout Failsafe to prevent frozen HALF_OPEN states.
+ * 🚀 UPGRADE: Implemented LRU (Least Recently Used) eviction for map memory management.
  */
 
 const { FAILURE, classifyFailure, extractRetryAfterMs, parseResetToMs, COOLDOWN_MS } = require('./failures.js');
@@ -37,12 +33,13 @@ function newBreakerState() {
     trippedBy: null,
     failureType: null,
     probeInFlight: false,
+    probeSentAt: 0, // 🚀 NEW: Tracks when the probe was sent to prevent freezing
     successCount: 0,
     failureCount: 0,
     rateLimitCount: 0,
     quotaFailures: 0,
     requestCount: 0,
-    lastUsed: 0,
+    lastUsed: Date.now(), // 🚀 FIX: Initialize with current time for LRU
     lastFailure: 0,
     lastSuccess: 0,
     avgLatencyMs: 0,
@@ -54,9 +51,18 @@ function newBreakerState() {
 
 function getBreaker(id) {
   if (!breakers.has(id)) {
+    // 🚀 UPGRADE: LRU Eviction instead of naive FIFO
     if (breakers.size >= BREAKER_MAP_LIMIT) {
-      const oldestKey = breakers.keys().next().value;
-      breakers.delete(oldestKey);
+      let oldestId = null;
+      let oldestTime = Infinity;
+      
+      for (const [key, bState] of breakers.entries()) {
+        if (bState.lastUsed < oldestTime) {
+          oldestTime = bState.lastUsed;
+          oldestId = key;
+        }
+      }
+      if (oldestId) breakers.delete(oldestId);
     }
     breakers.set(id, newBreakerState());
   }
@@ -69,8 +75,12 @@ function isBreakerOpen(id) {
   if (b.state === CIRCUIT_STATE.CLOSED) return false;
 
   if (b.state === CIRCUIT_STATE.HALF_OPEN) {
-    if (b.probeInFlight) return true;
+    // 🚀 FIX: Prevent Stale Probes! If a probe hangs for >60s, allow a new one.
+    if (b.probeInFlight && (Date.now() - b.probeSentAt < 60000)) {
+        return true; 
+    }
     b.probeInFlight = true;
+    b.probeSentAt = Date.now();
     return false;
   }
 
@@ -78,6 +88,7 @@ function isBreakerOpen(id) {
   if (elapsed > b.cooldownMs) {
     b.state = CIRCUIT_STATE.HALF_OPEN;
     b.probeInFlight = true;
+    b.probeSentAt = Date.now(); // 🚀 Record when we fired the probe
     return false;
   }
   return true;
@@ -106,8 +117,10 @@ function tripBreaker(id, error) {
   b.trippedBy = String((error && error.message) || error).slice(0, 200);
   b.failureType = failureType;
   b.probeInFlight = false;
+  b.probeSentAt = 0;
   b.failureCount += 1;
   b.lastFailure = Date.now();
+  b.lastUsed = Date.now(); // Update usage timestamp
   if (failureType === FAILURE.RATE_LIMIT) b.rateLimitCount += 1;
   if (failureType === FAILURE.QUOTA_EXHAUSTED) b.quotaFailures += 1;
 
@@ -133,6 +146,7 @@ function recordSuccess(id, latencyMs, quota) {
   b.trippedBy = null;
   b.failureType = null;
   b.probeInFlight = false;
+  b.probeSentAt = 0;
   b.successCount += 1;
   b.requestCount += 1;
   b.lastUsed = Date.now();
@@ -143,7 +157,10 @@ function recordSuccess(id, latencyMs, quota) {
 
 function releaseProbe(id) {
   const b = getBreaker(id);
-  if (b.state === CIRCUIT_STATE.HALF_OPEN) b.probeInFlight = false;
+  if (b.state === CIRCUIT_STATE.HALF_OPEN) {
+    b.probeInFlight = false;
+    b.probeSentAt = 0;
+  }
 }
 
 // Quota risk penalty derived from last observed headers (0 if unknown).
