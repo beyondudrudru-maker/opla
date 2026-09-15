@@ -3,6 +3,7 @@
  *
  * FAILURE CLASSIFICATION + QUOTA HEADER TRACKING (best-effort, never
  * fabricated). Shared by the circuit breaker and every provider executor.
+ * 🚀 UPGRADE: Added Cloudflare 5xx coverage and expanded capacity/overload regex.
  */
 
 const FAILURE = {
@@ -48,14 +49,16 @@ function classifyFailure(error) {
     if (/quota|daily limit|billing|exceeded your current/.test(msg)) return FAILURE.QUOTA_EXHAUSTED;
     return FAILURE.RATE_LIMIT;
   }
-  if (status === 503 || /overloaded|service unavailable/.test(msg)) {
+  // 🚀 FIX: Catching "capacity", "502 Bad Gateway", and "504 Gateway Timeout"
+  if (status === 503 || status === 502 || status === 504 || /overloaded|service unavailable|capacity|bad gateway/.test(msg)) {
     return FAILURE.OVERLOADED;
   }
+  // 🚀 FIX: Catching Cloudflare timeout/network errors (522, 524)
+  if (status === 524 || status === 522 || /timeout|timed out|etimedout|abort/i.test(msg) || error?.name === 'APIUserAbortError' || error?.name === 'AbortError') {
+    return FAILURE.TIMEOUT;
+  }
   if (status && status >= 500) return FAILURE.OUTAGE;
-  // Catches both our own explicit timeoutError() (Gemini path) and the
-  // OpenAI SDK's APIUserAbortError thrown when AbortController fires
-  // (Groq/OpenRouter path) — neither says "timeout" verbatim.
-  if (/timeout|timed out|etimedout|abort/i.test(msg) || error?.name === 'APIUserAbortError' || error?.name === 'AbortError') return FAILURE.TIMEOUT;
+  
   if (/network|econnreset|enotfound|econnrefused|fetch failed/.test(msg)) return FAILURE.NETWORK;
   return FAILURE.UNKNOWN;
 }
