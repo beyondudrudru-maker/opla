@@ -20,7 +20,6 @@ const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval');
 const reflectionJob = require('./reflection/reflectionJob');
 const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/gameData');
 
-// 🚀 NEW: Import decisionPipeline to properly execute AI logic
 const decisionPipeline = require('./decision/decisionPipeline');
 const gameDomainRouter = require('./router/gameDomainRouter');
 const { compressGameData } = require('./promptBuilder/promptAssembler');
@@ -41,7 +40,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions,
-        GatewayIntentBits.GuildMembers // Required to resolve names from text
+        GatewayIntentBits.GuildMembers
     ],
     partials: [
         Partials.Message, 
@@ -62,16 +61,16 @@ const COMMON_IGNORE_WORDS = new Set([
     'alert', 'them', 'play', 'complete', 'their', 'clan', 'clash', 'battle', 
     'tell', 'with', 'about', 'from', 'this', 'that', 'here', 'there', 'what',
     'please', 'help', 'roast', 'insult', 'kick', 'babe', 'honey', 'love',
-    'notify', 'events', 'event', 'other', 'guys', 'karo', 'both', 'also'
+    'notify', 'events', 'event', 'other', 'guys', 'karo', 'both', 'also',
+    'send', 'regarding', 'advisor', 'management', 'request', 'known'
 ]);
 
 function cleanName(str) {
     if (!str) return '';
-    // Strip common clan tags like !N, [IND], emojis, and punctuation
     return str
         .toLowerCase()
-        .replace(/[!|\[\(].*?[\]\)]/g, '') // strip brackets like [IND]
-        .replace(/[^a-z0-9\s]/g, ' ')     // replace special symbols with spaces
+        .replace(/[!|\[\(].*?[\]\)]/g, '')
+        .replace(/[^a-z0-9\s]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -103,8 +102,6 @@ function resolveMembersFromText(text, guild, botId) {
             if (cleaned.length < 3 || COMMON_IGNORE_WORDS.has(cleaned)) continue;
 
             const nameTokens = cleaned.split(' ');
-
-            // Check if any query word matches a token or starts with it
             const isMatch = words.some(word => 
                 nameTokens.some(token => token === word || (token.startsWith(word) && word.length >= 4))
             );
@@ -130,7 +127,6 @@ client.once(Events.ClientReady, async (readyClient) => {
     console.log('----------------------------------------');
     client.user.setActivity('over the !NF!N!TY family 💅', { type: 3 });
 
-    // Pre-cache guild members for instant name resolution
     for (const guild of readyClient.guilds.cache.values()) {
         try {
             await guild.members.fetch();
@@ -151,7 +147,6 @@ client.once(Events.ClientReady, async (readyClient) => {
         console.error('⚠️ Could not send startup message:', err.message);
     }
 
-    // 🚀 NEW: Start background reflection job for summarizing old chats
     if (reflectionJob && typeof reflectionJob.start === 'function') {
         reflectionJob.start();
         console.log('🔄 Reflection Job started for background summarization.');
@@ -166,7 +161,6 @@ setInterval(async () => {
     } catch (err) { console.error('❌ Cleanup Error:', err); }
 }, 3600000);
 
-// 🚀 SUPABASE KEEP-ALIVE HEARTBEAT
 setInterval(async () => {
     try {
         await ramClient.from('chat_ram').select('id').limit(1);
@@ -240,7 +234,6 @@ client.on(Events.MessageCreate, async (message) => {
         }
     }
 
-    // 🚀 UNIFIED CONTEXT PRE-FETCHING
     let sharedHistory = [];
     let recentContext = '';
     let chatContextForAI = '';
@@ -250,9 +243,9 @@ client.on(Events.MessageCreate, async (message) => {
             .select('player_name, message_content') 
             .eq('channel_id', message.channel.id)
             .order('created_at', { ascending: false })
-            .limit(10);
+            .limit(50);
             
-        if (data) {
+        if (data && data.length > 0) {
             sharedHistory = data;
             recentContext = data.slice(0, 3).map(r => r.message_content).join(' ');
             chatContextForAI = data.slice().reverse().map(r => `[${r.player_name || 'User'}]: ${r.message_content}`).join('\n');
@@ -263,7 +256,8 @@ client.on(Events.MessageCreate, async (message) => {
 
     if (isExplicitlyTagged) {
         const cleanText = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
-        const lowerClean = cleanText.toLowerCase();
+        const flattenedCleanText = cleanText.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+        const lowerClean = flattenedCleanText.toLowerCase();
 
         if (cleanText.length === 0) {
             return message.reply("Yes, my Beyonder? 🌸").catch(() => {});
@@ -274,7 +268,7 @@ client.on(Events.MessageCreate, async (message) => {
 
         if (isModCommand && targetMember) {
             const isSakha = message.author.id === '1369404203880939650';
-            const isAdmin = message.member.roles.cache.has('1372987132855058504');
+            const isAdmin = message.member?.roles.cache.has('1372987132855058504');
 
             if (!isSakha && !isAdmin) {
                 return message.reply("❌ **Access Denied:** You must be my King or a Clan Admin to command me to modify users.").catch(() => {});
@@ -350,21 +344,11 @@ client.on(Events.MessageCreate, async (message) => {
             }
         }
 
-        // 1. 🚀 GATHER MENTIONS & RESOLVE PLAIN NAMES FIRST
-        const directMentions = message.mentions.users
-            .filter(u => u.id !== client.user.id)
-            .map(u => ({ id: u.id, username: u.username }));
-
-        const textResolvedUsers = resolveMembersFromText(cleanText, message.guild, client.user.id);
-
-        const mentionMap = new Map();
-        directMentions.forEach(u => mentionMap.set(u.id, u));
-        textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
-        const mentionedUsers = Array.from(mentionMap.values());
-
-        // 2. 🚀 CROSS-CHANNEL & DM ANNOUNCEMENT LOGIC
-        const announceTriggers = ['mention everyone', 'tag everyone', 'announce', 'leave message', 'send message', 'ping everyone', 'inform', 'alert', 'sabko bol', 'boldo', 'bol do', 'dm kardo', 'dm them', 'message kardo', 'notify', 'notify everyone', 'dm me bolo', 'dm me', 'msg kardo', 'send them dm', 'message bhejo'];
-        const wantsAnnouncement = announceTriggers.some(t => lowerClean.includes(t));
+        // ─────────────────────────────────────────────────────────────
+        // 🚀 2. ROBUST DM & ANNOUNCEMENT ROUTING (FLATTENED INPUT)
+        // ─────────────────────────────────────────────────────────────
+        const announceRegex = /\b(announce|notify|alert|ping everyone|sabko bol|bol do|boldo|message kardo|msg kardo|in dm|send dm to|dm to|send dm|message bhejo|send apology|tell them|dm me bolo|dm me|dm kardo|dm them|dm)\b/i;
+        const wantsAnnouncement = announceRegex.test(lowerClean);
 
         if (wantsAnnouncement) {
             const isCreator = message.author.id === '1369404203880939650';
@@ -376,106 +360,136 @@ client.on(Events.MessageCreate, async (message) => {
 
             const targetChannel = message.mentions.channels.first() || message.channel;
 
-            let announceText = cleanText;
-            for (const trigger of announceTriggers) {
-                announceText = announceText.replace(new RegExp(trigger, 'gi'), '');
-            }
-            announceText = announceText.replace(/<#\d+>/g, ''); 
-            announceText = announceText.replace(/<@!?\d+>/g, ''); 
+            // Target extraction: Extract specific recipient ("send dm to rudra", "dm rudra")
+            const dmTargetPattern = /(?:send\s+dm\s+to|dm\s+to|dm\s+kardo\s+ko|ko\s+dm\s+(?:kardo|karo|bhejo)|dm)\s+([a-zA-Z0-9_]+)/i;
+            const dmTargetMatch = lowerClean.match(dmTargetPattern);
 
-            mentionedUsers.forEach(u => {
+            let targetUsers = [];
+
+            if (dmTargetMatch && dmTargetMatch[1] && !['everyone', 'them', 'sabko'].includes(dmTargetMatch[1])) {
+                const targetQuery = dmTargetMatch[1];
+                const resolvedTarget = resolveMembersFromText(targetQuery, message.guild, client.user.id);
+                if (resolvedTarget.length > 0) {
+                    targetUsers = [resolvedTarget[0]];
+                }
+            }
+
+            if (targetUsers.length === 0) {
+                const directMentions = message.mentions.users
+                    .filter(u => u.id !== client.user.id)
+                    .map(u => ({ id: u.id, username: u.username }));
+                const textResolvedUsers = resolveMembersFromText(flattenedCleanText, message.guild, client.user.id);
+                const mentionMap = new Map();
+                directMentions.forEach(u => mentionMap.set(u.id, u));
+                textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
+                targetUsers = Array.from(mentionMap.values());
+            }
+
+            // Strip commands to extract raw payload
+            let rawAnnounceText = flattenedCleanText;
+            const wordsToStrip = [
+                'announce', 'notify everyone', 'notify', 'alert', 'ping everyone',
+                'sabko bol', 'bol do', 'boldo', 'message kardo', 'msg kardo',
+                'in dm', 'send dm to', 'dm to', 'send dm', 'message bhejo',
+                'send apology msg', 'send apology', 'tell them', 'dm me bolo',
+                'dm me', 'dm kardo', 'dm them', 'dm'
+            ];
+            
+            for (const trigger of wordsToStrip) {
+                rawAnnounceText = rawAnnounceText.replace(new RegExp(`\\b${trigger}\\b`, 'gi'), '');
+            }
+            rawAnnounceText = rawAnnounceText.replace(/<#\d+>/g, ''); 
+            rawAnnounceText = rawAnnounceText.replace(/<@!?\d+>/g, ''); 
+
+            targetUsers.forEach(u => {
                 const nameRegex = new RegExp(`\\b${u.username}\\b`, 'gi');
-                announceText = announceText.replace(nameRegex, '');
+                rawAnnounceText = rawAnnounceText.replace(nameRegex, '');
                 if (u.matchedName) {
                     const matchedRegex = new RegExp(`\\b${u.matchedName.split(' ')[0]}\\b`, 'gi');
-                    announceText = announceText.replace(matchedRegex, '');
+                    rawAnnounceText = rawAnnounceText.replace(matchedRegex, '');
                 }
             });
 
-            // 🚀 GRAMMAR FIX: Clean up leftover connector words
-            announceText = announceText.replace(/\b(and|ko|me|to|also)\s*$/gi, '');
-            announceText = announceText.replace(/\s+/g, ' ').trim();
+            let previousText;
+            do {
+                previousText = rawAnnounceText;
+                rawAnnounceText = rawAnnounceText.replace(/^[\s]*(and|ki|ko|ke|me|to|also|bolo|bol|say|tell|that|usko|because|a request regarding)[\s]+/gi, '');
+            } while (rawAnnounceText !== previousText);
 
-            if (announceText.length === 0) {
-                announceText = 'Please complete your clan events and attacks! ⚔️🌸';
-            }
+            rawAnnounceText = rawAnnounceText.replace(/\b(and|ko|me|to|also|because)\s*$/gi, '');
+            rawAnnounceText = rawAnnounceText.replace(/\s+/g, ' ').trim();
 
-            // 🚀 AI INTELLIGENCE INJECTION: Let Melody rephrase the raw command into a natural message
-            try {
-                await message.channel.sendTyping();
-                const aiPrompt = `[SYSTEM INSTRUCTION: You are Melody. Your Admin just told you to send a message to other members. Rephrase their raw instruction into a natural, in-character message from YOU. If the Admin says "tell them I am going to the bathroom", you should say something like "Hey! Beyonder is stepping away for a moment, but he wanted me to tell you..." Be helpful, warm, or firm depending on the context. ONLY output the final message. Do not add quotes, introductions, or confirmations.]\n\nRaw Instruction from Admin: "${announceText}"`;
-                
-                const aiResponse = await requestQueue.enqueue(() => melody.generateContent({
-                    userId: message.author.id,
-                    displayName: message.author.username,
-                    roles: message.member?.roles.cache.map(r => r.name.toLowerCase()) || [],
-                    channelId: message.channel.id,
-                    content: aiPrompt,
-                    isGroupContext: false,
-                    mentionedUsers: [],
-                    knowledgeContext: "",
-                    recentChatLog: recentContext
-                }));
-                
-                if (aiResponse && aiResponse.text) {
-                    announceText = aiResponse.text.trim();
-                }
-            } catch (err) {
-                console.error('[AI REPHRASE ERROR]', err.message);
-                // Gracefully falls back to the original raw text if the API fails
+            if (rawAnnounceText.length === 0) {
+                rawAnnounceText = 'Please check with your Clan Admin for updates! ⚔️🌸';
             }
 
             const targetsEveryone = message.mentions.everyone || lowerClean.includes('everyone') || lowerClean.includes('sabko');
-            const wantsDM = lowerClean.includes('dm');
+            const wantsDM = /\b(dm|message|msg)\b/i.test(lowerClean);
 
             try {
-                if (targetsEveryone) {
-                    await targetChannel.send({ content: `@everyone ${announceText}`, allowedMentions: { parse: ['everyone'] } });
-                    await message.reply(`✅ Done, love! I announced it to everyone in ${targetChannel}.`);
-                } else if (mentionedUsers.length > 0) {
-                    const pings = mentionedUsers.map(u => `<@${u.id}>`).join(' ');
-                    await targetChannel.send({ content: `${pings}\n${announceText}`, allowedMentions: { parse: ['users'] } });
-                    await message.reply(`✅ Done! I pinged them in ${targetChannel}.`);
-                } else {
-                    await targetChannel.send(announceText);
-                    await message.reply(`✅ Sent your message to ${targetChannel}!`);
+                let dmTargets = [];
+                if (wantsDM) {
+                    if (targetsEveryone) {
+                        const members = await message.guild.members.fetch();
+                        dmTargets = members
+                            .filter(m => !m.user.bot && m.id !== client.user.id)
+                            .map(m => ({ id: m.id, username: m.user.username }));
+                    } else if (targetUsers.length > 0) {
+                        dmTargets = targetUsers;
+                    }
                 }
 
-                if (wantsDM && mentionedUsers.length > 0) {
+                if (wantsDM && dmTargets.length > 0) {
                     let dmSuccessCount = 0;
                     
-                    if (mentionedUsers.length > 3) {
-                        await message.channel.send(`⏳ Sending DMs to ${mentionedUsers.length} members. Delivering them slowly to avoid Discord's spam filters... 💅`);
+                    if (dmTargets.length > 3) {
+                        await message.channel.send(`⏳ Sending DMs to ${dmTargets.length} members. Delivering slowly to prevent Discord rate limits... 💅`);
                     }
 
-                    for (let i = 0; i < mentionedUsers.length; i++) {
-                        const u = mentionedUsers[i];
+                    for (let i = 0; i < dmTargets.length; i++) {
+                        const u = dmTargets[i];
                         try {
                             const discordUser = await client.users.fetch(u.id);
-                            await discordUser.send(`🔔 **Clan Alert from ${message.author.username}:**\n${announceText}`);
+                            await discordUser.send(`🔔 **Clan Request/Alert from ${message.author.username}:**\n${rawAnnounceText}`);
                             dmSuccessCount++;
 
-                            if (i < mentionedUsers.length - 1) {
+                            if (i < dmTargets.length - 1) {
                                 await new Promise(resolve => setTimeout(resolve, 3500));
                             }
                         } catch (dmErr) {
-                            console.warn(`Could not DM ${u.username} (DMs locked).`);
+                            console.warn(`Could not DM ${u.username} (DMs locked/closed).`);
                         }
                     }
-                    
+
                     if (dmSuccessCount > 0) {
-                        await message.channel.send(`📩 I successfully delivered DMs to ${dmSuccessCount} members! 💅`);
+                        await message.reply(`✅ I successfully delivered the DM to ${dmTargets.map(u => u.username).join(', ')}! 💌`);
                     } else {
-                        await message.channel.send(`⚠️ I tried to DM them, but their Direct Messages are locked/private.`);
+                        await message.reply(`⚠️ I attempted to send the DM, but the recipient has their Direct Messages disabled.`);
                     }
+                    return;
                 }
-                return; 
+
+                if (targetsEveryone) {
+                    await targetChannel.send({ content: `@everyone ${rawAnnounceText}`, allowedMentions: { parse: ['everyone'] } });
+                    await message.reply(`✅ Announced to everyone in ${targetChannel}.`);
+                } else if (targetUsers.length > 0) {
+                    const pings = targetUsers.map(u => `<@${u.id}>`).join(' ');
+                    await targetChannel.send({ content: `${pings}\n${rawAnnounceText}`, allowedMentions: { parse: ['users'] } });
+                    await message.reply(`✅ Notified them in ${targetChannel}.`);
+                } else {
+                    await targetChannel.send(rawAnnounceText);
+                    await message.reply(`✅ Sent your message to ${targetChannel}!`);
+                }
+                return;
             } catch (err) {
                 console.error('[ANNOUNCEMENT ERROR]', err);
-                return message.reply("❌ I couldn't send that — check my permissions in that channel.").catch(() => {});
+                return message.reply("❌ Encountered an error sending the message. Please verify my permissions.").catch(() => {});
             }
         }
 
+        // ─────────────────────────────────────────────────────────────
+        // 🚀 3. GENERAL STRATEGY & DECISION PIPELINE
+        // ─────────────────────────────────────────────────────────────
         try {
             await message.channel.sendTyping();
 
@@ -488,8 +502,6 @@ client.on(Events.MessageCreate, async (message) => {
             }
 
             if (gameResult.resolved === true) {
-                console.log(`[GAME ROUTER] Deterministic answer — Gemini bypassed`);
-                
                 const replyPayload = { allowedMentions: { repliedUser: false } };
                 if (gameResult.reply) replyPayload.content = gameResult.reply;
                 if (gameResult.embeds) replyPayload.embeds = gameResult.embeds;
@@ -545,7 +557,6 @@ client.on(Events.MessageCreate, async (message) => {
                 pipelineUsed = 'decisionPipeline';
                 let knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
 
-                // 🕒 LIVE EVENT CLOCK (Asia/Kolkata)
                 const currentDay = new Date().toLocaleString('en-US', { weekday: 'short', timeZone: 'Asia/Kolkata' });
                 let activeEvent = 'None';
                 if (['Mon', 'Tue', 'Wed'].includes(currentDay)) activeEvent = '🛡️ Glorious Boss Hunt (Players must use 3 daily attacks)';
@@ -567,7 +578,15 @@ client.on(Events.MessageCreate, async (message) => {
 
                 console.log(`[PIPELINE TRACE] route=decisionPipeline | hasGameContext=${Boolean(gameResult.context)} | liveEvent=${activeEvent}`);
 
-                // 🚀 NEW: Use the proper decisionPipeline to generate the prompt and call AI
+                const directMentions = message.mentions.users
+                    .filter(u => u.id !== client.user.id)
+                    .map(u => ({ id: u.id, username: u.username }));
+                const textResolvedUsers = resolveMembersFromText(cleanText, message.guild, client.user.id);
+                const mentionMap = new Map();
+                directMentions.forEach(u => mentionMap.set(u.id, u));
+                textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
+                const allMentioned = Array.from(mentionMap.values());
+
                 const turnData = await decisionPipeline.planTurn({
                     userId: message.author.id,
                     displayName: message.author.username,
@@ -577,7 +596,7 @@ client.on(Events.MessageCreate, async (message) => {
                     isGroupContext: Boolean(message.guild),
                     mentions: {
                         everyone: message.mentions.everyone,
-                        users: mentionedUsers
+                        users: allMentioned
                     },
                     gameData: gameResult.context,
                     recentChatLog: chatContextForAI
@@ -588,9 +607,9 @@ client.on(Events.MessageCreate, async (message) => {
                     displayName: message.author.username,
                     roles,
                     channelId: message.channel.id,
-                    content: turnData.prompt, // Use the prompt built by the pipeline
+                    content: turnData.prompt,
                     isGroupContext: Boolean(message.guild),
-                    mentionedUsers, 
+                    mentionedUsers: allMentioned, 
                     knowledgeContext,
                     recentChatLog: chatContextForAI
                 }));
@@ -599,7 +618,6 @@ client.on(Events.MessageCreate, async (message) => {
                 modelUsed = melodyResult.modelUsed;
                 debug = melodyResult.debug;
 
-                // 🚀 NEW: Finalize the turn in the pipeline (saves to long-term memory etc)
                 await decisionPipeline.finalizeTurn({
                     channelId: message.channel.id,
                     userId: message.author.id,
@@ -612,9 +630,17 @@ client.on(Events.MessageCreate, async (message) => {
 
             let finalReply = aiReply;
 
-            // 🚀 AUTO-FIX: Convert any accidental <@word> or plain names into real <@ID> tags
-            if (mentionedUsers.length > 0) {
-                mentionedUsers.forEach(u => {
+            const directMentions = message.mentions.users
+                .filter(u => u.id !== client.user.id)
+                .map(u => ({ id: u.id, username: u.username }));
+            const textResolvedUsers = resolveMembersFromText(cleanText, message.guild, client.user.id);
+            const mentionMap = new Map();
+            directMentions.forEach(u => mentionMap.set(u.id, u));
+            textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
+            const allMentioned = Array.from(mentionMap.values());
+
+            if (allMentioned.length > 0) {
+                allMentioned.forEach(u => {
                     const cleanUName = u.username.replace(/[^a-zA-Z0-9]/g, '');
                     const malformedRegex = new RegExp(`<@!?${cleanUName}>`, 'gi');
                     finalReply = finalReply.replace(malformedRegex, `<@${u.id}>`);
