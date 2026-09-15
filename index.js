@@ -479,33 +479,67 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                         return message.reply("⚠️ Could not locate that user in the server to send a DM. Please mention them directly using `@`.").catch(() => {});
                     }
 
-                    let dmSuccessCount = 0;
+                    // ─────────────────────────────────────────────────────────────
+                    // 🚀 NEW CONFIRMATION SYSTEM: Preview & Button Check
+                    // ─────────────────────────────────────────────────────────────
+                    const confirmId = `confirm_dm_${Date.now()}`;
+                    const cancelId = `cancel_dm_${Date.now()}`;
 
-                    if (dmTargets.length > 3) {
-                        await message.channel.send(`⏳ Sending DMs to ${dmTargets.length} members. Spreading requests to respect Discord rate limits... 💅`);
-                    }
+                    const row = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId(confirmId).setLabel('Yes, Send it!').setStyle(ButtonStyle.Success),
+                        new ButtonBuilder().setCustomId(cancelId).setLabel('No, Cancel').setStyle(ButtonStyle.Danger)
+                    );
 
-                    for (let i = 0; i < dmTargets.length; i++) {
-                        const target = dmTargets[i];
-                        try {
-                            const discordUser = await client.users.fetch(target.id);
-                            await discordUser.send(rawMessagePayload);
-                            dmSuccessCount++;
+                    // Send the draft preview to the Admin
+                    const previewMsg = await message.reply({
+                        content: `📝 **Draft Preview for ${dmTargets.length} members:**\n\n> ${rawMessagePayload.replace(/\n/g, '\n> ')}\n\n**Shall I begin the broadcast?**`,
+                        components: [row]
+                    });
 
-                            if (i < dmTargets.length - 1) {
-                                await new Promise(resolve => setTimeout(resolve, 3500));
-                            }
-                        } catch (err) {
-                            console.warn(`Could not deliver DM to ${target.username}:`, err.message);
+                    // Ensure only the person who requested the DM can click the buttons
+                    const filter = i => (i.customId === confirmId || i.customId === cancelId) && i.user.id === message.author.id;
+
+                    try {
+                        // Wait up to 60 seconds for a button click
+                        const confirmation = await previewMsg.awaitMessageComponent({ filter, time: 60000 });
+
+                        if (confirmation.customId === cancelId) {
+                            await confirmation.update({ content: '🛑 DM broadcast cancelled by Admin.', components: [] });
+                            return;
                         }
-                    }
 
-                    if (dmSuccessCount > 0) {
-                        await message.reply(`✅ DM delivered cleanly to ${dmTargets.map(u => u.username).join(', ')}! 💌`);
-                    } else {
-                        await message.reply(`⚠️ Unable to deliver DM. The recipient likely has DMs closed or blocked.`);
-                    }
+                        // If "Yes" is clicked, begin the broadcast
+                        await confirmation.update({ content: `⏳ Initiating DM broadcast to **${dmTargets.length}** members. Applying a strict 5-second delay between each message to protect the server connection... 💅`, components: [] });
 
+                        let dmSuccessCount = 0;
+
+                        for (let i = 0; i < dmTargets.length; i++) {
+                            const target = dmTargets[i];
+                            try {
+                                const discordUser = await client.users.fetch(target.id);
+                                await discordUser.send(`🔔 **Clan Alert from ${message.author.username}:**\n\n${rawMessagePayload}`);
+                                dmSuccessCount++;
+
+                                // Strict 5-second delay (5000ms) enforced here
+                                if (i < dmTargets.length - 1) {
+                                    await new Promise(resolve => setTimeout(resolve, 5000));
+                                }
+                            } catch (err) {
+                                console.warn(`Could not deliver DM to ${target.username}: DMs are likely locked.`);
+                            }
+                        }
+
+                        if (dmSuccessCount > 0) {
+                            await message.channel.send(`✅ DM broadcast complete! Successfully delivered to ${dmSuccessCount} members. 💌`);
+                        } else {
+                            await message.channel.send(`⚠️ Broadcast complete, but unable to deliver any DMs. Recipients likely have their DMs closed.`);
+                        }
+
+                    } catch (timeoutErr) {
+                        // If you don't click anything for 60 seconds, it safely aborts
+                        await previewMsg.edit({ content: '⏳ DM confirmation timed out. Broadcast aborted.', components: [] });
+                    }
+                    
                     return; // 🛑 Stops AI execution
                 }
 
