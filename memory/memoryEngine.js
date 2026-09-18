@@ -11,9 +11,9 @@
  *   - Concurrent extraction protection
  *   - Database deduplication
  *   - Prompt-size protection
+ *   🚀 UPGRADE: Smart Pruning — Truncates massive past bot responses to save tokens.
+ *   🚀 UPGRADE: Speed-Optimized Summarization to prevent 2500ms pipeline timeouts.
  *   🚀 UPGRADE: Bilingual (English + Hinglish) memory signal detection.
- *   🚀 NEW: Added generateChatSummary for rolling conversation summaries.
- *   🗜️ UPGRADE: Token-compressed extraction prompt to save API costs.
  */
 
 const crypto = require('crypto');
@@ -32,8 +32,9 @@ if (apiKey && typeof apiKey === 'string' && apiKey.trim()) {
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
 
+    // 🚀 FIX: Using 1.5-flash for ultra-fast, reliable background processing
     extractionModel = genAI.getGenerativeModel({
-      model: 'gemini-3.1-flash-lite'
+      model: 'gemini-1.5-flash'
     });
 
     console.log('🧠 [MEMORY] Gemini extraction engine initialized.');
@@ -67,10 +68,6 @@ const DEFAULT_LTM_MAX_CHARS = 1800;
 // ============================================================
 // 3. CHEAP LOCAL MEMORY FILTER
 // ============================================================
-//
-// Only messages containing likely memory signals are sent to Gemini.
-// 🚀 UPGRADE: Now catches Hindi/Hinglish triggers like "mera", "mujhe", "yaad rakhna", "hum", "apna".
-//
 
 const MEMORY_SIGNAL_REGEX =
   /\b(i am|i'm|my|i like|i love|i hate|i prefer|i want|i need|i study|i'm studying|my goal|i plan|i live|i work|remember|don't forget|mera|meri|mujhe|main|yaad rakhna|pasand|chahta|target|hum|hamara|apna|apni)\b/i;
@@ -120,7 +117,7 @@ async function recordTurn({
 }
 
 // ============================================================
-// 7. WORKING MEMORY
+// 7. WORKING MEMORY (WITH SMART PRUNING)
 // ============================================================
 
 async function getWorkingMemory(channelId) {
@@ -134,10 +131,8 @@ async function getWorkingMemory(channelId) {
       return [];
     }
 
-    // Start from the newest message.
     const session = [turns[turns.length - 1]];
 
-    // Walk backwards until a session gap is detected.
     for (let i = turns.length - 2; i >= 0; i--) {
       const newer = turns[i + 1];
       const older = turns[i];
@@ -157,15 +152,27 @@ async function getWorkingMemory(channelId) {
       session.unshift(older);
     }
 
-    return session.slice(-WORKING_MEMORY_SIZE);
+    // 🚀 UPGRADE: Smart Pruning
+    // If the bot sent a massive game data embed previously, we don't need to 
+    // send those 2000 chars back to the AI. We just need the core context.
+    const smartSession = session.map(turn => {
+      if (turn.role === 'melody' && turn.content && turn.content.length > 300) {
+        const firstSentence = turn.content.split(/(?<=[.!?])\s/)[0] || turn.content.substring(0, 150);
+        return { 
+          ...turn, 
+          content: `${firstSentence}... [Detailed game/strategy response provided to user]` 
+        };
+      }
+      return turn;
+    });
+
+    return smartSession.slice(-WORKING_MEMORY_SIZE);
 
   } catch (error) {
     console.error(
       '⚠️ [MEMORY] getWorkingMemory failed:',
       error.message
     );
-
-    // Never allow memory failure to kill the AI response.
     return [];
   }
 }
@@ -176,7 +183,6 @@ async function getWorkingMemory(channelId) {
 
 async function getLongTermCandidates(userId) {
   try {
-    // Compatible with DB accessor accepting a limit.
     const memories = await db.getLongTermMemories(
       userId,
       LONG_TERM_MEMORY_LIMIT
@@ -203,7 +209,6 @@ async function getLongTermCandidates(userId) {
 async function extractCandidateMemories(turns, userId) {
   const candidates = [];
 
-  // Gemini unavailable → memory extraction simply disabled.
   if (!extractionModel) {
     return candidates;
   }
@@ -214,7 +219,6 @@ async function extractCandidateMemories(turns, userId) {
 
   for (const turn of turns) {
 
-    // Only inspect user's own messages.
     if (
       turn?.role !== 'user' ||
       turn?.user_id !== userId ||
@@ -229,26 +233,14 @@ async function extractCandidateMemories(turns, userId) {
       continue;
     }
 
-    // ----------------------------------------------------------
-    // LOCAL GATEKEEPER
-    // ----------------------------------------------------------
-
     if (!MEMORY_SIGNAL_REGEX.test(content)) {
       continue;
     }
-
-    // ----------------------------------------------------------
-    // SOURCE HASH
-    // ----------------------------------------------------------
 
     const sourceHash = computeContentHash(
       userId,
       content
     );
-
-    // ----------------------------------------------------------
-    // DUPLICATE / CONCURRENT PROTECTION
-    // ----------------------------------------------------------
 
     if (
       processedMessages.has(sourceHash) ||
@@ -258,10 +250,6 @@ async function extractCandidateMemories(turns, userId) {
     }
 
     processingMessages.add(sourceHash);
-
-    // ----------------------------------------------------------
-    // EXTRACTION PROMPT (🚀 UPGRADE: Token-Compressed Version)
-    // ----------------------------------------------------------
 
     const extractionPrompt = `
 TASK: Extract durable facts, preferences, or goals from the user message.
@@ -287,10 +275,6 @@ MESSAGE:
 
       const extraction =
         result?.response?.text?.()?.trim() || 'NONE';
-
-      // --------------------------------------------------------
-      // PARSE RESULT
-      // --------------------------------------------------------
 
       if (
         extraction !== 'NONE' &&
@@ -320,34 +304,25 @@ MESSAGE:
               )
             : 0.5;
 
-        // Basic validation.
         if (
           memoryTag.startsWith('[TAG:') &&
           memoryTag.endsWith(']')
         ) {
           candidates.push({
             content: memoryTag,
-
-            // Hash the extracted memory itself.
             content_hash: computeContentHash(
               userId,
               memoryTag
             ),
-
             topic_tags: [],
-
             emotional_score: emotionalScore,
-
-            // Useful if your DB schema later supports it.
             source_hash: sourceHash
           });
         }
       }
 
-      // Extraction completed successfully.
       processedMessages.add(sourceHash);
 
-      // Keep memory usage bounded.
       if (processedMessages.size > PROCESSED_LIMIT) {
         const oldestKey =
           processedMessages.keys().next().value;
@@ -364,7 +339,6 @@ MESSAGE:
       );
 
     } finally {
-      // Always release concurrent lock.
       processingMessages.delete(sourceHash);
     }
   }
@@ -402,8 +376,6 @@ async function writeMemory(userId, memory) {
     );
 
   } catch (error) {
-
-    // PostgreSQL duplicate constraint.
     if (
       error?.code === '23505' ||
       /duplicate key/i.test(
@@ -451,7 +423,6 @@ function toBrief(
       continue;
     }
 
-    // Don't exceed prompt budget.
     if (
       output.length + item.length + 1 >
       maxChars
@@ -470,25 +441,34 @@ function toBrief(
 }
 
 // ============================================================
-// 11.5 CHAT SUMMARIZATION (ROLLING SUMMARY) // 🚀 NEW
+// 11.5 CHAT SUMMARIZATION (ROLLING SUMMARY)
 // ============================================================
 
 /**
  * Generates a rolling summary of older conversation turns.
+ * 🚀 UPGRADE: Enforces a strict character limit on the transcript so the 
+ * AI doesn't timeout processing massive blocks of text.
  */
 async function generateChatSummary(turns) {
   if (!extractionModel || !Array.isArray(turns) || turns.length === 0) {
     return '';
   }
 
-  const transcript = turns
-    .map(t => `${t.role || 'user'}: ${t.content}`)
+  // 🚀 Strip out excessively long text to keep the summarization API call ultra-fast
+  let transcript = turns
+    .map(t => {
+      const safeContent = t.content.length > 200 ? t.content.substring(0, 200) + '...' : t.content;
+      return `${t.role || 'user'}: ${safeContent}`;
+    })
     .join('\n');
+    
+  if (transcript.length > 3000) {
+      transcript = transcript.substring(transcript.length - 3000);
+  }
 
   const prompt = `Summarize the following Discord conversation in 2-3 concise bullet points focusing on key topics, decisions, or user questions. Avoid fluff.\n\nConversation:\n${transcript}`;
 
   try {
-    // Generate content using Gemini 
     const result = await extractionModel.generateContent(prompt);
     return result?.response?.text?.()?.trim() || '';
   } catch (err) {
