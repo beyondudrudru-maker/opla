@@ -6,48 +6,42 @@
  *   - Working memory
  *   - Long-term memory retrieval
  *   - Local memory signal filtering
- *   - Gemini-based memory extraction
  *   - Source hashing / duplicate extraction prevention
- *   - Concurrent extraction protection
  *   - Database deduplication
  *   - Prompt-size protection
- *   🚀 UPGRADE: Smart Pruning — Truncates massive past bot responses to save tokens.
- *   🚀 UPGRADE: Speed-Optimized Summarization to prevent 2500ms pipeline timeouts.
- *   🚀 UPGRADE: Bilingual (English + Hinglish) memory signal detection.
+ *   🚀 UPGRADE: Completely migrated away from Gemini to Groq for stability.
+ *   🚀 UPGRADE: Advanced Smart Pruning — Strictly limits token usage from old bot messages.
+ *   🚀 UPGRADE: Speed-Optimized Summarization via Groq.
+ *   🚫 STRICT RULE: Qwen models are completely banned from use here.
  */
 
 const crypto = require('crypto');
 const db = require('../database/supabaseClient');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { OpenAI } = require('openai'); // Using OpenAI SDK to connect to Groq
 
 // ============================================================
-// 1. GRACEFUL GEMINI INITIALIZATION
+// 1. GRACEFUL GROQ INITIALIZATION (Replaced Gemini)
 // ============================================================
 
-const apiKey = process.env.GEMINI_API_KEY || process.env.aiapi;
+// Fetching any available Groq key from environment
+const groqKey = process.env.opla || process.env.OPLA || process.env.GROQ_API_KEY || process.env.GROQ_API_KEY_2;
 
-let extractionModel = null;
+let extractionClient = null;
+const EXTRACTION_MODEL = 'openai/gpt-oss-20b'; // Extremely fast Groq model. STRICTLY NO QWEN.
 
-if (apiKey && typeof apiKey === 'string' && apiKey.trim()) {
+if (groqKey && typeof groqKey === 'string' && groqKey.trim()) {
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-
-    // 🚀 FIX: Using 1.5-flash for ultra-fast, reliable background processing
-    extractionModel = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash'
+    extractionClient = new OpenAI({
+      apiKey: groqKey,
+      baseURL: 'https://api.groq.com/openai/v1' // Pointing OpenAI SDK to Groq's endpoint
     });
 
-    console.log('🧠 [MEMORY] Gemini extraction engine initialized.');
+    console.log(`🧠 [MEMORY] Groq extraction engine initialized using ${EXTRACTION_MODEL}.`);
   } catch (error) {
-    console.warn(
-      '⚠️ [MEMORY] Gemini initialization failed. Extraction disabled:',
-      error.message
-    );
+    console.warn('⚠️ [MEMORY] Groq initialization failed. Extraction disabled:', error.message);
   }
 } else {
-  console.warn(
-    '⚠️ [MEMORY] No Gemini API key found. Extraction disabled.'
-  );
+  console.warn('⚠️ [MEMORY] No Groq API key found. Extraction disabled.');
 }
 
 // ============================================================
@@ -55,14 +49,8 @@ if (apiKey && typeof apiKey === 'string' && apiKey.trim()) {
 // ============================================================
 
 const SESSION_GAP_MINUTES = 45;
-
-// Number of recent conversation turns supplied to the context system.
 const WORKING_MEMORY_SIZE = 10;
-
-// Maximum number of long-term memories retrieved from DB.
 const LONG_TERM_MEMORY_LIMIT = 30;
-
-// Maximum LTM characters inserted into prompt.
 const DEFAULT_LTM_MAX_CHARS = 1800;
 
 // ============================================================
@@ -78,7 +66,6 @@ const MEMORY_SIGNAL_REGEX =
 
 const processedMessages = new Set();
 const processingMessages = new Set();
-
 const PROCESSED_LIMIT = 100;
 
 // ============================================================
@@ -86,27 +73,15 @@ const PROCESSED_LIMIT = 100;
 // ============================================================
 
 function computeContentHash(userId, content) {
-  const normalized = String(content || '')
-    .trim()
-    .toLowerCase();
-
-  return crypto
-    .createHash('sha256')
-    .update(`${userId}::${normalized}`)
-    .digest('hex');
+  const normalized = String(content || '').trim().toLowerCase();
+  return crypto.createHash('sha256').update(`${userId}::${normalized}`).digest('hex');
 }
 
 // ============================================================
 // 6. RECORD CONVERSATION TURN
 // ============================================================
 
-async function recordTurn({
-  channelId,
-  userId,
-  role,
-  content,
-  sessionId
-}) {
+async function recordTurn({ channelId, userId, role, content, sessionId }) {
   return db.appendConversationTurn({
     channel_id: channelId,
     user_id: userId,
@@ -117,19 +92,14 @@ async function recordTurn({
 }
 
 // ============================================================
-// 7. WORKING MEMORY (WITH SMART PRUNING)
+// 7. WORKING MEMORY (WITH ADVANCED SMART PRUNING)
 // ============================================================
 
 async function getWorkingMemory(channelId) {
   try {
-    const turns = await db.getRecentTurns(
-      channelId,
-      WORKING_MEMORY_SIZE * 2
-    );
+    const turns = await db.getRecentTurns(channelId, WORKING_MEMORY_SIZE * 2);
 
-    if (!Array.isArray(turns) || turns.length === 0) {
-      return [];
-    }
+    if (!Array.isArray(turns) || turns.length === 0) return [];
 
     const session = [turns[turns.length - 1]];
 
@@ -141,26 +111,23 @@ async function getWorkingMemory(channelId) {
       const olderTime = new Date(older.created_at).getTime();
 
       const gapMs = newerTime - olderTime;
-
-      if (
-        Number.isFinite(gapMs) &&
-        gapMs / 60000 > SESSION_GAP_MINUTES
-      ) {
+      if (Number.isFinite(gapMs) && gapMs / 60000 > SESSION_GAP_MINUTES) {
         break;
       }
-
       session.unshift(older);
     }
 
-    // 🚀 UPGRADE: Smart Pruning
-    // If the bot sent a massive game data embed previously, we don't need to 
-    // send those 2000 chars back to the AI. We just need the core context.
-    const smartSession = session.map(turn => {
-      if (turn.role === 'melody' && turn.content && turn.content.length > 300) {
-        const firstSentence = turn.content.split(/(?<=[.!?])\s/)[0] || turn.content.substring(0, 150);
+    // 🚀 UPGRADE: Advanced Smart Pruning
+    // "Jitni zarurat utni hi": The last 2 messages are kept intact for immediate context.
+    // Anything older than that from the bot is aggressively chopped to save massive tokens.
+    const smartSession = session.map((turn, index) => {
+      const isVeryRecent = index >= session.length - 2; 
+
+      if (!isVeryRecent && turn.role === 'melody' && turn.content && turn.content.length > 150) {
+        const firstSentence = turn.content.split(/(?<=[.!?])\s/)[0] || turn.content.substring(0, 100);
         return { 
           ...turn, 
-          content: `${firstSentence}... [Detailed game/strategy response provided to user]` 
+          content: `${firstSentence}... [AI previously provided a detailed response here. Details hidden to save memory context.]` 
         };
       }
       return turn;
@@ -169,10 +136,7 @@ async function getWorkingMemory(channelId) {
     return smartSession.slice(-WORKING_MEMORY_SIZE);
 
   } catch (error) {
-    console.error(
-      '⚠️ [MEMORY] getWorkingMemory failed:',
-      error.message
-    );
+    console.error('⚠️ [MEMORY] getWorkingMemory failed:', error.message);
     return [];
   }
 }
@@ -183,72 +147,33 @@ async function getWorkingMemory(channelId) {
 
 async function getLongTermCandidates(userId) {
   try {
-    const memories = await db.getLongTermMemories(
-      userId,
-      LONG_TERM_MEMORY_LIMIT
-    );
-
-    return Array.isArray(memories)
-      ? memories.slice(0, LONG_TERM_MEMORY_LIMIT)
-      : [];
-
+    const memories = await db.getLongTermMemories(userId, LONG_TERM_MEMORY_LIMIT);
+    return Array.isArray(memories) ? memories.slice(0, LONG_TERM_MEMORY_LIMIT) : [];
   } catch (error) {
-    console.error(
-      '⚠️ [MEMORY] getLongTermCandidates failed:',
-      error.message
-    );
-
+    console.error('⚠️ [MEMORY] getLongTermCandidates failed:', error.message);
     return [];
   }
 }
 
 // ============================================================
-// 9. EXTRACTION
+// 9. EXTRACTION (POWERED BY GROQ)
 // ============================================================
 
 async function extractCandidateMemories(turns, userId) {
   const candidates = [];
 
-  if (!extractionModel) {
-    return candidates;
-  }
-
-  if (!Array.isArray(turns) || turns.length === 0) {
-    return candidates;
-  }
+  if (!extractionClient) return candidates;
+  if (!Array.isArray(turns) || turns.length === 0) return candidates;
 
   for (const turn of turns) {
-
-    if (
-      turn?.role !== 'user' ||
-      turn?.user_id !== userId ||
-      typeof turn?.content !== 'string'
-    ) {
-      continue;
-    }
+    if (turn?.role !== 'user' || turn?.user_id !== userId || typeof turn?.content !== 'string') continue;
 
     const content = turn.content.trim();
+    if (!content || !MEMORY_SIGNAL_REGEX.test(content)) continue;
 
-    if (!content) {
-      continue;
-    }
+    const sourceHash = computeContentHash(userId, content);
 
-    if (!MEMORY_SIGNAL_REGEX.test(content)) {
-      continue;
-    }
-
-    const sourceHash = computeContentHash(
-      userId,
-      content
-    );
-
-    if (
-      processedMessages.has(sourceHash) ||
-      processingMessages.has(sourceHash)
-    ) {
-      continue;
-    }
-
+    if (processedMessages.has(sourceHash) || processingMessages.has(sourceHash)) continue;
     processingMessages.add(sourceHash);
 
     const extractionPrompt = `
@@ -268,52 +193,27 @@ MESSAGE:
 `.trim();
 
     try {
-      const result =
-        await extractionModel.generateContent(
-          extractionPrompt
-        );
+      // 🚀 Replacing Gemini with Groq Chat Completions
+      const response = await extractionClient.chat.completions.create({
+        model: EXTRACTION_MODEL,
+        messages: [{ role: 'user', content: extractionPrompt }],
+        temperature: 0.1,
+        max_tokens: 50
+      });
 
-      const extraction =
-        result?.response?.text?.()?.trim() || 'NONE';
+      const extraction = response.choices[0]?.message?.content?.trim() || 'NONE';
 
-      if (
-        extraction !== 'NONE' &&
-        extraction.includes(']|')
-      ) {
-        const separatorIndex =
-          extraction.indexOf(']|');
+      if (extraction !== 'NONE' && extraction.includes(']|')) {
+        const separatorIndex = extraction.indexOf(']|');
+        const memoryTag = extraction.slice(0, separatorIndex + 1).trim();
+        const scoreStr = extraction.slice(separatorIndex + 2).trim();
+        const parsedScore = Number.parseFloat(scoreStr);
+        const emotionalScore = Number.isFinite(parsedScore) ? Math.min(1, Math.max(0.1, parsedScore)) : 0.5;
 
-        const memoryTag =
-          extraction
-            .slice(0, separatorIndex + 1)
-            .trim();
-
-        const scoreStr =
-          extraction
-            .slice(separatorIndex + 2)
-            .trim();
-
-        const parsedScore =
-          Number.parseFloat(scoreStr);
-
-        const emotionalScore =
-          Number.isFinite(parsedScore)
-            ? Math.min(
-                1,
-                Math.max(0.1, parsedScore)
-              )
-            : 0.5;
-
-        if (
-          memoryTag.startsWith('[TAG:') &&
-          memoryTag.endsWith(']')
-        ) {
+        if (memoryTag.startsWith('[TAG:') && memoryTag.endsWith(']')) {
           candidates.push({
             content: memoryTag,
-            content_hash: computeContentHash(
-              userId,
-              memoryTag
-            ),
+            content_hash: computeContentHash(userId, memoryTag),
             topic_tags: [],
             emotional_score: emotionalScore,
             source_hash: sourceHash
@@ -322,22 +222,13 @@ MESSAGE:
       }
 
       processedMessages.add(sourceHash);
-
       if (processedMessages.size > PROCESSED_LIMIT) {
-        const oldestKey =
-          processedMessages.keys().next().value;
-
-        if (oldestKey) {
-          processedMessages.delete(oldestKey);
-        }
+        const oldestKey = processedMessages.keys().next().value;
+        if (oldestKey) processedMessages.delete(oldestKey);
       }
 
     } catch (error) {
-      console.error(
-        '⚠️ [MEMORY] Extraction failed:',
-        error.message
-      );
-
+      console.error('⚠️ [MEMORY] Extraction via Groq failed:', error.message);
     } finally {
       processingMessages.delete(sourceHash);
     }
@@ -351,48 +242,20 @@ MESSAGE:
 // ============================================================
 
 async function writeMemory(userId, memory) {
-  if (
-    !memory ||
-    typeof memory.content !== 'string' ||
-    !memory.content.trim()
-  ) {
-    return;
-  }
+  if (!memory || typeof memory.content !== 'string' || !memory.content.trim()) return;
 
   const withHash = memory.content_hash
     ? memory
-    : {
-        ...memory,
-        content_hash: computeContentHash(
-          userId,
-          memory.content
-        )
-      };
+    : { ...memory, content_hash: computeContentHash(userId, memory.content) };
 
   try {
-    await db.addLongTermMemory(
-      userId,
-      withHash
-    );
-
+    await db.addLongTermMemory(userId, withHash);
   } catch (error) {
-    if (
-      error?.code === '23505' ||
-      /duplicate key/i.test(
-        error?.message || ''
-      )
-    ) {
-      console.log(
-        '⏩ [MEMORY] Duplicate memory skipped.'
-      );
-
+    if (error?.code === '23505' || /duplicate key/i.test(error?.message || '')) {
+      console.log('⏩ [MEMORY] Duplicate memory skipped.');
       return;
     }
-
-    console.error(
-      '⚠️ [MEMORY] Failed to write memory:',
-      error.message
-    );
+    console.error('⚠️ [MEMORY] Failed to write memory:', error.message);
   }
 }
 
@@ -400,61 +263,28 @@ async function writeMemory(userId, memory) {
 // 11. TOKEN / CHARACTER COMPRESSED MEMORY BLOCK
 // ============================================================
 
-function toBrief(
-  memories,
-  maxChars = DEFAULT_LTM_MAX_CHARS
-) {
-  if (
-    !Array.isArray(memories) ||
-    memories.length === 0
-  ) {
-    return '';
-  }
+function toBrief(memories, maxChars = DEFAULT_LTM_MAX_CHARS) {
+  if (!Array.isArray(memories) || memories.length === 0) return '';
 
   let output = '';
-
   for (const memory of memories) {
-    const item =
-      typeof memory?.content === 'string'
-        ? memory.content.trim()
-        : '';
-
-    if (!item) {
-      continue;
-    }
-
-    if (
-      output.length + item.length + 1 >
-      maxChars
-    ) {
-      break;
-    }
-
+    const item = typeof memory?.content === 'string' ? memory.content.trim() : '';
+    if (!item) continue;
+    if (output.length + item.length + 1 > maxChars) break;
     output += `${item} `;
   }
 
   output = output.trim();
-
-  return output
-    ? `[LTM:${output}]`
-    : '';
+  return output ? `[LTM:${output}]` : '';
 }
 
 // ============================================================
-// 11.5 CHAT SUMMARIZATION (ROLLING SUMMARY)
+// 11.5 CHAT SUMMARIZATION (POWERED BY GROQ)
 // ============================================================
 
-/**
- * Generates a rolling summary of older conversation turns.
- * 🚀 UPGRADE: Enforces a strict character limit on the transcript so the 
- * AI doesn't timeout processing massive blocks of text.
- */
 async function generateChatSummary(turns) {
-  if (!extractionModel || !Array.isArray(turns) || turns.length === 0) {
-    return '';
-  }
+  if (!extractionClient || !Array.isArray(turns) || turns.length === 0) return '';
 
-  // 🚀 Strip out excessively long text to keep the summarization API call ultra-fast
   let transcript = turns
     .map(t => {
       const safeContent = t.content.length > 200 ? t.content.substring(0, 200) + '...' : t.content;
@@ -469,10 +299,17 @@ async function generateChatSummary(turns) {
   const prompt = `Summarize the following Discord conversation in 2-3 concise bullet points focusing on key topics, decisions, or user questions. Avoid fluff.\n\nConversation:\n${transcript}`;
 
   try {
-    const result = await extractionModel.generateContent(prompt);
-    return result?.response?.text?.()?.trim() || '';
+    // 🚀 Using Groq for lightning-fast background summaries
+    const response = await extractionClient.chat.completions.create({
+        model: EXTRACTION_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 150
+    });
+    
+    return response.choices[0]?.message?.content?.trim() || '';
   } catch (err) {
-    console.error('⚠️ [MEMORY] Chat summary failed:', err.message);
+    console.error('⚠️ [MEMORY] Chat summary via Groq failed:', err.message);
     return '';
   }
 }
