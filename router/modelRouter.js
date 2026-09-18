@@ -11,44 +11,9 @@
  *   modelRouter.getRouterHealth()
  *   modelRouter.MODEL_REGISTRY
  *
- * 🆕 REFACTOR — Split into router/modelRouter/*.js modules for
- * maintainability. This file is now a thin orchestrator (generate() +
- * getRouterHealth() + the emergency-fallback tier). See router/modelRouter/
- * for everything else:
- *   - envFlags.js          env switches + loggers
- *   - registry.js          MODEL_REGISTRY, weight-class & provider-tier constants
- *   - clients.js           SDK/HTTP client caches (Gemini, Groq, OpenRouter, Cloudflare)
- *   - failures.js          failure classification, cooldowns, quota header parsing
- *   - circuitBreaker.js    breaker state machine + key round-robin (rrPointers)
- *   - classification.js    request -> task-category classification & model scoring
- *   - asyncUtils.js        sleep/backoff/withRetry/timeoutError
- *   - promptCompression.js emergency prompt compression (🆕 see bug-fix note below)
- *   - executors.js         per-provider API call wrappers (with timeouts)
- *   - candidateRunner.js   runCandidate() — breaker-guarded per-candidate execution
- *   - candidateBuilder.js  buildCandidates() — score + sort + availability filter
- *   - discovery.js         optional periodic model discovery from live catalogs
- *
- * 🆕 BUG FIX FOUND DURING THIS SPLIT
- *   `EMERGENCY_MEMORY_CHAR_CAP` was referenced inside compressForEmergency()'s
- *   `<RecentChatHistory>` branch but was never declared anywhere in the
- *   original file (confirmed via full-file grep). Any emergency-compression
- *   pass that actually hit an oversized `<RecentChatHistory>` block would
- *   throw a ReferenceError and silently kill the emergency-fallback request.
- *   Now declared in router/modelRouter/promptCompression.js.
- *
- * DESIGN NOTES (retained from the pre-split monolith)
- *   - Provider order is a HARD priority tier (PROVIDER_TIER_BONUS = 100 per
- *     rung): Groq -> Gemini -> OpenRouter -> Cloudflare, dominates weight-
- *     class/capability deltas so ordering across providers never flips.
- *   - Gemini keeps its existing soft per-category bonus (GEMINI_PRIMARY_BONUS)
- *     for conversational/creative/hinglish quality.
- *   - temperature/top_p/top_k are omitted for Gemini models whose metadata
- *     says supportsSampling:false.
- *   - Unhealthy/quota-exhausted/invalid models are cooled down per-failure-
- *     type and skipped without hammering dead providers. Optional periodic
- *     model discovery keeps the registry honest without ever calling out to
- *     a provider on every Discord message, and hard-blocklists explicitly
- *     banned model families (currently: Qwen).
+ * 🚀 UPGRADE: Verified 2026 Gemini Endpoints (3.5-flash-lite) for emergency routing.
+ * 🚀 UPGRADE: Extreme Cutoff added for repeated PAYLOAD_TOO_LARGE failures.
+ * 🛡️ FIX: Added .catch() block to the main candidate loop to prevent pipeline crashes.
  */
 
 'use strict';
@@ -60,14 +25,13 @@ const { buildCandidates } = require('./modelRouter/candidateBuilder.js');
 const { runCandidate } = require('./modelRouter/candidateRunner.js');
 const { maybeRunDiscovery, getLastDiscoveryAt } = require('./modelRouter/discovery.js');
 const { getOpenRouterClient, getCloudflareConfig } = require('./modelRouter/clients.js');
-const { breakers, CIRCUIT_STATE, rrPointers } = require('./modelRouter/circuitBreaker.js');
+const { breakers, CIRCUIT_STATE, rrPointers, isProviderLikelyDown } = require('./modelRouter/circuitBreaker.js');
 const { FAILURE } = require('./modelRouter/failures.js');
 const {
   DEBUG, FREE_ONLY_MODE, OPENROUTER_FREE_ONLY,
   ENABLE_GEMINI, ENABLE_GROQ, ENABLE_OPENROUTER, ENABLE_CLOUDFLARE,
   dlog, ilog
 } = require('./modelRouter/envFlags.js');
-const { isProviderLikelyDown } = require('./modelRouter/circuitBreaker.js');
 
 // ============================================================
 // MAIN GENERATOR
@@ -79,9 +43,6 @@ async function generate({ classification, prompt, userMessage, systemInstruction
   const openRouterFreeOnly = FREE_ONLY_MODE || OPENROUTER_FREE_ONLY;
   const maxTokens = MAX_TOKENS_BY_CATEGORY[category] || 768;
 
-  // Fire-and-forget cache refresh; never awaited beyond the cheap
-  // TTL/in-flight checks inside maybeRunDiscovery, so it never adds latency
-  // to a request.
   maybeRunDiscovery({ groqKeys }).catch(() => {});
 
   const candidates = buildCandidates({
@@ -97,16 +58,6 @@ async function generate({ classification, prompt, userMessage, systemInstruction
   const ctx = { prompt, systemInstruction, temp, maxTokens, geminiKeys, groqKeys, openRouterFreeOnly };
   let lastError = null;
   let lastProviderTried = null;
-  // Once we see a real PAYLOAD_TOO_LARGE from any provider, the prompt
-  // itself is the problem — every remaining candidate would just 413 again
-  // on the same oversized payload. Compress ctx.prompt in place ONE time
-  // and keep walking the *same* candidate list with the smaller prompt,
-  // instead of burning a dead round-trip on every remaining candidate and
-  // only compressing after the whole list is exhausted (the old behavior,
-  // visible in the logs as 5-6 back-to-back 413s before the 14s+ emergency
-  // fallback). This reuses the same priority-aware compressForEmergency()
-  // trimmer the emergency path already uses, so quality doesn't regress —
-  // it just runs at the right time instead of the last possible moment.
   let alreadyCompressedForSize = false;
 
   for (const candidate of candidates) {
@@ -117,7 +68,12 @@ async function generate({ classification, prompt, userMessage, systemInstruction
       }
     }
 
-    const outcome = await runCandidate(candidate, ctx);
+    const outcome = await runCandidate(candidate, ctx).catch((e) => {
+      console.error(`[ROUTER] Unhandled exception in runCandidate for ${candidate.provider}/${candidate.model}:`, e);
+      lastError = e;
+      return null;
+    });
+
     lastProviderTried = candidate.provider;
 
     if (outcome && outcome.result) {
@@ -125,10 +81,16 @@ async function generate({ classification, prompt, userMessage, systemInstruction
       return { result: outcome.result, modelUsed: outcome.modelUsed, provider: outcome.provider, metadata: outcome.metadata };
     }
 
-    if (!alreadyCompressedForSize && outcome && outcome.failureType === FAILURE.PAYLOAD_TOO_LARGE) {
-      const shrunk = compressForEmergency(ctx.prompt);
+    if (outcome && outcome.failureType === FAILURE.PAYLOAD_TOO_LARGE) {
+      let shrunk = compressForEmergency(ctx.prompt);
+      
+      if (alreadyCompressedForSize) {
+        // Extreme truncation if standard compression still yields a 413
+        shrunk = shrunk.substring(shrunk.length - 6000);
+      }
+
       if (shrunk && shrunk.length < ctx.prompt.length) {
-        ilog(`PAYLOAD_TOO_LARGE on ${candidate.provider}/${candidate.model} — compressing prompt (${ctx.prompt.length} -> ${shrunk.length} chars) and continuing candidate list`);
+        ilog(`PAYLOAD_TOO_LARGE on ${candidate.provider}/${candidate.model} — compressing prompt (${ctx.prompt.length} -> ${shrunk.length} chars)`);
         ctx.prompt = shrunk;
         alreadyCompressedForSize = true;
       }
@@ -139,13 +101,15 @@ async function generate({ classification, prompt, userMessage, systemInstruction
   // EMERGENCY FALLBACK: smallest reliable model, compressed prompt
   // ==========================================
   ilog('primary candidates exhausted — attempting emergency fallback');
-  const compressedPrompt = compressForEmergency(prompt);
+  let compressedPrompt = compressForEmergency(prompt);
+  
+  if (compressedPrompt.length > 8000) {
+      compressedPrompt = compressedPrompt.substring(compressedPrompt.length - 8000);
+  }
+  
   const emergencyCtx = { ...ctx, prompt: compressedPrompt, maxTokens: 384 };
 
-  // Mirrors the strict provider fallback hierarchy: Groq -> Gemini ->
-  // OpenRouter -> Cloudflare. Within Groq, the small/fast models go first
-  // since the emergency path already means we're compressing the prompt
-  // and want the cheapest, most-likely-to-succeed rung.
+  // Strict fallback hierarchy. Qwen is completely excluded.
   const emergencyOrder = [
     (ENABLE_GROQ && groqKeys.length) ? { provider: 'groq', model: 'openai/gpt-oss-20b' } : null,
     (ENABLE_GROQ && groqKeys.length) ? { provider: 'groq', model: 'groq/compound-mini' } : null,
