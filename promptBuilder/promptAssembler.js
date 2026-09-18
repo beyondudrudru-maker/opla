@@ -11,6 +11,7 @@
  *   🗜️ UPGRADE: GameData compression.
  *   🚀 NEW: Chat summary injection block.
  *   🛡️ FIX: Complete XML attribute sanitization (Quotes escaped).
+ *   🛡️ FIX: Applied sanitize() to recentChatLog to prevent XML prompt injection.
  */
 
 // 🛡️ SECURITY & STABILITY: Escapes XML tags and quotes while preserving newlines.
@@ -430,7 +431,7 @@ function extractTargetedContext(userMessage, gameData) {
 
   const matchedHeroes = findMentionedEntities(userMessage, gameData.heroes).map(compressEntityStats);
   const matchedTroops = findMentionedEntities(userMessage, gameData.troops).map(compressEntityStats);
-  const matchedBosses = findMentionedEntities(userMessage, gameData.bosses);
+  const matchedBosses = findMentionedEntities(userMessage, gameData.bosses || []); // Added fallback for safety
 
   const synergyLinks = [...matchedHeroes, ...matchedTroops]
     .flatMap(entity => resolveSynergyLinks(entity, gameData.synergies));
@@ -577,9 +578,10 @@ function renderGameContext(gameData, userMessage) {
 function assembleLean({ relationship, gameData, userMessage, targetInfo, speakerName, recentChatLog }) {
   const blocks = [
     renderRelationshipFraming(relationship || {}),
-    renderTargetBlock(targetInfo), // 🚀 Added so she doesn't forget who to ping!
+    renderTargetBlock(targetInfo), 
     renderGameContext(gameData, userMessage),
-    recentChatLog ? `<RecentChatLog>\n${recentChatLog}\n</RecentChatLog>` : '', 
+    // 🛡️ FIX: Sanitized recentChatLog
+    recentChatLog ? `<RecentChatLog>\n${sanitize(recentChatLog)}\n</RecentChatLog>` : '', 
     `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`,
   ];
 
@@ -593,7 +595,7 @@ function assemble({
   behaviorDirective,
   rankedMemories,
   workingMemory,
-  chatSummary, // 🚀 NEW: Receive chat summary from pipeline
+  chatSummary, 
   gameData,
   userMessage,
   targetInfo,
@@ -601,7 +603,6 @@ function assemble({
   recentChatLog 
 }) {
   if (leanMode) {
-    // 🚀 Pass targetInfo through to Lean mode!
     return assembleLean({ relationship, gameData, userMessage, targetInfo, speakerName, recentChatLog });
   }
 
@@ -613,9 +614,9 @@ function assemble({
     gameData ? renderGameContext(gameData, userMessage) : '',
     rankedMemories ? renderMemoryBlock(rankedMemories) : '',
     workingMemory ? renderWorkingMemory(workingMemory) : '',
-    // 🚀 NEW: Inject Chat Summary block here
     chatSummary ? `<PreviousChatSummary>\n${sanitize(chatSummary)}\n</PreviousChatSummary>` : '',
-    recentChatLog ? `<RecentChatLog>\n${recentChatLog}\n</RecentChatLog>` : '', 
+    // 🛡️ FIX: Sanitized recentChatLog
+    recentChatLog ? `<RecentChatLog>\n${sanitize(recentChatLog)}\n</RecentChatLog>` : '', 
     `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`
   ];
 
