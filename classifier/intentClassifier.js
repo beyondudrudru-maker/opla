@@ -7,6 +7,8 @@
  *
  * 🚀 UPGRADE: Pre-compiled regex with \b (Word Boundaries) for max CPU performance.
  * 🚀 UPGRADE: Now extracts and returns the exact `triggerWord` for easy debugging.
+ * 🛡️ FIX: Added missing TROLL and TERRITORIAL logic to match INTENTS dictionary.
+ * 🚀 UPGRADE: Expanded Hinglish and Gen-Z slang for better Flirt/Troll detection.
  */
 
 const INTENTS = Object.freeze({
@@ -40,9 +42,14 @@ const EMOTIONAL_KEYWORDS = /\b(sad|depressed|anxious|scared|worried|lonely|love 
 const QUESTION_PATTERN = /^(who|what|when|where|why|how|is|are|do|does|did|can you|could you|will|should|kya|kyu|kab|kaha|kidhar)\b(?!.*\b(up|kaise|ho)\b)|\?$|^(tell me|give me|show me|list|name|recommend|suggest)\b/i;
 const VS_PATTERN = /\b(vs|versus)\b/i; 
 
-const FLIRT_KEYWORDS = /\b(cute|hot|kiss me|hug me|marry me|set ho jayegi|pat jayegi|cutie|hottie|jaan|meri jaan|hot lag rahi)\b/i;
+// 🚀 UPGRADE: Added "baby", "babe", "sexy", "mommy", "daddy" to catch more context
+const FLIRT_KEYWORDS = /\b(cute|hot|kiss me|hug me|marry me|set ho jayegi|pat jayegi|cutie|hottie|jaan|meri jaan|hot lag rahi|baby|babe|sexy|daddy|mommy)\b/i;
 const JEALOUSY_KEYWORDS = /\b(other girl|another girl|baddie|sidekick|cheat|dhoka|replace|steal him|teri sautan|body count)\b/i;
 const HOSTILE_KEYWORDS = /\b(stfu|dumb|idiot|shut up|loser|pagal|aukat|chup|bakwas|bitch)\b/i;
+
+// 🛡️ FIX: Added missing TROLL and TERRITORIAL keywords
+const TERRITORIAL_KEYWORDS = /\b(mine|meri hai|only mine|dur reh|hands off|back off|my property|kisi aur ki)\b/i;
+const TROLL_KEYWORDS = /\b(noob|bot|skill issue|cry about it|ez|cope|touch grass|clown|chomu|gawar|nalla)\b/i;
 
 /**
  * Helper function to find the matched word for debugging purposes.
@@ -71,6 +78,16 @@ function classify({ content, hasCodeBlock = false, mentions = [] } = {}) {
 
       if ((match = getMatch(JEALOUSY_KEYWORDS, text))) {
         return { intent: INTENTS.JEALOUSY, complexity: 0.3, isModeration: false, confidence: 0.85, triggerWord: match };
+      }
+
+      // 🛡️ FIX: Hooked up Territorial check
+      if ((match = getMatch(TERRITORIAL_KEYWORDS, text))) {
+        return { intent: INTENTS.TERRITORIAL, complexity: 0.3, isModeration: false, confidence: 0.85, triggerWord: match };
+      }
+
+      // 🛡️ FIX: Hooked up Troll check
+      if ((match = getMatch(TROLL_KEYWORDS, text))) {
+        return { intent: INTENTS.TROLL, complexity: 0.2, isModeration: false, confidence: 0.8, triggerWord: match };
       }
 
       if ((match = getMatch(COMMAND_PATTERN, text))) {
