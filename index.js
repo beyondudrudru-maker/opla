@@ -344,35 +344,26 @@ client.on(Events.MessageCreate, async (message) => {
         }
 
         // ─────────────────────────────────────────────────────────────
-        // 🚀 DM & ANNOUNCEMENT ROUTING (MULTILINE AND PRECISE PARSING FIX)
+        // 🚀 DM & ANNOUNCEMENT ROUTING (MULTI-TARGET FIX)
         // ─────────────────────────────────────────────────────────────
         const flattenedCleanText = cleanText.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
         const lowerCleanFlat = flattenedCleanText.toLowerCase();
 
+        // 🚀 UPGRADE: Comprehensive Multi-Target Scanner
         const directMentions = message.mentions.users
             .filter(u => u.id !== client.user.id)
             .map(u => ({ id: u.id, username: u.username }));
 
-        const dmTargetPattern = /(?:send\s+dm\s+to|dm\s+to|dm\s+kardo\s+ko|ko\s+dm\s+(?:kardo|karo|bhejo)|dm)\s+([a-zA-Z0-9_]+)/i;
-        const dmTargetMatch = lowerCleanFlat.match(dmTargetPattern);
+        const mentionMap = new Map();
+        
+        // 1. Add direct @mentions first
+        directMentions.forEach(u => mentionMap.set(u.id, u));
 
-        let targetUsers = [];
+        // 2. Scan the entire cleaned text for any server member names typed out
+        const textResolvedUsers = resolveMembersFromText(flattenedCleanText, message.guild, client.user.id);
+        textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
 
-        if (dmTargetMatch && dmTargetMatch[1] && !['everyone', 'them', 'sabko'].includes(dmTargetMatch[1])) {
-            const targetQuery = dmTargetMatch[1];
-            const resolved = resolveMembersFromText(targetQuery, message.guild, client.user.id);
-            if (resolved.length > 0) {
-                targetUsers = [resolved[0]];
-            }
-        }
-
-        if (targetUsers.length === 0) {
-            const textResolvedUsers = resolveMembersFromText(flattenedCleanText, message.guild, client.user.id);
-            const mentionMap = new Map();
-            directMentions.forEach(u => mentionMap.set(u.id, u));
-            textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
-            targetUsers = Array.from(mentionMap.values());
-        }
+        let targetUsers = Array.from(mentionMap.values());
 
         const announceRegex = /\b(announce|notify|alert|ping everyone|sabko bol|bol do|boldo|message kardo|msg kardo|in dm|send dm to|dm to|send dm|message bhejo|send apology|tell them|dm me bolo|dm me|dm kardo|dm them|dm)\b/i;
         const wantsAnnouncement = announceRegex.test(lowerCleanFlat);
@@ -424,16 +415,19 @@ client.on(Events.MessageCreate, async (message) => {
             }
 
             // ─────────────────────────────────────────────────────────────
-            // 🚀 AI DRAFTING MODE: Smart Message Generation
+            // 🚀 AI DRAFTING MODE: Smart Message Generation (NO ROMANCE BLEED FIX)
             // ─────────────────────────────────────────────────────────────
             try {
                 await message.channel.sendTyping();
                 
-                const aiPrompt = `[SYSTEM INSTRUCTION: You are acting as the Official Clan Representative drafting a message for the Admin.
-RULES FOR DRAFTING:
-1. GREETINGS/CASUAL: If the Admin asks to write a nice message (e.g., "happy diwali", "welcome"), draft a warm, engaging, and beautiful message.
-2. SERIOUS/FACTUAL MATTERS: If the instruction is a direct warning, factual, or serious (e.g., "tell him he is a spy", "you are kicked"), keep it STRICTLY professional, sharp, and direct. NO emotional drama, NO romance, NO mention of your relationship with the Admin.
-3. OUTPUT: ONLY output the final message that will be sent. No quotes, no intro, no "Here is the message:".]
+                const aiPrompt = `[SYSTEM INSTRUCTION: You are acting strictly as an official Discord Server Dispatcher drafting an announcement/message on behalf of the Admin.
+CRITICAL RULES:
+1. STRICTLY FORBIDDEN: DO NOT mention love, dating, romance, boyfriends, hearts, or personal relationships under ANY circumstances.
+2. NO PERSONA BLEED: Never add phrases like "my heart belongs to..." or "Beyonder is my boyfriend". Keep it 100% focused only on the admin's requested message.
+3. ADAPTIVE TONE:
+   - If greeting/casual: Friendly, warm, engaging.
+   - If moderation/warning/troll: Sharp, direct, humorous (if requested) or professional.
+4. OUTPUT FORMAT: ONLY output the exact final message to be posted. NO introductory notes, NO quotes, NO explanation.]
 
 Raw Instruction from Admin: "${rawMessagePayload}"`;
 
@@ -480,7 +474,7 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     }
 
                     // ─────────────────────────────────────────────────────────────
-                    // 🚀 NEW CONFIRMATION SYSTEM: Preview & Button Check
+                    // 🚀 CONFIRMATION SYSTEM: Preview & Button Check
                     // ─────────────────────────────────────────────────────────────
                     const confirmId = `confirm_dm_${Date.now()}`;
                     const cancelId = `cancel_dm_${Date.now()}`;
@@ -563,15 +557,32 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
         }
 
         // ─────────────────────────────────────────────────────────────
-        // 🚀 4. GENERAL STRATEGY & DECISION PIPELINE (AI REPLIES)
+        // 🚀 4. GENERAL STRATEGY & DECISION PIPELINE (AI REPLIES + STRICT GAME FILTER)
         // ─────────────────────────────────────────────────────────────
         try {
             await message.channel.sendTyping();
 
             let gameResult = { resolved: false, context: null, intent: 'UNKNOWN' };
+            
+            // 🚀 UPGRADE: Strict Keyword Guard to prevent false game triggers on casual text
+            const strictGameKeywords = [
+                'hero', 'heroes', 'troop', 'troops', 'boss', 'stats', 'stat', 
+                'buff', 'nerf', 'gear', 'formation', 'counter', 'synergy', 
+                'clash', 'kingdom clash', 'pvp', 'arena', 'tier list'
+            ];
+            
+            const hasStrictGameIntent = strictGameKeywords.some(keyword => 
+                new RegExp(`\\b${keyword}\\b`, 'i').test(cleanText)
+            );
+
             try {
-                gameResult = gameDomainRouter.route(cleanText, recentContext);
-                console.log(`[GAME ROUTER] input="${cleanText}" intent=${gameResult.intent} resolved=${gameResult.resolved}`);
+                // Only route to game domain if strict keywords are found
+                if (hasStrictGameIntent) {
+                    gameResult = gameDomainRouter.route(cleanText, recentContext);
+                    console.log(`[GAME ROUTER] input="${cleanText}" intent=${gameResult.intent} resolved=${gameResult.resolved}`);
+                } else {
+                    console.log(`[GAME ROUTER SKIPPED] Non-game casual input detected.`);
+                }
             } catch (err) {
                 console.error('❌ [GAME ROUTER ERROR]', err);
             }
@@ -600,14 +611,16 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
             const hasGameKeyword = gameKeywords.some(kw => lowerCleanFlat.includes(kw));
 
             const hasRealGameSignal = Boolean(
-                gameResult.context ||
-                (gameResult.queryFlags && (
-                    gameResult.queryFlags.isBossQuery ||
-                    gameResult.queryFlags.isSynergyQuery ||
-                    gameResult.queryFlags.isComparisonQuery ||
-                    gameResult.queryFlags.needsGear ||
-                    (gameResult.queryFlags.isSingleEntity && (gameResult.intent !== 'UNKNOWN' || hasGameKeyword))
-                ))
+                hasStrictGameIntent && (
+                    gameResult.context ||
+                    (gameResult.queryFlags && (
+                        gameResult.queryFlags.isBossQuery ||
+                        gameResult.queryFlags.isSynergyQuery ||
+                        gameResult.queryFlags.isComparisonQuery ||
+                        gameResult.queryFlags.needsGear ||
+                        (gameResult.queryFlags.isSingleEntity && (gameResult.intent !== 'UNKNOWN' || hasGameKeyword))
+                    ))
+                )
             );
 
             const roles = message.member ? message.member.roles.cache.map(r => r.name.toLowerCase()) : [];
