@@ -7,26 +7,20 @@
  *   logic + 1v1 format rules + mastery templates + gear rules regardless of
  *   what was actually asked. This file only includes the segments the
  *   current query actually needs.
- *
- * MEASURED IMPACT (rough token counts on the original monolith, ~1,550
- * tokens total):
- *   CORE + OUTPUT_RULES alone            ~450 tokens
- *   + SYNERGY                            ~650 tokens  (was 1,550 before)
- *   + BOSS                               ~950 tokens  (was 1,550 before)
- *   + COMPARISON                         ~750 tokens  (was 1,550 before)
- *   + SINGLE_ENTITY                      ~700 tokens  (was 1,550 before)
- *   Full stack (rare — multi-part query) ~1,550 tokens (unchanged ceiling)
- *
- * A typical synergy/PvP ask like "which hero should I use, combo for pvp"
- * now costs ~650 tokens of fixed instruction instead of ~1,550 — a ~58%
- * cut on the ONE part of every call that never shrinks no matter how well
- * GameData is compressed. Across hundreds of calls/day this is the single
- * biggest lever, bigger than any GameData compression tweak, because
- * GameData was already well-optimized (compressGameData + budget-fitting)
- * while the system instruction was sent at full size unconditionally.
+ *   🚀 UPGRADE: Safe data import for GEAR fallback.
+ *   🚀 UPGRADE: OUTPUT_RULES synced with gemini.js to prevent math hallucination.
  */
 
-const { SMART_GEAR_FALLBACK } = require('../data/gearData.js');
+// 🛡️ Safe Import: Prevents crash if gearData.js is missing or malformed
+let SMART_GEAR_FALLBACK_TEXT = "Equip standard high-tier faction gear if specific items are unavailable.";
+try {
+  const gearData = require('../data/gearData.js');
+  if (gearData.SMART_GEAR_FALLBACK) {
+    SMART_GEAR_FALLBACK_TEXT = gearData.SMART_GEAR_FALLBACK;
+  }
+} catch (e) {
+  console.warn('⚠️ [promptInstructions] Could not load gearData.js, using default gear fallback.');
+}
 
 // ── ALWAYS INCLUDED ─────────────────────────────────────────────────────
 const CORE = `[MASTERCLASS GAME STRATEGY & DIPLOMATIC FORMATTING]
@@ -52,13 +46,15 @@ Your response IS the final message shown to the user. STRICTLY FORBIDDEN, with z
 - NO numbered/bulleted PLANNING lists describing what you're about to do before you do it.
 - NO meta-commentary about the task, prompt, or your own process.
 - NO XML/pseudo tags of any kind (<think>, <plan>, <reasoning>, <reflection>, <analysis>, <scratchpad>).
+- STRICT SANDBOX RULE: NEVER calculate total power, stats, or troop capacities yourself. ONLY output the exact math provided in <GameData>. If not there, do not invent it.
+- NEVER say "Based on our previous conversation", "Based on the GameData", or "As I see in the chat log". Just use the context naturally.
 Output ONLY the final, formatted strategic breakdown.`;
 
 // ── CONDITIONAL SEGMENTS ────────────────────────────────────────────────
 
 const GEAR = `
 [GEAR SUGGESTIONS & SMART FALLBACKS]
-Recommended Loadout sections must be sourced from <GameData>'s gearRecommendations array (one entry per matched entity, with matchedGear and/or fallbackNote). If matchedGear is non-empty, explain briefly why each piece suits the entity — cite its passive.trigger/passive.effect and the collapsed max-level scaling value. If a matched piece has ownershipStatus "locked", say so plainly instead of recommending it as equippable now. If matchedGear is empty, output the fallbackNote text VERBATIM; it should read: "${SMART_GEAR_FALLBACK}" — if fallbackNote is ever missing, use that exact wording instead.
+Recommended Loadout sections must be sourced from <GameData>'s gearRecommendations array (one entry per matched entity, with matchedGear and/or fallbackNote). If matchedGear is non-empty, explain briefly why each piece suits the entity — cite its passive.trigger/passive.effect and the collapsed max-level scaling value. If a matched piece has ownershipStatus "locked", say so plainly instead of recommending it as equippable now. If matchedGear is empty, output the fallbackNote text VERBATIM; it should read: "${SMART_GEAR_FALLBACK_TEXT}" — if fallbackNote is ever missing, use that exact wording instead.
 Legendary/Mythical heroes: talents unlock at Level 5 and require 'Books' from the Library to upgrade. FORMATION LIMIT: max 1 Mythical hero per formation — never violate this.`;
 
 const SYNERGY = `
@@ -122,7 +118,7 @@ function buildInstruction({
   // under-instruct. This should be rare; log it so you can add a new
   // segment/flag if it fires often.
   if (parts.length === 1) {
-    console.warn('[promptInstructions] No query-type flags matched — using full instruction stack.');
+    console.warn('⚠️ [promptInstructions] No query-type flags matched — using full instruction stack.');
     parts.push(BOSS, SYNERGY, COMPARISON, SINGLE_ENTITY, GEAR);
   }
 
