@@ -6,7 +6,8 @@
  *   between engines to build the prompt, while ensuring maximum CPU
  *   efficiency, parallel database operations, and crash resistance.
  *   🚀 UPGRADE: Parallelized engine execution for ultra-fast response times.
- *   🚀 UPGRADE: Fixed "Amnesia Bug" - Working memory is now always fetched.
+ *   🚀 UPGRADE: Timeout Transparency - `withTimeout` now logs when operations lag.
+ *   🚀 UPGRADE: Trigger Word Tracing - Pipeline logs now reveal exact classifier triggers.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -29,10 +30,14 @@ function isGameTurn({ gameData = null, intent = null } = {}) {
   return ['STRATEGY', 'CALC', 'FACT', 'GOLD', 'GEM'].includes(intent);
 }
 
-function withTimeout(promise, ms, fallbackValue) {
+// 🚀 UPGRADE: Enhanced timeout wrapper with visibility logging
+function withTimeout(promise, ms, fallbackValue, operationName = 'Operation') {
   let timeoutHandle;
   const timeoutPromise = new Promise((resolve) => {
-    timeoutHandle = setTimeout(() => resolve(fallbackValue), ms);
+    timeoutHandle = setTimeout(() => {
+      console.warn(`⚠️ [PIPELINE TIMEOUT] ${operationName} exceeded ${ms}ms. Using fallback.`);
+      resolve(fallbackValue);
+    }, ms);
   });
   return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutHandle));
 }
@@ -49,8 +54,13 @@ async function planTurn({
       const targetInfo = targetResolver.resolve({ mentions, botUserId: BOT_USER_ID });
       const gameTurn = isGameTurn({ gameData, intent: classification.intent });
 
-      // 🚀 UPGRADE: Fire off the Working Memory fetch IMMEDIATELY to save time
-      const workingMemoryPromise = withTimeout(memoryEngine.getWorkingMemory(channelId), DB_TIMEOUT_MS, []);
+      // 🚀 UPGRADE: Fire off the Working Memory fetch IMMEDIATELY with an operation name
+      const workingMemoryPromise = withTimeout(
+        memoryEngine.getWorkingMemory(channelId), 
+        DB_TIMEOUT_MS, 
+        [], 
+        'getWorkingMemory'
+      );
 
       // Resolve relationship (needed for emotion engine)
       const relationship = await relationshipEngine.resolve({ userId, displayName, roles }).catch(() => ({}));
@@ -71,7 +81,8 @@ async function planTurn({
           recentChatLog 
         });
 
-        console.log(`[PIPELINE TRACE] intent=${classification.intent} route=GameFastLane`);
+        // 🚀 UPGRADE: Log the specific word that triggered this intent
+        console.log(`[PIPELINE TRACE] intent=${classification.intent} trigger="${classification.triggerWord}" route=GameFastLane`);
 
         return { prompt, classification, behaviorDirective: null, emotionalState: null, relationship, channelId, userId };
       }
@@ -89,7 +100,7 @@ async function planTurn({
 
       // Only search deep long-term memory if it's not casual chat
       const longTermPromise = !isCasualChat 
-        ? withTimeout(memoryEngine.getLongTermCandidates(userId), DB_TIMEOUT_MS, [])
+        ? withTimeout(memoryEngine.getLongTermCandidates(userId), DB_TIMEOUT_MS, [], 'getLongTermCandidates')
         : Promise.resolve([]);
 
       // Await all parallel promises together
@@ -108,7 +119,8 @@ async function planTurn({
           chatSummary = await withTimeout(
               memoryEngine.generateChatSummary(workingMemoryRaw), 
               DB_TIMEOUT_MS, 
-              ""
+              "",
+              'generateChatSummary'
           );
       }
 
@@ -139,7 +151,8 @@ async function planTurn({
         recentChatLog
       });
 
-      console.log(`[PIPELINE TRACE] intent=${classification.intent} isCasual=${isCasualChat} layers=[classifier,target,relationship,emotion,memory,behavior,assembler]`);
+      // 🚀 UPGRADE: Expose the trigger word to your pipeline logs
+      console.log(`[PIPELINE TRACE] intent=${classification.intent} trigger="${classification.triggerWord}" isCasual=${isCasualChat} layers=[classifier,target,relationship,emotion,memory,behavior,assembler]`);
 
       return { prompt, classification, behaviorDirective, emotionalState, relationship, channelId, userId };
 
