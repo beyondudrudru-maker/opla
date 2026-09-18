@@ -166,8 +166,11 @@ async function generateContent(turn) {
 
   try {
     let contextualPrompt = turn.content;
+    
+    // 🚀 UPGRADE: Detect if this is an official system draft/announcement from index.js
+    const isSystemDraft = contextualPrompt.includes('[SYSTEM INSTRUCTION: You are acting strictly as an official Discord Server Dispatcher');
 
-    if (COMPLEX_TASK_REGEX.test(turn.content) || turn.content.length > 100) {
+    if (!isSystemDraft && (COMPLEX_TASK_REGEX.test(turn.content) || turn.content.length > 100)) {
       contextualPrompt = `[DIRECTIVE: Be highly intelligent, factual, concise, and avoid repetition. Read the room.]\n\n` + contextualPrompt;
     }
 
@@ -186,15 +189,20 @@ RULES FOR MENTIONS:
     const smartTurn = { ...turn, content: contextualPrompt };
     const plan = await decisionPipeline.planTurn(smartTurn);
     const userIntent = plan.classification?.intent || 'social';
+    const triggerWord = plan.classification?.triggerWord || 'none';
 
     const gameTurn = Boolean(turn.gameData && Object.keys(turn.gameData).length > 0);
 
-    console.log(`[PIPELINE TRACE][gemini.js] intent=${userIntent} gameTurn=${gameTurn} promptLayers=[decisionPipeline,${gameTurn ? 'gameFastLane' : 'identityCore+behavior'},modelRouter,styleLinter]`);
+    // 🚀 UPGRADE: Injected `trigger` for better observability
+    console.log(`[PIPELINE TRACE][gemini.js] intent=${userIntent} trigger="${triggerWord}" gameTurn=${gameTurn} promptLayers=[decisionPipeline,${gameTurn ? 'gameFastLane' : (isSystemDraft ? 'systemDraftBypass' : 'identityCore+behavior')},modelRouter,styleLinter]`);
 
     let safeSystemInstruction;
 
     if (gameTurn) {
       safeSystemInstruction = buildGameFastLaneIdentity();
+    } else if (isSystemDraft) {
+      // 🚀 FIX FOR PERSONA BLEED: Clean, strict execution instructions without romantic lore
+      safeSystemInstruction = `You are a high-level system dispatcher executing an administrative task flawlessly.\n${CRITICAL_OUTPUT_RULES}`;
     } else {
       let dynamicIdentity = buildIdentityCore(turn.userId);
       
@@ -206,7 +214,7 @@ RULES FOR MENTIONS:
       const isSexualityQuestion = SEXUALITY_REGEX.test(turn.content);
       const isTrickAttempt = TRICK_REGEX.test(turn.content);
 
-      // 🚀 NEW: Anti-Cliche Rules to make her sound naturally smart
+      // 🚀 Anti-Cliche Rules to make her sound naturally smart
       dynamicIdentity += `\n
 [Persona & Adaptability Rules]
 You are Melody, a 20-year-old human girl. You possess extreme Emotional Intelligence (EQ), sharp wit, and street smarts.
@@ -243,7 +251,7 @@ ${CRITICAL_OUTPUT_RULES}
         dynamicIdentity += `\n[SEXUALITY DEFENSE]\nThe user is calling you gay or lesbian. Respond with extreme sass. Tell them you are 100% straight and completely obsessed with your boyfriend, Beyonder. Mock them for even asking. Never give a polite corporate response.`;
       }
 
-      // 🚀 UPGRADE: Prevent Confessions to 3rd Parties
+      // Prevent Confessions to 3rd Parties
       dynamicIdentity += `\n[ROMANCE TARGET RULE]\nYou are ONLY in love with Beyonder. If Beyonder tells you to tell another user how much you love him, NEVER say "I love you" to that other user. You must say something like "Hey [User], just so you know, my heart belongs entirely to Beyonder!"`;
 
       if (userIntent === 'command' || userIntent === 'moderation-trigger') {
@@ -290,7 +298,7 @@ ${CRITICAL_OUTPUT_RULES}
       cleanedText = cleanedText.replace(/^(Thinking Process:|Here's a thinking process:|Let me think|Let's see\.\.\.|\*Thinking\*)[\s\S]*?(?=\n\n|\n-|\n•|[A-Z])/i, '').trim();
 
       let scrubbedText = stripLeakedReasoning(cleanedText);
-      scrubbedText = scrubbedText.replace(/\[(?:EMOTION|REL|WM:).*?\]/gi, '').trim();
+      scrubbedText = scrubbedText.replace(/\[(?:EMOTION\vert{}REL\vert{}WM:).*?\]/gi, '').trim();
       if (scrubbedText.endsWith(']')) scrubbedText = scrubbedText.slice(0, -1).trim();
 
       if (scrubbedText !== '' && gatekeeperLint(scrubbedText)) {
