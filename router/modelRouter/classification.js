@@ -2,10 +2,10 @@
  * router/modelRouter/classification.js
  *
  * REQUEST CLASSIFICATION -> TASK PROFILE, and per-model scoring against a
- * task category. This is the "which model fits this message best" logic —
- * kept separate from candidateBuilder.js (which turns scores into a sorted,
- * availability-filtered candidate list) so tuning weights/regexes never
- * risks touching the registry-filtering logic.
+ * task category. This is the "which model fits this message best" logic.
+ *
+ * 🚀 FIX: Removed the -1000 penalty for paid models so they rank correctly when allowed.
+ * 🚀 UPGRADE: Added temperature mappings for new persona intents (FLIRT, JEALOUSY, HOSTILE).
  */
 
 let INTENTS;
@@ -61,7 +61,7 @@ function classifyRequest({ classification, prompt, userMessage }) {
   return { category, isHindi: isDevanagari || isHinglish, isLong, intent };
 }
 
-// Weight vector per category — which registry fields matter, and how much.
+// Weight vector per category
 const CATEGORY_WEIGHTS = {
   casual: { casualChat: 3, speed: 2, quality: 1, reliability: 2 },
   shortFactual: { speed: 3, reliability: 2, casualChat: 1, quality: 1 },
@@ -73,8 +73,7 @@ const CATEGORY_WEIGHTS = {
   hinglish: { hindi: 3, multilingual: 2, casualChat: 2, reliability: 1 }
 };
 
-// Dynamic max output tokens by category — avoids wasting free-tier tokens
-// on casual chat while still allowing room for genuinely long answers.
+// Dynamic max output tokens by category
 const MAX_TOKENS_BY_CATEGORY = {
   shortFactual: 384,
   casual: 768,
@@ -101,10 +100,6 @@ function scoreModel(entry, category, opts = {}) {
     score += GEMINI_PRIMARY_BONUS[category] || 0;
   }
 
-  // Intent-based weight-class routing: heavyweight tasks favor big models
-  // (openai/gpt-oss-120b, the OpenRouter Nemotron free model); lightweight
-  // tasks favor small/fast models (gpt-oss-20b, groq/compound-mini,
-  // openrouter/free). See HEAVY_CATEGORIES / LIGHT_CATEGORIES in registry.js.
   if (entry.weightClass === 'heavy') {
     if (HEAVY_CATEGORIES.has(category)) score += WEIGHT_CLASS_MATCH_BONUS;
     else if (LIGHT_CATEGORIES.has(category)) score -= WEIGHT_CLASS_MISMATCH_PENALTY;
@@ -113,13 +108,10 @@ function scoreModel(entry, category, opts = {}) {
     else if (HEAVY_CATEGORIES.has(category)) score -= WEIGHT_CLASS_MISMATCH_PENALTY;
   }
 
-  // Strict provider fallback hierarchy: Groq > Gemini > OpenRouter >
-  // Cloudflare. Applied as a large fixed offset so it dominates ordering
-  // across providers while weight-class/capability scores still decide
-  // which model wins within the same provider tier.
   score += providerTierBonus(entry.provider);
 
-  if (entry.costTier === 'paid') score -= 1000;
+  // 🚀 FIX: Removed the `entry.costTier === 'paid'` -1000 penalty here.
+  // candidateBuilder.js already guarantees paid models only reach this point if they are explicitly allowed.
   if (entry.legacy) score -= 6;
   if (entry.preview) score -= 1;
   if (entry.status === 'discovered') score -= 3;
@@ -132,6 +124,11 @@ function getDynamicTemp(intent) {
     case (INTENTS && INTENTS.MODERATION):
     case (INTENTS && INTENTS.COMMAND): return 0.1;
     case (INTENTS && INTENTS.HEAVY_TASK): return 0.3;
+    // 🚀 UPGRADE: Fine-tuned temperatures for complex and emotional personas
+    case (INTENTS && INTENTS.HOSTILE):
+    case (INTENTS && INTENTS.TROLL): return 0.85; 
+    case (INTENTS && INTENTS.FLIRT):
+    case (INTENTS && INTENTS.JEALOUSY):
     case (INTENTS && INTENTS.EMOTIONAL_DISCLOSURE): return 0.9;
     default: return 0.8;
   }
