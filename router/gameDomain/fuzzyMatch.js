@@ -1,3 +1,11 @@
+/**
+ * router/gameDomain/fuzzyMatch.js
+ *
+ * Levenshtein distance calculation and fuzzy matching logic.
+ * 🚀 UPGRADE: Fixed multi-word false positives by treating entities as continuous 
+ * strings and implementing bigram sliding-window checks.
+ */
+
 function levenshtein(a, b) {
   if (a === b) return 0;
   const al = a.length, bl = b.length;
@@ -32,17 +40,33 @@ function maxEditDistanceFor(len) {
 }
 
 function fuzzyNameHit(candidateName, textWords) {
-  const nameWords = candidateName.split(/\s+/).filter(w => w.length > 4);
-  if (nameWords.length === 0) return false;
+  // 1. Remove spaces from the candidate name to treat it as a single block
+  const nameNoSpace = candidateName.replace(/\s+/g, '').toLowerCase();
+  
+  // Ignore very short entities to prevent aggressive, low-confidence matching
+  if (nameNoSpace.length <= 4) return false;
 
-  for (const nameWord of nameWords) {
-    const maxDist = maxEditDistanceFor(nameWord.length);
-    for (const textWord of textWords) {
-      if (textWord.length <= 4) continue; 
-      if (Math.abs(textWord.length - nameWord.length) > maxDist) continue;
-      if (levenshtein(nameWord, textWord) <= maxDist) return true;
-    }
+  const maxDist = maxEditDistanceFor(nameNoSpace.length);
+
+  // 2. Check against single words in the text (catches "nighthuntr" typed as one word)
+  for (const textWord of textWords) {
+    if (textWord.length <= 4) continue; 
+    // Fast-fail if the length difference is greater than the max allowed typos
+    if (Math.abs(textWord.length - nameNoSpace.length) > maxDist) continue;
+    
+    if (levenshtein(nameNoSpace, textWord) <= maxDist) return true;
   }
+
+  // 3. Check against word pairs (bigrams) to catch spaced typos (e.g., "night huntar")
+  for (let i = 0; i < textWords.length - 1; i++) {
+    const bigram = textWords[i] + textWords[i + 1];
+    
+    // Fast-fail length check for bigrams
+    if (Math.abs(bigram.length - nameNoSpace.length) > maxDist) continue;
+    
+    if (levenshtein(nameNoSpace, bigram) <= maxDist) return true;
+  }
+
   return false;
 }
 
