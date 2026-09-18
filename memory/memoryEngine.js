@@ -6,36 +6,32 @@
  *   - Working memory
  *   - Long-term memory retrieval
  *   - Local memory signal filtering
- *   - Source hashing / duplicate extraction prevention
  *   - Database deduplication
- *   - Prompt-size protection
- *   🚀 UPGRADE: Completely migrated away from Gemini to Groq for stability.
- *   🚀 UPGRADE: Advanced Smart Pruning — Strictly limits token usage from old bot messages.
- *   🚀 UPGRADE: Speed-Optimized Summarization via Groq.
- *   🚫 STRICT RULE: Qwen models are completely banned from use here.
+ *   🚀 UPGRADE: Completely migrated to GROQ (openai/gpt-oss-20b).
+ *   🚀 UPGRADE: Keyword Overlap Matching (Only fetches old memory if 2+ words match).
+ *   🚀 UPGRADE: Ultra-clean on-demand summarization.
+ *   🚫 STRICT RULE: Qwen models are completely excluded.
  */
 
 const crypto = require('crypto');
 const db = require('../database/supabaseClient');
-const { OpenAI } = require('openai'); // Using OpenAI SDK to connect to Groq
+const { OpenAI } = require('openai');
 
 // ============================================================
-// 1. GRACEFUL GROQ INITIALIZATION (Replaced Gemini)
+// 1. GRACEFUL GROQ INITIALIZATION
 // ============================================================
 
-// Fetching any available Groq key from environment
 const groqKey = process.env.opla || process.env.OPLA || process.env.GROQ_API_KEY || process.env.GROQ_API_KEY_2;
 
 let extractionClient = null;
-const EXTRACTION_MODEL = 'openai/gpt-oss-20b'; // Extremely fast Groq model. STRICTLY NO QWEN.
+const EXTRACTION_MODEL = 'openai/gpt-oss-20b'; 
 
 if (groqKey && typeof groqKey === 'string' && groqKey.trim()) {
   try {
     extractionClient = new OpenAI({
       apiKey: groqKey,
-      baseURL: 'https://api.groq.com/openai/v1' // Pointing OpenAI SDK to Groq's endpoint
+      baseURL: 'https://api.groq.com/openai/v1'
     });
-
     console.log(`🧠 [MEMORY] Groq extraction engine initialized using ${EXTRACTION_MODEL}.`);
   } catch (error) {
     console.warn('⚠️ [MEMORY] Groq initialization failed. Extraction disabled:', error.message);
@@ -54,32 +50,46 @@ const LONG_TERM_MEMORY_LIMIT = 30;
 const DEFAULT_LTM_MAX_CHARS = 1800;
 
 // ============================================================
-// 3. CHEAP LOCAL MEMORY FILTER
+// 3. KEYWORD MATCHING ENGINE (NEW)
 // ============================================================
+
+const STOP_WORDS = new Set([
+  'is','the','a','an','and','or','but','if','kya','hai','tha','thi','me','ko',
+  'se','ki','pe','yeh','woh','to','for','in','on','of','my','i','you','am','are',
+  'was','were','be','been','have','has','do','does','did','will','mera','meri',
+  'mujhe','main','hum','hamara','apna','apni','bhai','yaar','acha','theek','kar',
+  'raha','rahi','tum','aap','tera'
+]);
+
+function getSignificantWords(text) {
+  if (!text) return new Set();
+  const words = text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/);
+  return new Set(words.filter(w => w.length > 2 && !STOP_WORDS.has(w)));
+}
+
+function hasKeywordOverlap(currentMsg, pastMsg, threshold = 2) {
+  const currentWords = getSignificantWords(currentMsg);
+  const pastWords = getSignificantWords(pastMsg);
+  let matchCount = 0;
+
+  for (const word of currentWords) {
+    if (pastWords.has(word)) matchCount++;
+    if (matchCount >= threshold) return true;
+  }
+  return false;
+}
 
 const MEMORY_SIGNAL_REGEX =
   /\b(i am|i'm|my|i like|i love|i hate|i prefer|i want|i need|i study|i'm studying|my goal|i plan|i live|i work|remember|don't forget|mera|meri|mujhe|main|yaad rakhna|pasand|chahta|target|hum|hamara|apna|apni)\b/i;
-
-// ============================================================
-// 4. EXTRACTION SPAM / CONCURRENCY PROTECTION
-// ============================================================
 
 const processedMessages = new Set();
 const processingMessages = new Set();
 const PROCESSED_LIMIT = 100;
 
-// ============================================================
-// 5. HASHING
-// ============================================================
-
 function computeContentHash(userId, content) {
   const normalized = String(content || '').trim().toLowerCase();
   return crypto.createHash('sha256').update(`${userId}::${normalized}`).digest('hex');
 }
-
-// ============================================================
-// 6. RECORD CONVERSATION TURN
-// ============================================================
 
 async function recordTurn({ channelId, userId, role, content, sessionId }) {
   return db.appendConversationTurn({
@@ -92,10 +102,11 @@ async function recordTurn({ channelId, userId, role, content, sessionId }) {
 }
 
 // ============================================================
-// 7. WORKING MEMORY (WITH ADVANCED SMART PRUNING)
+// 7. WORKING MEMORY (WITH KEYWORD RELEVANCE & PRUNING)
 // ============================================================
 
-async function getWorkingMemory(channelId) {
+// 🚀 Changed signature to accept currentMessage for keyword matching
+async function getWorkingMemory(channelId, currentMessage = '') {
   try {
     const turns = await db.getRecentTurns(channelId, WORKING_MEMORY_SIZE * 2);
 
@@ -107,34 +118,33 @@ async function getWorkingMemory(channelId) {
       const newer = turns[i + 1];
       const older = turns[i];
 
-      const newerTime = new Date(newer.created_at).getTime();
-      const olderTime = new Date(older.created_at).getTime();
-
-      const gapMs = newerTime - olderTime;
-      if (Number.isFinite(gapMs) && gapMs / 60000 > SESSION_GAP_MINUTES) {
-        break;
-      }
+      const gapMs = new Date(newer.created_at).getTime() - new Date(older.created_at).getTime();
+      if (Number.isFinite(gapMs) && gapMs / 60000 > SESSION_GAP_MINUTES) break;
       session.unshift(older);
     }
 
-    // 🚀 UPGRADE: Advanced Smart Pruning
-    // "Jitni zarurat utni hi": The last 2 messages are kept intact for immediate context.
-    // Anything older than that from the bot is aggressively chopped to save massive tokens.
-    const smartSession = session.map((turn, index) => {
-      const isVeryRecent = index >= session.length - 2; 
+    const smartSession = [];
+    const TOTAL = session.length;
 
-      if (!isVeryRecent && turn.role === 'melody' && turn.content && turn.content.length > 150) {
-        const firstSentence = turn.content.split(/(?<=[.!?])\s/)[0] || turn.content.substring(0, 100);
-        return { 
-          ...turn, 
-          content: `${firstSentence}... [AI previously provided a detailed response here. Details hidden to save memory context.]` 
-        };
+    for (let i = 0; i < TOTAL; i++) {
+      const turn = session[i];
+      const isImmediateHistory = i >= TOTAL - 2; // Always keep the exact last 2 messages for flow
+
+      // 🚀 Only include older messages if there is a 2+ word keyword overlap
+      const isRelevant = currentMessage ? hasKeywordOverlap(currentMessage, turn.content, 2) : true;
+
+      if (isImmediateHistory || isRelevant) {
+        // Apply aggressive pruning to bot's own long messages
+        if (turn.role === 'melody' && turn.content && turn.content.length > 150) {
+          const firstSentence = turn.content.split(/(?<=[.!?])\s/)[0] || turn.content.substring(0, 100);
+          smartSession.push({ ...turn, content: `${firstSentence}... [Details truncated]` });
+        } else {
+          smartSession.push(turn);
+        }
       }
-      return turn;
-    });
+    }
 
     return smartSession.slice(-WORKING_MEMORY_SIZE);
-
   } catch (error) {
     console.error('⚠️ [MEMORY] getWorkingMemory failed:', error.message);
     return [];
@@ -162,8 +172,7 @@ async function getLongTermCandidates(userId) {
 async function extractCandidateMemories(turns, userId) {
   const candidates = [];
 
-  if (!extractionClient) return candidates;
-  if (!Array.isArray(turns) || turns.length === 0) return candidates;
+  if (!extractionClient || !Array.isArray(turns) || turns.length === 0) return candidates;
 
   for (const turn of turns) {
     if (turn?.role !== 'user' || turn?.user_id !== userId || typeof turn?.content !== 'string') continue;
@@ -182,18 +191,11 @@ LANG: Input may be English, Hindi, or Hinglish. Translate core concept to Englis
 OUTPUT: ONLY output format "[TAG:Value]|Score" OR "NONE". No markdown, no explanations.
 SCORE: 0.1 (weak) to 1.0 (strong).
 
-EXAMPLES:
-"I study computer engineering" -> [STUDIES:CompEng]|0.3
-"mujhe Kingdom Clash pasand hai" -> [FAV_GAME:KingdomClash]|0.9
-"mera target Indian army hai" -> [GOAL:IndianArmy]|0.8
-"haha lol" -> NONE
-
 MESSAGE:
 "${content}"
 `.trim();
 
     try {
-      // 🚀 Replacing Gemini with Groq Chat Completions
       const response = await extractionClient.chat.completions.create({
         model: EXTRACTION_MODEL,
         messages: [{ role: 'user', content: extractionPrompt }],
@@ -252,16 +254,11 @@ async function writeMemory(userId, memory) {
     await db.addLongTermMemory(userId, withHash);
   } catch (error) {
     if (error?.code === '23505' || /duplicate key/i.test(error?.message || '')) {
-      console.log('⏩ [MEMORY] Duplicate memory skipped.');
       return;
     }
     console.error('⚠️ [MEMORY] Failed to write memory:', error.message);
   }
 }
-
-// ============================================================
-// 11. TOKEN / CHARACTER COMPRESSED MEMORY BLOCK
-// ============================================================
 
 function toBrief(memories, maxChars = DEFAULT_LTM_MAX_CHARS) {
   if (!Array.isArray(memories) || memories.length === 0) return '';
@@ -274,12 +271,11 @@ function toBrief(memories, maxChars = DEFAULT_LTM_MAX_CHARS) {
     output += `${item} `;
   }
 
-  output = output.trim();
-  return output ? `[LTM:${output}]` : '';
+  return output.trim() ? `[LTM:${output.trim()}]` : '';
 }
 
 // ============================================================
-// 11.5 CHAT SUMMARIZATION (POWERED BY GROQ)
+// 11.5 CHAT SUMMARIZATION (ON-DEMAND & ULTRA-CLEAN)
 // ============================================================
 
 async function generateChatSummary(turns) {
@@ -292,19 +288,25 @@ async function generateChatSummary(turns) {
     })
     .join('\n');
     
-  if (transcript.length > 3000) {
-      transcript = transcript.substring(transcript.length - 3000);
+  if (transcript.length > 2000) {
+      transcript = transcript.substring(transcript.length - 2000);
   }
 
-  const prompt = `Summarize the following Discord conversation in 2-3 concise bullet points focusing on key topics, decisions, or user questions. Avoid fluff.\n\nConversation:\n${transcript}`;
+  // 🚀 Force the AI to be extremely short and avoid fluff.
+  const prompt = `Summarize this Discord conversation. 
+RULES:
+1. ONLY return 2 short bullet points.
+2. NO conversational filler (e.g. "Here is the summary").
+3. Focus purely on key actions or decisions.
+
+Conversation:\n${transcript}`;
 
   try {
-    // 🚀 Using Groq for lightning-fast background summaries
     const response = await extractionClient.chat.completions.create({
-        model: EXTRACTION_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        max_tokens: 150
+      model: EXTRACTION_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+      max_tokens: 100
     });
     
     return response.choices[0]?.message?.content?.trim() || '';
@@ -313,10 +315,6 @@ async function generateChatSummary(turns) {
     return '';
   }
 }
-
-// ============================================================
-// 12. EXPORTS
-// ============================================================
 
 module.exports = {
   recordTurn,
