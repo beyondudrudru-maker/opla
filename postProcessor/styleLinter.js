@@ -5,7 +5,8 @@
  *   Cleans and formats the raw AI text before it is sent to Discord.
  *   Enforces emoji limits, prevents repetitive AI loops, and ensures perfect grammar.
  *   🚀 UPGRADE: Hinglish conversational crutches added to BANNED_OPENERS.
- *   🚀 UPGRADE: XML tag reasoning stripper added as a final failsafe.
+ *   🚀 UPGRADE: Identity Prefix Stripper to prevent LLMs from outputting "Melody: ".
+ *   🚀 UPGRADE: Dangling XML tag cleanup.
  *   🚀 FIX: String-to-Number Emoji Budget mapper added.
  */
 
@@ -97,13 +98,19 @@ function enforceEmojiBudget(text, numericBudget) {
 }
 
 /**
- * 🚀 UPGRADE: Removes internal AI thinking, XML tags, drafts, and numbering
+ * 🚀 UPGRADE: Removes internal AI thinking, XML tags, drafts, and self-prefixes
  */
 function stripReasoning(text) {
     let cleanText = text;
     
     // 🛡️ Final Failsafe: Strip leaked <think> or <reflection> tags entirely
     cleanText = cleanText.replace(/<(?:think|reasoning|reflection|plan|scratchpad)>[\s\S]*?(?:<\/(?:think|reasoning|reflection|plan|scratchpad)>|$)/gi, '');
+
+    // 🛡️ Orphan Cleanup: Catch dangling closing tags if the AI hallucinated just the end tag
+    cleanText = cleanText.replace(/<\/(?:think|reasoning|reflection|plan|scratchpad)>/gi, '');
+
+    // 🤖 Self-Prefix Hallucination Fix: Removes "Melody:", "**INF AI**:", "[Melody]:"
+    cleanText = cleanText.replace(/^(?:\*\*?(?:Melody|INF AI|Bot)\*\*?\s*:|\[?(?:Melody|INF AI|Bot)\]?\s*:)\s*/i, '');
 
     // If the model leaked its "Draft:" section, grab ONLY what comes after "Draft:"
     const draftMatch = cleanText.match(/\bDraft:\s*([\s\S]*)$/i);
@@ -126,7 +133,7 @@ function stripReasoning(text) {
 function structuralCleanup(text) {
     let cleanText = text;
     
-    // 🚀 Step 1: Strip out rogue AI reasoning first!
+    // 🚀 Step 1: Strip out rogue AI reasoning and prefixes first!
     cleanText = stripReasoning(cleanText);
 
     // Remove surrounding quotes if the AI accidentally wrapped its entire response in them
