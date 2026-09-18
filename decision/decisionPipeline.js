@@ -8,6 +8,7 @@
  *   🚀 UPGRADE: Parallelized engine execution for ultra-fast response times.
  *   🚀 UPGRADE: Timeout Transparency - `withTimeout` now logs when operations lag.
  *   🚀 UPGRADE: Trigger Word Tracing - Pipeline logs now reveal exact classifier triggers.
+ *   🛡️ FIX: Passed `content` to getWorkingMemory to activate Keyword Overlap Pruning.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -54,9 +55,9 @@ async function planTurn({
       const targetInfo = targetResolver.resolve({ mentions, botUserId: BOT_USER_ID });
       const gameTurn = isGameTurn({ gameData, intent: classification.intent });
 
-      // 🚀 UPGRADE: Fire off the Working Memory fetch IMMEDIATELY with an operation name
+      // 🛡️ FIX: Passed `content` so the memory engine can match keywords!
       const workingMemoryPromise = withTimeout(
-        memoryEngine.getWorkingMemory(channelId), 
+        memoryEngine.getWorkingMemory(channelId, content), 
         DB_TIMEOUT_MS, 
         [], 
         'getWorkingMemory'
@@ -81,7 +82,6 @@ async function planTurn({
           recentChatLog 
         });
 
-        // 🚀 UPGRADE: Log the specific word that triggered this intent
         console.log(`[PIPELINE TRACE] intent=${classification.intent} trigger="${classification.triggerWord}" route=GameFastLane`);
 
         return { prompt, classification, behaviorDirective: null, emotionalState: null, relationship, channelId, userId };
