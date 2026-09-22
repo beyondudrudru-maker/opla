@@ -722,12 +722,11 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                 modelUsed = melodyResult.modelUsed;
                 debug = melodyResult.debug;
 
-                await decisionPipeline.finalizeTurn({
-                    channelId: message.channel.id,
-                    userId: message.author.id,
-                    content: cleanText,
-                    responseText: aiReply
-                });
+                // 🛡️ FIX: Removed duplicate finalizeTurn call here.
+                // melody.generateContent() (in api/gemini.js) already calls
+                // decisionPipeline.finalizeTurn() internally at the end of every
+                // generation, so calling it again here was writing every
+                // casual/social turn into conversation_turns TWICE.
             }
 
             let finalReply = aiReply;
