@@ -5,12 +5,23 @@
  *   Ranks long-term memory candidates to inject only the most relevant ones.
  *   🚀 UPGRADE: Bilingual (English + Hinglish) explicit reference bonus.
  *   🛡️ UPGRADE: Timestamp fallbacks to prevent NaN math errors.
+ *   🚀 UPGRADE: Bilingual Stop-Word filtering to prevent generic word overlap inflation.
  */
 
 const TOP_K = 5;
 
+// 🚀 UPGRADE: Filter out generic conversational words so they don't inflate the similarity score
+const STOP_WORDS = new Set([
+  'is','the','a','an','and','or','but','if','kya','hai','tha','thi','me','ko',
+  'se','ki','pe','yeh','woh','to','for','in','on','of','my','i','you','am','are',
+  'was','were','be','been','have','has','do','does','did','will','mera','meri',
+  'mujhe','main','hum','hamara','apna','apni','bhai','yaar','acha','theek','kar',
+  'raha','rahi','tum','aap','tera','it','this','that','there','here','what','how'
+]);
+
 function tokenize(text) {
-  return new Set((text || '').toLowerCase().match(/[a-z0-9']+/g) || []);
+  const words = (text || '').toLowerCase().match(/[a-z0-9']+/g) || [];
+  return new Set(words.filter(w => w.length > 2 && !STOP_WORDS.has(w)));
 }
 
 function topicSimilarity(message, memoryContent) {
@@ -27,8 +38,16 @@ function topicSimilarity(message, memoryContent) {
 }
 
 function recencyDecay(lastReferenced) {
-  // Safe fallback to current time if undefined to prevent NaN math errors
-  const timestamp = lastReferenced ? new Date(lastReferenced).getTime() : Date.now();
+  let timestamp = Date.now();
+  
+  // 🛡️ UPGRADE: Protect against malformed database strings returning NaN
+  if (lastReferenced) {
+      const parsed = new Date(lastReferenced).getTime();
+      if (!Number.isNaN(parsed)) {
+          timestamp = parsed;
+      }
+  }
+  
   const days = (Date.now() - timestamp) / 86400000;
   return Math.exp(-days / 14);
 }
