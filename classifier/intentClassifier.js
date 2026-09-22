@@ -9,6 +9,8 @@
  * 🚀 UPGRADE: Now extracts and returns the exact `triggerWord` for easy debugging.
  * 🛡️ FIX: Added missing TROLL and TERRITORIAL logic to match INTENTS dictionary.
  * 🚀 UPGRADE: Expanded Hinglish and Gen-Z slang for better Flirt/Troll detection.
+ * 🚀 UPGRADE: Mid-sentence question detection for accurate factual routing.
+ * 🚀 UPGRADE: Expanded HARD_DOMAINS to catch politics and history.
  */
 
 const INTENTS = Object.freeze({
@@ -29,25 +31,26 @@ const INTENTS = Object.freeze({
 });
 
 const HEAVY_ACTIONS = /\b(explain|analyze|compare|summary|summarize|translate|solve|debug)\b/i;
-const HARD_DOMAINS = /\b(code|python|javascript|c\+\+|html|css|hardware|specs|math|calculate|database|algorithm|architecture|geopolitics|thesis)\b/i;
+// Added history, politics, elections, science to trigger objective persona overrides
+const HARD_DOMAINS = /\b(code|python|javascript|c\+\+|html|css|hardware|specs|math|calculate|database|algorithm|architecture|geopolitics|politics|history|elections|science|physics|thesis)\b/i;
 const SOFT_DOMAINS = /\b(bhajan|lyrics|song|poem|mantra)\b/i;
 
 const GAME_KEYWORDS = /\b(kingdom clash|troop|troops|hero|heroes|anavin|trishtan|arena|gold farming|gem farming|synergy|stats|damage|hp|defense|ability|talent|boss raid)\b/i;
 
-const COMMAND_PATTERN = /^(ban|kick|mute|delete|fix|solve|generate|write|announce|event|dm|ping)\b/i;
+// Added ask, tell, say, send to catch cross-channel routing commands
+const COMMAND_PATTERN = /^(ban|kick|mute|delete|fix|solve|generate|write|announce|event|dm|ping|ask|tell|say|send)\b/i;
 const CASUAL_KEYWORDS = /\b(hi|hello|hey|morning|night|lol|lmao|bye|test|yo|kaise|wassup|sup|gm|gn)\b/i;
 const MODERATION_KEYWORDS = /\b(kys|kill yourself|slur|nsfw|raid|spam|nuke)\b/i;
 const EMOTIONAL_KEYWORDS = /\b(sad|depressed|anxious|scared|worried|lonely|love you|miss you|hurt|crying|tired of|can't sleep)\b/i;
 
-const QUESTION_PATTERN = /^(who|what|when|where|why|how|is|are|do|does|did|can you|could you|will|should|kya|kyu|kab|kaha|kidhar)\b(?!.*\b(up|kaise|ho)\b)|\?$|^(tell me|give me|show me|list|name|recommend|suggest)\b/i;
+// Re-structured to catch WH-words and Hinglish question words anywhere in the string, not just at the start
+const QUESTION_PATTERN = /^(is|are|do|does|did|will|can you|could you)\b|\b(who|what|when|where|why|how|kya|kyu|kyo|kaun|kab|kaha|kidhar|kisne)\b(?!.*\b(ho)\b)|\?$|^(tell me|give me|show me|list|name|recommend|suggest)\b/i;
 const VS_PATTERN = /\b(vs|versus)\b/i; 
 
-// 🚀 UPGRADE: Added "baby", "babe", "sexy", "mommy", "daddy" to catch more context
 const FLIRT_KEYWORDS = /\b(cute|hot|kiss me|hug me|marry me|set ho jayegi|pat jayegi|cutie|hottie|jaan|meri jaan|hot lag rahi|baby|babe|sexy|daddy|mommy)\b/i;
 const JEALOUSY_KEYWORDS = /\b(other girl|another girl|baddie|sidekick|cheat|dhoka|replace|steal him|teri sautan|body count)\b/i;
 const HOSTILE_KEYWORDS = /\b(stfu|dumb|idiot|shut up|loser|pagal|aukat|chup|bakwas|bitch)\b/i;
 
-// 🛡️ FIX: Added missing TROLL and TERRITORIAL keywords
 const TERRITORIAL_KEYWORDS = /\b(mine|meri hai|only mine|dur reh|hands off|back off|my property|kisi aur ki)\b/i;
 const TROLL_KEYWORDS = /\b(noob|bot|skill issue|cry about it|ez|cope|touch grass|clown|chomu|gawar|nalla)\b/i;
 
@@ -80,12 +83,10 @@ function classify({ content, hasCodeBlock = false, mentions = [] } = {}) {
         return { intent: INTENTS.JEALOUSY, complexity: 0.3, isModeration: false, confidence: 0.85, triggerWord: match };
       }
 
-      // 🛡️ FIX: Hooked up Territorial check
       if ((match = getMatch(TERRITORIAL_KEYWORDS, text))) {
         return { intent: INTENTS.TERRITORIAL, complexity: 0.3, isModeration: false, confidence: 0.85, triggerWord: match };
       }
 
-      // 🛡️ FIX: Hooked up Troll check
       if ((match = getMatch(TROLL_KEYWORDS, text))) {
         return { intent: INTENTS.TROLL, complexity: 0.2, isModeration: false, confidence: 0.8, triggerWord: match };
       }
