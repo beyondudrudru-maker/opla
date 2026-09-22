@@ -25,6 +25,7 @@ const gameDomainRouter = require('./router/gameDomainRouter');
 const { compressGameData } = require('./promptBuilder/promptAssembler');
 const { askAI: askGameAI } = require('./ai/aiFallback');
 const requestQueue = require('./utils/requestQueue');
+const budgetManager = require('./context/contextBudgetManager');
 
 const processedMessages = new Set();
 
@@ -252,18 +253,37 @@ client.on(Events.MessageCreate, async (message) => {
     let sharedHistory = [];
     let recentContext = '';
     let chatContextForAI = '';
-    
+
+    // 🧠 BUDGET-AWARE HISTORY FETCH
+    // Intent classification hasn't happened yet at this point (it happens later,
+    // inside decisionPipeline), so this is a content-only estimate: word count +
+    // regex signals decide CASUAL vs STANDARD vs HEAVY. That alone is enough to
+    // stop a "hello" from ever pulling 50 rows and building a 100K-char string,
+    // which is exactly what was happening before (see the 114,513 char prompt
+    // in the logs for the "hello" banter case).
+    const earlyWordCount = message.content.trim().split(/\s+/).filter(Boolean).length;
+    const earlyProfile = budgetManager.getBudgetProfile({
+        content: message.content,
+        wordCount: earlyWordCount
+    });
+
     try {
         const { data } = await ramClient.from('chat_ram')
             .select('player_name, message_content') 
             .eq('channel_id', message.channel.id)
             .order('created_at', { ascending: false })
-            .limit(50);
+            .limit(earlyProfile.fetchHistoryLimit);
             
         if (data && data.length > 0) {
+            // Used as-is (not budget-trimmed) for gold/gem/difficulty trigger
+            // scanning below — those just need a small recent window, not a
+            // prompt-safe string.
             sharedHistory = data;
             recentContext = data.slice(0, 3).map(r => r.message_content).join(' ');
-            chatContextForAI = data.slice().reverse().map(r => `[${r.player_name || 'User'}]: ${r.message_content}`).join('\n');
+
+            // Budget-capped join: respects per-message and total char caps for
+            // whatever tier this message landed in.
+            chatContextForAI = budgetManager.buildChatLog(data, earlyProfile);
         }
     } catch (err) {
         console.warn('⚠️ Unified history fetch failed:', err.message);
