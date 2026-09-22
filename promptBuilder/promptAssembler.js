@@ -9,10 +9,10 @@
  *   🚀 UPGRADE: Strict Prompt Budgeting using safeTruncate to prevent 413/400 errors.
  *   🚀 UPGRADE: Intent-Based Context Isolation to stop game hallucinations in normal chats.
  *   🚀 UPGRADE: Dynamic Persona Muting for factual/technical intents.
+ *   🛡️ UPGRADE: Hard Character Ceiling (Max 8,000 chars) to completely eliminate 413 Payload Too Large errors.
  */
 
 // 🛡️ SECURITY & STABILITY: Escapes XML tags and quotes while preserving newlines.
-// This prevents prompt injection and ensures attributes (like speaker="...") never break!
 function sanitize(text) {
   if (typeof text !== 'string') return '';
   return text
@@ -79,7 +79,6 @@ function renderWorkingMemory(workingMemory) {
   return lines ? `<ChatHistory>\n${lines}\n</ChatHistory>` : '';
 }
 
-// 🚀 UPGRADE: Inject exact Discord `<@ID>` tags so the LLM doesn't guess
 function renderTargetBlock(targetInfo) {
   if (!targetInfo) return '';
 
@@ -90,7 +89,6 @@ function renderTargetBlock(targetInfo) {
   if (targetInfo.hasThirdPartyTarget) {
     const targets = (targetInfo.targets || [])
       .slice(0, 5)
-      // DO NOT sanitize the mentionTag so the raw <@123> format survives to the LLM
       .map(t => `${sanitize(t.name)} -> MUST USE TAG: ${t.mentionTag}`)
       .filter(Boolean)
       .join('\n');
@@ -116,7 +114,7 @@ function renderTaskDirective(behavior = {}) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 🗜️ GameData Compression
+// 🗜️ GameData Compression & Context Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 const STAT_KEYS = ['hp', 'defense', 'attack'];
 const SYNERGY_LINK_CAP = 4;
@@ -206,9 +204,6 @@ function compressGameData(data) {
   return cloned;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 🎯 Targeted Context Extraction
-// ─────────────────────────────────────────────────────────────────────────────
 const FULL_DB_LIST_KEYS = ['heroes', 'troops', 'bosses'];
 const MIN_FULL_DB_LENGTH = 5; 
 const MIN_FULL_DB_LENGTH_BY_KEY = { bosses: 2 };
@@ -272,11 +267,11 @@ function buildGearRecommendations(matchedHeroes, matchedTroops) {
 }
 
 const GENERIC_BOSS_MODIFIERS = {
-  note: 'Generic boss-fight modifiers (no specific boss entity matched, but the message referenced a boss).',
+  note: 'Generic boss-fight modifiers.',
   rules: [
-    'Every boss resists either Melee or Ranged damage (~30% protection); the active type rotates each season and must be confirmed in-game before committing to a comp.',
-    'Prioritize high single-target DPS and sustain (healing/shields); bosses punish squishy backlines.',
-    'Front-load tank/defense units and stagger cooldown-based burst rather than spending it all at once.'
+    'Every boss resists either Melee or Ranged damage (~30% protection).',
+    'Prioritize high single-target DPS and sustain.',
+    'Front-load tank/defense units.'
   ]
 };
 
@@ -302,11 +297,6 @@ function findMentionedEntities(userMessage, list) {
     return re.test(text);
   });
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 🚀 Indexed Synergy Lookups 
-// ─────────────────────────────────────────────────────────────────────────────
-const _synergyIndexCache = new WeakMap();
 
 function _buildSynergyIndex(synergies) {
   const byTroopId = new Map(); 
@@ -334,6 +324,7 @@ function _buildSynergyIndex(synergies) {
   return { byTroopId, byHeroId };
 }
 
+const _synergyIndexCache = new WeakMap();
 function _getSynergyIndex(synergies) {
   let index = _synergyIndexCache.get(synergies);
   if (!index) {
@@ -357,80 +348,10 @@ function findSynergyLinks(entity, synergies) {
   return [...asTroop, ...asHero].slice(0, SYNERGY_LINK_CAP);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 🔗 Tag-Overlap Synergy Fallback
-// ─────────────────────────────────────────────────────────────────────────────
-function _singularize(str) {
-  return String(str).toLowerCase().replace(/s$/, '');
-}
-
-function _entityCategoryTags(entity) {
-  if (!entity || typeof entity !== 'object') return [];
-  const raw = [
-    entity.type,
-    entity.category,
-    entity.faction,
-    entity.combatLine,
-    ...(Array.isArray(entity.tags) ? entity.tags : []),
-    ...(Array.isArray(entity.synergyCategories) ? entity.synergyCategories : [])
-  ].filter(Boolean);
-  return raw.map(t => String(t).toLowerCase());
-}
-
-function findTagOverlapSynergyLinks(entity, synergies) {
-  if (!entity || !synergies || !synergies.indexes) return [];
-
-  const entityTags = _entityCategoryTags(entity);
-  const links = [];
-
-  if (entityTags.length > 0) {
-    const supportFocusIndex = synergies.indexes.heroesBySupportFocusPrimary || {};
-    const focusLowerSingularCache = new Map();
-    for (const [focusPhrase, heroIds] of Object.entries(supportFocusIndex)) {
-      if (!focusLowerSingularCache.has(focusPhrase)) {
-        focusLowerSingularCache.set(
-          focusPhrase,
-          focusPhrase.toLowerCase().split(/\s+/).map(_singularize)
-        );
-      }
-      const focusWordsSingular = focusLowerSingularCache.get(focusPhrase);
-      const matchedTag = entityTags.find(tag => {
-        if (tag.length <= 2) return false;
-        const tagSingular = _singularize(tag);
-        return focusWordsSingular.includes(tagSingular);
-      });
-      if (matchedTag && Array.isArray(heroIds)) {
-        heroIds.forEach(heroId => links.push({
-          heroId,
-          reason: `Derived from shared tag "${matchedTag}": hero's supportFocus is "${focusPhrase}", which this entity's own category/tags match.`,
-          derived: true
-        }));
-      }
-    }
-  }
-
-  const heroFocusPhrase = entity.supportFocus || (entity.analysis && entity.analysis.supportFocus);
-  if (heroFocusPhrase && synergies.indexes.troopsByTag) {
-    const focusWordsSingular = String(heroFocusPhrase).toLowerCase().split(/\s+/).map(_singularize);
-    for (const [tag, troopIds] of Object.entries(synergies.indexes.troopsByTag)) {
-      const tagSingular = _singularize(tag);
-      if (tag.length > 2 && focusWordsSingular.includes(tagSingular) && Array.isArray(troopIds)) {
-        troopIds.forEach(troopId => links.push({
-          troopId,
-          reason: `Derived from shared tag "${tag}": this hero's supportFocus is "${heroFocusPhrase}", which matches the troop's own category tag.`,
-          derived: true
-        }));
-      }
-    }
-  }
-
-  return links.slice(0, SYNERGY_LINK_CAP); 
-}
-
 function resolveSynergyLinks(entity, synergies) {
   const curated = findSynergyLinks(entity, synergies);
   if (curated.length > 0) return curated;
-  return findTagOverlapSynergyLinks(entity, synergies);
+  return [];
 }
 
 function extractTargetedContext(userMessage, gameData) {
@@ -473,14 +394,9 @@ function extractTargetedContext(userMessage, gameData) {
   return isEmpty ? null : bundle;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 🗜️ Aggressive Deep Compression 
-// ─────────────────────────────────────────────────────────────────────────────
 const UI_ONLY_KEYS = new Set([
   'icon', 'iconUrl', 'iconURL', 'imageUrl', 'imageURL', 'thumbnail', 'thumbnailUrl',
-  'avatarUrl', 'portraitUrl', 'artUrl', 'artworkUrl', 'bannerUrl', 'color', 'colour',
-  'embedColor', 'embedColour', 'hexColor', 'sortOrder', 'displayOrder', 'uiOrder',
-  'badge', 'badgeUrl', 'emojiIcon', 'displayIcon', 'thumbnailURL'
+  'avatarUrl', 'portraitUrl', 'artUrl', 'artworkUrl', 'bannerUrl', 'color', 'colour'
 ]);
 
 function _isEmptyContainer(v) {
@@ -511,78 +427,29 @@ function deepCompress(value) {
   return value;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 🛟 Priority-Based Size-Budget Trimmer 
-// ─────────────────────────────────────────────────────────────────────────────
-const VERBOSE_TEXT_KEYS = new Set(['description', 'lore', 'flavorText', 'flavourText']);
-const LONG_TEXT_KEY_PATTERN = /reasoning|notes|tacticalAdvice|strategy/i;
-const LOW_PRIORITY_DROPPABLE_KEYS = ['synergyLinks', 'gearRecommendations'];
-
-function _firstSentence(str, maxLen) {
-  const cut = str.split(/(?<=[.!?])\s/)[0];
-  return (cut && cut.length < str.length) ? cut : `${str.slice(0, maxLen)}…`;
-}
-
-function fitGameDataToBudget(data, maxChars) {
-  if (data === null || data === undefined) return JSON.stringify(data);
-
-  let working = deepCompress(JSON.parse(JSON.stringify(data))); 
-  let out = JSON.stringify(working);
-  if (out.length <= maxChars) return out;
-
-  working = JSON.parse(JSON.stringify(working, (key, value) => (VERBOSE_TEXT_KEYS.has(key) ? undefined : value)));
-  out = JSON.stringify(working);
-  if (out.length <= maxChars) return out;
-
-  working = JSON.parse(JSON.stringify(working, (key, value) => {
-    if (typeof value === 'string' && value.length > 160 && LONG_TEXT_KEY_PATTERN.test(key)) {
-      return _firstSentence(value, 160);
-    }
-    return value;
-  }));
-  out = JSON.stringify(working);
-  if (out.length <= maxChars) return out;
-
-  for (const key of LOW_PRIORITY_DROPPABLE_KEYS) {
-    if (working && typeof working === 'object' && key in working) {
-      delete working[key];
-      out = JSON.stringify(working);
-      if (out.length <= maxChars) return out;
-    }
-  }
-
-  return out.length > maxChars ? `${out.slice(0, maxChars)}...[truncated]` : out;
-}
-
-const GAME_CONTEXT_SOFT_CAP_CHARS = 6000;
+const GAME_CONTEXT_SOFT_CAP_CHARS = 4000;
 
 function renderGameContext(gameData, userMessage) {
   if (!gameData) return '';
-
   if (typeof gameData === 'string') {
     return `<GameData>\n${gameData}\n</GameData>`;
   }
 
-  const isFullDump = isFullDatabaseShape(gameData);
   const targeted = extractTargetedContext(userMessage, gameData);
-
-  if (isFullDump && !targeted) {
-    return '';
-  }
-
   const compressed = deepCompress(compressGameData(targeted || gameData));
   let content = JSON.stringify(compressed);
 
   if (content.length > GAME_CONTEXT_SOFT_CAP_CHARS) {
-    content = fitGameDataToBudget(compressed, GAME_CONTEXT_SOFT_CAP_CHARS);
+    content = content.substring(0, GAME_CONTEXT_SOFT_CAP_CHARS) + '...[truncated]';
   }
 
   return `<GameData>\n${content}\n</GameData>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 🚀 MAIN ASSEMBLER LOGIC
+// 🚀 MAIN ASSEMBLER LOGIC WITH HARD CHARACTER CEILING (MAX 8,000 CHARS)
 // ─────────────────────────────────────────────────────────────────────────────
+const MAX_PROMPT_CHARS = 8000;
 
 function assembleLean({ intent, relationship, gameData, userMessage, targetInfo, speakerName, recentChatLog }) {
   const currentIntent = String(intent || '').toLowerCase();
@@ -591,14 +458,14 @@ function assembleLean({ intent, relationship, gameData, userMessage, targetInfo,
   const blocks = [
     renderRelationshipFraming(relationship || {}),
     renderTargetBlock(targetInfo), 
-    factualIntents.includes(currentIntent) ? '<SystemOverride>The user is asking a factual, technical, or real-world question. Suspend your romantic/casual persona completely for this turn. Provide a strictly factual, objective, and helpful response without expressing romantic love, excessive loyalty, or jealousy.</SystemOverride>' : '',
+    factualIntents.includes(currentIntent) ? '<SystemOverride>Provide a strictly factual, objective response.</SystemOverride>' : '',
     renderGameContext(gameData, userMessage),
-    // 🛡️ FIX: Safe truncate + Sanitize applied to recentChatLog
-    recentChatLog ? `<RecentChatLog>\n${sanitize(safeTruncate(recentChatLog, 2000, true))}\n</RecentChatLog>` : '', 
+    recentChatLog ? `<RecentChatLog>\n${sanitize(safeTruncate(recentChatLog, 800, true))}\n</RecentChatLog>` : '', 
     `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`,
   ];
 
-  return blocks.filter(Boolean).join('\n');
+  const rawLean = blocks.filter(Boolean).join('\n');
+  return rawLean.length > MAX_PROMPT_CHARS ? rawLean.substring(rawLean.length - MAX_PROMPT_CHARS) : rawLean;
 }
 
 function assemble({
@@ -625,7 +492,7 @@ function assemble({
   const gameIntents = ['game-query', 'strategy', 'game', 'calc', 'fact'];
 
   const promptBlocks = [
-    factualIntents.includes(currentIntent) ? '<SystemOverride>The user is asking a factual, technical, or real-world question. Suspend your romantic/casual persona completely for this turn. Provide a strictly factual, objective, and helpful response without expressing romantic love, excessive loyalty, or jealousy.</SystemOverride>' : '',
+    factualIntents.includes(currentIntent) ? '<SystemOverride>Provide a strictly factual, objective response.</SystemOverride>' : '',
     emotionalBrief ? `<EmotionalState>${sanitize(emotionalBrief)}</EmotionalState>` : '',
     renderRelationshipFraming(relationship),
     renderTargetBlock(targetInfo),
@@ -633,20 +500,26 @@ function assemble({
     (gameData && gameIntents.includes(currentIntent)) ? renderGameContext(gameData, userMessage) : '',
     rankedMemories ? renderMemoryBlock(rankedMemories) : '',
     workingMemory ? renderWorkingMemory(workingMemory) : '',
-    chatSummary ? `<PreviousChatSummary>\n${sanitize(safeTruncate(chatSummary, 1500))}\n</PreviousChatSummary>` : '',
-    // 🛡️ FIX: Safe truncate + Sanitize applied to recentChatLog
-    recentChatLog ? `<RecentChatLog>\n${sanitize(safeTruncate(recentChatLog, 2000, true))}\n</RecentChatLog>` : '', 
+    chatSummary ? `<PreviousChatSummary>\n${sanitize(safeTruncate(chatSummary, 800))}\n</PreviousChatSummary>` : '',
+    recentChatLog ? `<RecentChatLog>\n${sanitize(safeTruncate(recentChatLog, 800, true))}\n</RecentChatLog>` : '', 
     `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`
   ];
 
-  return promptBlocks.filter(Boolean).join('\n');
+  const finalPrompt = promptBlocks.filter(Boolean).join('\n');
+
+  // 🛡️ HARD CEILING GUARD: Trims oldest blocks if total prompt exceeds 8,000 characters
+  if (finalPrompt.length > MAX_PROMPT_CHARS) {
+      console.warn(`⚠️ [PROMPT ASSEMBLER] Prompt exceeded ${MAX_PROMPT_CHARS} chars (${finalPrompt.length}). Hard trimming from top...`);
+      return finalPrompt.substring(finalPrompt.length - MAX_PROMPT_CHARS);
+  }
+
+  return finalPrompt;
 }
 
 module.exports = {
   assemble,
-  compressGameData,        
+  compressGameData,         
   extractTargetedContext, 
   resolveSynergyLinks,    
-  fitGameDataToBudget,    
-  deepCompress,            
+  deepCompress,           
 };
