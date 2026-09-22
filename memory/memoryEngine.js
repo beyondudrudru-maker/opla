@@ -274,7 +274,7 @@ function toBrief(memories, maxChars = DEFAULT_LTM_MAX_CHARS) {
 // ============================================================
 
 const summaryCache = new Map();
-const MAX_CACHE_SIZE = 50; // Prevents memory leaks
+const MAX_CACHE_SIZE = 50;
 
 async function generateChatSummary(turns) {
   if (!extractionClient || !Array.isArray(turns) || turns.length === 0) return '';
