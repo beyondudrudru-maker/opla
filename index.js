@@ -344,28 +344,25 @@ client.on(Events.MessageCreate, async (message) => {
         }
 
         // ─────────────────────────────────────────────────────────────
-        // 🚀 DM & ANNOUNCEMENT ROUTING (MULTI-TARGET FIX)
+        // 🚀 DM, ANNOUNCEMENT & CROSS-CHANNEL ROUTING
         // ─────────────────────────────────────────────────────────────
         const flattenedCleanText = cleanText.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
         const lowerCleanFlat = flattenedCleanText.toLowerCase();
 
-        // 🚀 UPGRADE: Comprehensive Multi-Target Scanner
         const directMentions = message.mentions.users
             .filter(u => u.id !== client.user.id)
             .map(u => ({ id: u.id, username: u.username }));
 
         const mentionMap = new Map();
-        
-        // 1. Add direct @mentions first
         directMentions.forEach(u => mentionMap.set(u.id, u));
 
-        // 2. Scan the entire cleaned text for any server member names typed out
         const textResolvedUsers = resolveMembersFromText(flattenedCleanText, message.guild, client.user.id);
         textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
 
         let targetUsers = Array.from(mentionMap.values());
 
-        const announceRegex = /\b(announce|notify|alert|ping everyone|sabko bol|bol do|boldo|message kardo|msg kardo|in dm|send dm to|dm to|send dm|message bhejo|send apology|tell them|dm me bolo|dm me|dm kardo|dm them|dm)\b/i;
+        // 🚀 UPGRADE: Expanded trigger words to support ask/tell cross-channel logic
+        const announceRegex = /\b(announce|notify|alert|ping everyone|sabko bol|bol do|boldo|message kardo|msg kardo|in dm|send dm to|dm to|send dm|message bhejo|send apology|tell them|dm me bolo|dm me|dm kardo|dm them|dm|ask|tell|say to)\b/i;
         const wantsAnnouncement = announceRegex.test(lowerCleanFlat);
 
         if (wantsAnnouncement) {
@@ -373,9 +370,10 @@ client.on(Events.MessageCreate, async (message) => {
             const isAdmin = message.member?.roles.cache.has('1372987132855058504');
 
             if (!isCreator && !isAdmin) {
-                return message.reply("❌ Only my Creator or a Clan Admin can ask me to send official alerts.").catch(() => {});
+                return message.reply("❌ Only my Creator or a Clan Admin can ask me to route messages.").catch(() => {});
             }
 
+            // 🚀 TARGET CHANNEL RESOLUTION: Determine where the message should go
             const targetChannel = message.mentions.channels.first() || message.channel;
 
             let rawMessagePayload = flattenedCleanText;
@@ -384,13 +382,16 @@ client.on(Events.MessageCreate, async (message) => {
                 'sabko bol', 'bol do', 'boldo', 'message kardo', 'msg kardo',
                 'in dm', 'send dm to', 'dm to', 'send dm', 'message bhejo',
                 'send apology msg', 'send apology', 'tell them', 'dm me bolo',
-                'dm me', 'dm kardo', 'dm them', 'dm'
+                'dm me', 'dm kardo', 'dm them', 'dm', 'ask', 'tell', 'say to', 'in'
             ];
 
             for (const trigger of triggersToStrip) {
                 rawMessagePayload = rawMessagePayload.replace(new RegExp(`\\b${trigger}\\b`, 'gi'), '');
             }
+            
+            // Remove channel mentions from the payload so they aren't echoed
             rawMessagePayload = rawMessagePayload.replace(/<#\d+>/g, '');
+            // Remove user mentions from the payload so we can format them neatly later
             rawMessagePayload = rawMessagePayload.replace(/<@!?\d+>/g, '');
 
             targetUsers.forEach(u => {
@@ -415,19 +416,19 @@ client.on(Events.MessageCreate, async (message) => {
             }
 
             // ─────────────────────────────────────────────────────────────
-            // 🚀 AI DRAFTING MODE: Smart Message Generation (NO ROMANCE BLEED FIX)
+            // 🚀 AI DRAFTING MODE: Smart Message Generation
             // ─────────────────────────────────────────────────────────────
             try {
                 await message.channel.sendTyping();
                 
-                const aiPrompt = `[SYSTEM INSTRUCTION: You are acting strictly as an official Discord Server Dispatcher drafting an announcement/message on behalf of the Admin.
+                const aiPrompt = `[SYSTEM INSTRUCTION: You are acting strictly as an official Discord Server Dispatcher drafting an announcement or routing a message on behalf of the Admin.
 CRITICAL RULES:
 1. STRICTLY FORBIDDEN: DO NOT mention love, dating, romance, boyfriends, hearts, or personal relationships under ANY circumstances.
 2. NO PERSONA BLEED: Never add phrases like "my heart belongs to..." or "Beyonder is my boyfriend". Keep it 100% focused only on the admin's requested message.
 3. ADAPTIVE TONE:
    - If greeting/casual: Friendly, warm, engaging.
-   - If moderation/warning/troll: Sharp, direct, humorous (if requested) or professional.
-4. OUTPUT FORMAT: ONLY output the exact final message to be posted. NO introductory notes, NO quotes, NO explanation.]
+   - If moderation/warning/troll/ask: Translate the exact intent into natural language (e.g. Hindi/Hinglish if the prompt implies it). Keep it sharp.
+4. OUTPUT FORMAT: ONLY output the exact final message to be posted. DO NOT output conversational filler like "Sure, here is the message" or "Okay, I will ask".]
 
 Raw Instruction from Admin: "${rawMessagePayload}"`;
 
@@ -448,7 +449,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                 }
             } catch (err) {
                 console.error('❌ [AI DRAFTING ERROR]', err.message);
-                // If AI fails, it gracefully falls back to sending your exact raw text
             }
             // ─────────────────────────────────────────────────────────────
 
@@ -468,14 +468,12 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     }
                 }
 
+                // --- DM ROUTING ---
                 if (wantsDM) {
                     if (dmTargets.length === 0) {
                         return message.reply("⚠️ Could not locate that user in the server to send a DM. Please mention them directly using `@`.").catch(() => {});
                     }
 
-                    // ─────────────────────────────────────────────────────────────
-                    // 🚀 CONFIRMATION SYSTEM: Preview & Button Check
-                    // ─────────────────────────────────────────────────────────────
                     const confirmId = `confirm_dm_${Date.now()}`;
                     const cancelId = `cancel_dm_${Date.now()}`;
 
@@ -484,17 +482,14 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                         new ButtonBuilder().setCustomId(cancelId).setLabel('No, Cancel').setStyle(ButtonStyle.Danger)
                     );
 
-                    // Send the draft preview to the Admin
                     const previewMsg = await message.reply({
                         content: `📝 **Draft Preview for ${dmTargets.length} members:**\n\n> ${rawMessagePayload.replace(/\n/g, '\n> ')}\n\n**Shall I begin the broadcast?**`,
                         components: [row]
                     });
 
-                    // Ensure only the person who requested the DM can click the buttons
                     const filter = i => (i.customId === confirmId || i.customId === cancelId) && i.user.id === message.author.id;
 
                     try {
-                        // Wait up to 60 seconds for a button click
                         const confirmation = await previewMsg.awaitMessageComponent({ filter, time: 60000 });
 
                         if (confirmation.customId === cancelId) {
@@ -502,7 +497,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                             return;
                         }
 
-                        // If "Yes" is clicked, begin the broadcast
                         await confirmation.update({ content: `⏳ Initiating DM broadcast to **${dmTargets.length}** members. Applying a strict 5-second delay between each message to protect the server connection... 💅`, components: [] });
 
                         let dmSuccessCount = 0;
@@ -514,7 +508,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                                 await discordUser.send(`🔔 **Clan Alert from ${message.author.username}:**\n\n${rawMessagePayload}`);
                                 dmSuccessCount++;
 
-                                // Strict 5-second delay (5000ms) enforced here
                                 if (i < dmTargets.length - 1) {
                                     await new Promise(resolve => setTimeout(resolve, 5000));
                                 }
@@ -528,31 +521,36 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                         } else {
                             await message.channel.send(`⚠️ Broadcast complete, but unable to deliver any DMs. Recipients likely have their DMs closed.`);
                         }
-
                     } catch (timeoutErr) {
-                        // If you don't click anything for 60 seconds, it safely aborts
                         await previewMsg.edit({ content: '⏳ DM confirmation timed out. Broadcast aborted.', components: [] });
                     }
                     
                     return; // 🛑 Stops AI execution
                 }
 
+                // --- CROSS-CHANNEL & GENERAL ANNOUNCEMENT ROUTING ---
                 if (targetsEveryone) {
                     await targetChannel.send({ content: `@everyone ${rawMessagePayload}`, allowedMentions: { parse: ['everyone'] } });
-                    await message.reply(`✅ Announced to everyone in ${targetChannel}.`);
+                    if (targetChannel.id !== message.channel.id) {
+                         await message.reply(`✅ Announced to everyone in <#${targetChannel.id}>.`);
+                    }
                 } else if (targetUsers.length > 0) {
                     const pings = targetUsers.map(u => `<@${u.id}>`).join(' ');
-                    await targetChannel.send({ content: `${pings}\n${rawMessagePayload}`, allowedMentions: { parse: ['users'] } });
-                    await message.reply(`✅ Notified them in ${targetChannel}.`);
+                    await targetChannel.send({ content: `${pings} ${rawMessagePayload}`, allowedMentions: { parse: ['users'] } });
+                    if (targetChannel.id !== message.channel.id) {
+                         await message.reply(`✅ Message routed to <#${targetChannel.id}>.`);
+                    }
                 } else {
                     await targetChannel.send(rawMessagePayload);
-                    await message.reply(`✅ Sent your message to ${targetChannel}!`);
+                    if (targetChannel.id !== message.channel.id) {
+                         await message.reply(`✅ Sent your message to <#${targetChannel.id}>!`);
+                    }
                 }
 
                 return; // 🛑 Stops AI execution
             } catch (err) {
-                console.error('[ANNOUNCEMENT ERROR]', err);
-                return message.reply("❌ Error sending message. Please check bot permissions.").catch(() => {});
+                console.error('[ANNOUNCEMENT/ROUTING ERROR]', err);
+                return message.reply("❌ Error sending message. Please check bot permissions or channel accessibility.").catch(() => {});
             }
         }
 
