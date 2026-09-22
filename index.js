@@ -14,7 +14,7 @@ const {
 } = require('discord.js');
 const express = require('express');
 
-const { ramClient } = require('./database/supabaseClient');
+const { ramClient, deleteOldConversationTurns } = require('./database/supabaseClient');
 const melody = require('./api/gemini');
 const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval');
 const reflectionJob = require('./reflection/reflectionJob');
@@ -153,6 +153,7 @@ client.once(Events.ClientReady, async (readyClient) => {
     }
 });
 
+// RAM 5-Hour Wipe
 setInterval(async () => {
     const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
     try {
@@ -160,6 +161,17 @@ setInterval(async () => {
         if (!error) console.log('🧹 5-Hour Memory Wiped.');
     } catch (err) { console.error('❌ Cleanup Error:', err); }
 }, 3600000);
+
+// 🚀 CORE DB 3-Day Auto-Cleanup Cron Job
+setInterval(async () => {
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    try {
+        await deleteOldConversationTurns(threeDaysAgo);
+        console.log('🧹 [CRON] 3-Day Conversation History pruned from Supabase successfully.');
+    } catch (err) { 
+        console.error('❌ [CRON] Supabase Cleanup Error:', err.message); 
+    }
+}, 12 * 60 * 60 * 1000); // Runs every 12 hours
 
 setInterval(async () => {
     try {
@@ -361,7 +373,6 @@ client.on(Events.MessageCreate, async (message) => {
 
         let targetUsers = Array.from(mentionMap.values());
 
-        // 🚀 UPGRADE: Expanded trigger words to support ask/tell cross-channel logic
         const announceRegex = /\b(announce|notify|alert|ping everyone|sabko bol|bol do|boldo|message kardo|msg kardo|in dm|send dm to|dm to|send dm|message bhejo|send apology|tell them|dm me bolo|dm me|dm kardo|dm them|dm|ask|tell|say to)\b/i;
         const wantsAnnouncement = announceRegex.test(lowerCleanFlat);
 
@@ -373,7 +384,6 @@ client.on(Events.MessageCreate, async (message) => {
                 return message.reply("❌ Only my Creator or a Clan Admin can ask me to route messages.").catch(() => {});
             }
 
-            // 🚀 TARGET CHANNEL RESOLUTION: Determine where the message should go
             const targetChannel = message.mentions.channels.first() || message.channel;
 
             let rawMessagePayload = flattenedCleanText;
@@ -389,9 +399,7 @@ client.on(Events.MessageCreate, async (message) => {
                 rawMessagePayload = rawMessagePayload.replace(new RegExp(`\\b${trigger}\\b`, 'gi'), '');
             }
             
-            // Remove channel mentions from the payload so they aren't echoed
             rawMessagePayload = rawMessagePayload.replace(/<#\d+>/g, '');
-            // Remove user mentions from the payload so we can format them neatly later
             rawMessagePayload = rawMessagePayload.replace(/<@!?\d+>/g, '');
 
             targetUsers.forEach(u => {
@@ -415,9 +423,6 @@ client.on(Events.MessageCreate, async (message) => {
                 rawMessagePayload = 'Please check with your Clan Admin for updates! ⚔️🌸';
             }
 
-            // ─────────────────────────────────────────────────────────────
-            // 🚀 AI DRAFTING MODE: Smart Message Generation
-            // ─────────────────────────────────────────────────────────────
             try {
                 await message.channel.sendTyping();
                 
@@ -450,7 +455,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
             } catch (err) {
                 console.error('❌ [AI DRAFTING ERROR]', err.message);
             }
-            // ─────────────────────────────────────────────────────────────
 
             const targetsEveryone = message.mentions.everyone || lowerCleanFlat.includes('everyone') || lowerCleanFlat.includes('sabko');
             const wantsDM = /\b(dm|message|msg)\b/i.test(lowerCleanFlat);
@@ -468,7 +472,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     }
                 }
 
-                // --- DM ROUTING ---
                 if (wantsDM) {
                     if (dmTargets.length === 0) {
                         return message.reply("⚠️ Could not locate that user in the server to send a DM. Please mention them directly using `@`.").catch(() => {});
@@ -525,10 +528,9 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                         await previewMsg.edit({ content: '⏳ DM confirmation timed out. Broadcast aborted.', components: [] });
                     }
                     
-                    return; // 🛑 Stops AI execution
+                    return;
                 }
 
-                // --- CROSS-CHANNEL & GENERAL ANNOUNCEMENT ROUTING ---
                 if (targetsEveryone) {
                     await targetChannel.send({ content: `@everyone ${rawMessagePayload}`, allowedMentions: { parse: ['everyone'] } });
                     if (targetChannel.id !== message.channel.id) {
@@ -547,22 +549,18 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     }
                 }
 
-                return; // 🛑 Stops AI execution
+                return;
             } catch (err) {
                 console.error('[ANNOUNCEMENT/ROUTING ERROR]', err);
                 return message.reply("❌ Error sending message. Please check bot permissions or channel accessibility.").catch(() => {});
             }
         }
 
-        // ─────────────────────────────────────────────────────────────
-        // 🚀 4. GENERAL STRATEGY & DECISION PIPELINE (AI REPLIES + STRICT GAME FILTER)
-        // ─────────────────────────────────────────────────────────────
         try {
             await message.channel.sendTyping();
 
             let gameResult = { resolved: false, context: null, intent: 'UNKNOWN' };
             
-            // 🚀 UPGRADE: Strict Keyword Guard to prevent false game triggers on casual text
             const strictGameKeywords = [
                 'hero', 'heroes', 'troop', 'troops', 'boss', 'stats', 'stat', 
                 'buff', 'nerf', 'gear', 'formation', 'counter', 'synergy', 
@@ -574,7 +572,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
             );
 
             try {
-                // Only route to game domain if strict keywords are found
                 if (hasStrictGameIntent) {
                     gameResult = gameDomainRouter.route(cleanText, recentContext);
                     console.log(`[GAME ROUTER] input="${cleanText}" intent=${gameResult.intent} resolved=${gameResult.resolved}`);
@@ -662,8 +659,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question. Compare the stats directly and provide strategic advice based ONLY on these numbers. Do not invent abilities or stats.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${aiPromptContent}`;
                 }
 
-                console.log(`[PIPELINE TRACE] route=decisionPipeline | hasGameContext=${Boolean(gameResult.context)} | liveEvent=${activeEvent}`);
-
                 const directMentions = message.mentions.users
                     .filter(u => u.id !== client.user.id)
                     .map(u => ({ id: u.id, username: u.username }));
@@ -711,8 +706,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     responseText: aiReply
                 });
             }
-
-            console.log(`🧠 [PIPELINE TRACE] pipeline="${pipelineUsed}" intent=${debug?.intent} tier=${debug?.tier} model=${modelUsed}`);
 
             let finalReply = aiReply;
 
