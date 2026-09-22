@@ -8,6 +8,12 @@
  *   🚀 UPGRADE: Integrated requestQueue to prevent background jobs from 
  *   rate-limiting or crashing the live chat bot.
  *   🚀 NEW: Added start() function to initialize the background cron-like loop.
+ *   🛡️ FIX: Activity detection now reads from `conversation_turns` (coreClient,
+ *   24h retention) instead of `chat_ram` (ramClient, 5h retention). chat_ram
+ *   gets wiped down to a 5-hour rolling window by a separate hourly cron in
+ *   index.js, so querying it for "who was active in the last 24h" was
+ *   silently missing every user whose last message was more than 5 hours
+ *   before the sweep ran — they got zero memory extraction for that day.
  */
 
 const db = require('../database/supabaseClient');
@@ -80,16 +86,22 @@ function start() {
   setInterval(async () => {
     console.log('🔄 [REFLECTION] Starting scheduled background job...');
     try {
-      // We look at the RAM DB to find which users were active in which channels in the last 24 hours
-      if (!db.ramClient) {
-        console.warn('⚠️ [REFLECTION] No ramClient found. Skipping sweep.');
+      // 🛡️ FIX: Was checking db.ramClient and querying chat_ram, which only
+      // holds a 5-hour rolling window (see index.js's hourly wipe cron).
+      // conversation_turns (coreClient) now holds a matching 24h window
+      // (see index.js's 24h cleanup cron), so this correctly sees the full
+      // sweep period instead of silently missing anyone inactive in the
+      // last 5 hours.
+      if (!db.coreClient) {
+        console.warn('⚠️ [REFLECTION] No coreClient found. Skipping sweep.');
         return;
       }
 
       const twentyFourHoursAgo = new Date(Date.now() - SWEEP_INTERVAL_MS).toISOString();
-      const { data, error } = await db.ramClient
-        .from('chat_ram')
-        .select('player_id, channel_id')
+      const { data, error } = await db.coreClient
+        .from('conversation_turns')
+        .select('user_id, channel_id')
+        .eq('role', 'user') // only real user turns — 'melody' turns aren't extraction candidates anyway
         .gte('created_at', twentyFourHoursAgo);
 
       if (error) throw error;
@@ -98,13 +110,12 @@ function start() {
       
       if (data && data.length > 0) {
         data.forEach(row => {
-          // Ignore bot messages and empty IDs
-          if (!row.player_id || row.player_id === process.env.BOT_USER_ID) return;
+          if (!row.user_id) return;
           
-          if (!activeUserChannelMap[row.player_id]) {
-            activeUserChannelMap[row.player_id] = new Set();
+          if (!activeUserChannelMap[row.user_id]) {
+            activeUserChannelMap[row.user_id] = new Set();
           }
-          activeUserChannelMap[row.player_id].add(row.channel_id);
+          activeUserChannelMap[row.user_id].add(row.channel_id);
         });
       }
 
