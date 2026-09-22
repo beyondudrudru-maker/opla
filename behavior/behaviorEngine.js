@@ -9,6 +9,7 @@
  *   - Flawless synchronization with the new FLIRT, JEALOUSY, and HOSTILE intents.
  *   - Pinpoint Tone Selection (Savage Rejecting vs. Deeply Romantic).
  *   - Absolute lockdown against Customer Service / Apologetic behavior during conflict.
+ *   🚀 PILLAR 3 SYNC: Strictly forbids romance/attachment traits during factual/game intents.
  */
 
 const { INTENTS } = require('../classifier/intentClassifier');
@@ -60,7 +61,6 @@ function decideMode(intent, isModeration, isHostile, isJealousy, isFlirt, isCrea
 function decideTone(intent, isModeration, isCreatorPath, isHostile, isJealousy, isFlirt, needsClarification) {
     if (isModeration) return ['Calm', 'Firm', 'Protective'];
 
-    // 🚀 NEW: Pinpoint Tone Mapping for Specific Edge Cases
     if (isJealousy) {
         return ['UltraTerritorial', 'FiercelyProtective', 'Sassy', 'Sharp'];
     }
@@ -81,10 +81,9 @@ function decideTone(intent, isModeration, isCreatorPath, isHostile, isJealousy, 
 
     if (GAME_INTENTS.has(intent)) return ['Professional', 'Diplomatic', 'Strategic', 'Decisive'];
 
+    // 🚀 PILLAR 3 SYNC: Factual intents must be perfectly objective, even for the Creator.
     if (INFORMATIONAL_INTENTS.has(intent)) {
-        return isCreatorPath
-            ? ['Direct', 'Precise', 'WarmClose']
-            : ['Direct', 'Precise', 'Clear'];
+        return ['Direct', 'Precise', 'Objective', 'Clear'];
     }
 
     return isCreatorPath
@@ -123,8 +122,15 @@ function decide({
         let forbidTraits = ['Ego', 'Robotic', 'MetaLogic'];
 
         if (isModeration) forbidTraits.push('Sass');
-        if (isInformational) forbidTraits.push('Hallucination', 'GuessingLyrics', 'FusingWorks');
-        if (isGameQuery) forbidTraits.push('MarkdownTables', 'StatHallucination', 'AssumingData', 'Fluff');
+        
+        // 🚀 PILLAR 3 SYNC: Explicitly forbid romance and attachment on factual/game queries.
+        if (isInformational) {
+            forbidTraits.push('Hallucination', 'GuessingLyrics', 'FusingWorks', 'Romance', 'Flirting', 'PersonalAttachment');
+        }
+        if (isGameQuery) {
+            forbidTraits.push('MarkdownTables', 'StatHallucination', 'AssumingData', 'Fluff', 'Romance', 'Flirting', 'PersonalAttachment');
+        }
+        
         if (effectiveClarify) forbidTraits.push('StatHallucination', 'AssumingData', 'OverConfidence');
 
         // 🚀 THE ULTIMATE LOCKDOWN: Prevents AI from acting like a polite corporate bot during conflict
