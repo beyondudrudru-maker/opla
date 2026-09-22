@@ -8,21 +8,24 @@
  *   an explicit, resolved decision instead of a silent guess.
  *
  * INPUTS
- *   { mentions: { everyone: boolean, users: [{ id, name }] }, botUserId }
+ *   { mentions: { everyone: boolean, users: [{ id, username }] }, botUserId }
  *
  * OUTPUTS
  *   { addressingEveryone, targets: [{ id, name, mentionTag }], hasThirdPartyTarget }
  *
- * CHANGELOG
- *   v2: targets now carry a pre-formatted `mentionTag` (<@id>) so the
- *   prompt can instruct the model to drop in a real, working Discord
- *   ping verbatim instead of inferring formatting from a display name.
+ * 🛡️ FIX: Synchronized property mapping (`u.username`) to match the new 
+ * multi-target scanner output from index.js.
  */
 
 function resolve({ mentions = { everyone: false, users: [] }, botUserId }) {
   const others = (mentions.users || [])
     .filter((u) => u.id !== botUserId)
-    .map((u) => ({ id: u.id, name: u.name, mentionTag: `<@${u.id}>` }));
+    .map((u) => ({ 
+        id: u.id, 
+        // Safely catch the username from the index.js payload, with fallbacks
+        name: u.username || u.name || 'User', 
+        mentionTag: `<@${u.id}>` 
+    }));
 
   return {
     addressingEveryone: !!mentions.everyone,
