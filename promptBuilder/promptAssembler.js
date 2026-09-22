@@ -4,14 +4,11 @@
  * PURPOSE
  *   Final lightweight prompt composer.
  *   Acts purely as a "dumb" assembler snapping pre-rendered blocks together.
- *   🚀 UPGRADE: Advanced XML escaping, Game Data injection, stricter behavioral
- *   mapping, and a `leanMode` path for the Game Fast-Lane.
+ *   🚀 UPGRADE: Advanced XML escaping, Game Data injection, stricter behavioral mapping.
  *   🚀 UPGRADE: Explicitly injects Discord <@ID> mentionTags into the Audience block.
- *   🚀 UPGRADE: Lean mode now supports Audience targets so you can ping users in game queries.
- *   🗜️ UPGRADE: GameData compression.
- *   🚀 NEW: Chat summary injection block.
- *   🛡️ FIX: Complete XML attribute sanitization (Quotes escaped).
- *   🛡️ FIX: Applied sanitize() to recentChatLog to prevent XML prompt injection.
+ *   🚀 UPGRADE: Strict Prompt Budgeting using safeTruncate to prevent 413/400 errors.
+ *   🚀 UPGRADE: Intent-Based Context Isolation to stop game hallucinations in normal chats.
+ *   🚀 UPGRADE: Dynamic Persona Muting for factual/technical intents.
  */
 
 // 🛡️ SECURITY & STABILITY: Escapes XML tags and quotes while preserving newlines.
@@ -24,6 +21,19 @@ function sanitize(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+// 🗜️ STRICT BUDGETING UTILITY: Prevents payload explosion from huge chat logs
+function safeTruncate(content, maxLength, keepEnd = false) {
+  if (!content) return '';
+  const str = typeof content === 'string' ? content : JSON.stringify(content);
+  
+  if (str.length <= maxLength) return str;
+  
+  if (keepEnd) {
+      return '... [TRUNCATED] ...\n' + str.substring(str.length - maxLength);
+  }
+  return str.substring(0, maxLength) + '... [TRUNCATED]';
 }
 
 function renderRelationshipFraming(relationship = {}) {
@@ -61,7 +71,6 @@ function renderWorkingMemory(workingMemory) {
   const lines = workingMemory
     .slice(-10)
     .map(t => {
-      // 🚀 FIX: Pull exact names instead of hardcoding "User"
       const roleName = t.role === 'melody' ? 'Melody' : (t.playerName || t.name || 'User');
       return `[${roleName}]: ${sanitize(t.content)}`;
     })
@@ -431,7 +440,7 @@ function extractTargetedContext(userMessage, gameData) {
 
   const matchedHeroes = findMentionedEntities(userMessage, gameData.heroes).map(compressEntityStats);
   const matchedTroops = findMentionedEntities(userMessage, gameData.troops).map(compressEntityStats);
-  const matchedBosses = findMentionedEntities(userMessage, gameData.bosses || []); // Added fallback for safety
+  const matchedBosses = findMentionedEntities(userMessage, gameData.bosses || []);
 
   const synergyLinks = [...matchedHeroes, ...matchedTroops]
     .flatMap(entity => resolveSynergyLinks(entity, gameData.synergies));
@@ -571,17 +580,21 @@ function renderGameContext(gameData, userMessage) {
   return `<GameData>\n${content}\n</GameData>`;
 }
 
-/**
- * 🚀 GAME FAST-LANE: minimal assembly path.
- * 🚀 UPGRADE: Now accepts and renders targetInfo so tagging works in Strategy queries.
- */
-function assembleLean({ relationship, gameData, userMessage, targetInfo, speakerName, recentChatLog }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// 🚀 MAIN ASSEMBLER LOGIC
+// ─────────────────────────────────────────────────────────────────────────────
+
+function assembleLean({ intent, relationship, gameData, userMessage, targetInfo, speakerName, recentChatLog }) {
+  const currentIntent = String(intent || '').toLowerCase();
+  const factualIntents = ['question', 'heavy-task', 'heavy_task'];
+
   const blocks = [
     renderRelationshipFraming(relationship || {}),
     renderTargetBlock(targetInfo), 
+    factualIntents.includes(currentIntent) ? '<SystemOverride>The user is asking a factual, technical, or real-world question. Suspend your romantic/casual persona completely for this turn. Provide a strictly factual, objective, and helpful response without expressing romantic love, excessive loyalty, or jealousy.</SystemOverride>' : '',
     renderGameContext(gameData, userMessage),
-    // 🛡️ FIX: Sanitized recentChatLog
-    recentChatLog ? `<RecentChatLog>\n${sanitize(recentChatLog)}\n</RecentChatLog>` : '', 
+    // 🛡️ FIX: Safe truncate + Sanitize applied to recentChatLog
+    recentChatLog ? `<RecentChatLog>\n${sanitize(safeTruncate(recentChatLog, 2000, true))}\n</RecentChatLog>` : '', 
     `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`,
   ];
 
@@ -589,6 +602,7 @@ function assembleLean({ relationship, gameData, userMessage, targetInfo, speaker
 }
 
 function assemble({
+  intent,
   leanMode,
   emotionalBrief,
   relationship,
@@ -603,20 +617,25 @@ function assemble({
   recentChatLog 
 }) {
   if (leanMode) {
-    return assembleLean({ relationship, gameData, userMessage, targetInfo, speakerName, recentChatLog });
+    return assembleLean({ intent, relationship, gameData, userMessage, targetInfo, speakerName, recentChatLog });
   }
 
+  const currentIntent = String(intent || '').toLowerCase();
+  const factualIntents = ['question', 'heavy-task', 'heavy_task'];
+  const gameIntents = ['game-query', 'strategy', 'game', 'calc', 'fact'];
+
   const promptBlocks = [
+    factualIntents.includes(currentIntent) ? '<SystemOverride>The user is asking a factual, technical, or real-world question. Suspend your romantic/casual persona completely for this turn. Provide a strictly factual, objective, and helpful response without expressing romantic love, excessive loyalty, or jealousy.</SystemOverride>' : '',
     emotionalBrief ? `<EmotionalState>${sanitize(emotionalBrief)}</EmotionalState>` : '',
     renderRelationshipFraming(relationship),
     renderTargetBlock(targetInfo),
     renderTaskDirective(behaviorDirective),
-    gameData ? renderGameContext(gameData, userMessage) : '',
+    (gameData && gameIntents.includes(currentIntent)) ? renderGameContext(gameData, userMessage) : '',
     rankedMemories ? renderMemoryBlock(rankedMemories) : '',
     workingMemory ? renderWorkingMemory(workingMemory) : '',
-    chatSummary ? `<PreviousChatSummary>\n${sanitize(chatSummary)}\n</PreviousChatSummary>` : '',
-    // 🛡️ FIX: Sanitized recentChatLog
-    recentChatLog ? `<RecentChatLog>\n${sanitize(recentChatLog)}\n</RecentChatLog>` : '', 
+    chatSummary ? `<PreviousChatSummary>\n${sanitize(safeTruncate(chatSummary, 1500))}\n</PreviousChatSummary>` : '',
+    // 🛡️ FIX: Safe truncate + Sanitize applied to recentChatLog
+    recentChatLog ? `<RecentChatLog>\n${sanitize(safeTruncate(recentChatLog, 2000, true))}\n</RecentChatLog>` : '', 
     `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`
   ];
 
