@@ -9,6 +9,7 @@
  *   🚀 UPGRADE: Timeout Transparency - `withTimeout` now logs when operations lag.
  *   🚀 UPGRADE: Trigger Word Tracing - Pipeline logs now reveal exact classifier triggers.
  *   🛡️ FIX: Passed `content` to getWorkingMemory to activate Keyword Overlap Pruning.
+ *   🛡️ FIX: Passed `intent` to promptAssembler to activate Dynamic Persona Muting.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -74,6 +75,7 @@ async function planTurn({
         }
 
         const prompt = promptAssembler.assemble({
+          intent: classification.intent, // 🛡️ FIX: Passed intent for Dynamic Persona Muting
           leanMode: true,
           relationship,
           gameData: optimizedGameData,
@@ -138,6 +140,7 @@ async function planTurn({
         : '';
 
       const prompt = promptAssembler.assemble({
+        intent: classification.intent, // 🛡️ FIX: Passed intent for Dynamic Persona Muting
         emotionalBrief,
         relationship,
         behaviorDirective,
