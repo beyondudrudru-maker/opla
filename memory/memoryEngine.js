@@ -290,15 +290,12 @@ async function generateChatSummary(turns) {
       transcript = transcript.substring(transcript.length - 2000);
   }
 
-  // 🚀 FAST-LANE: Create a unique fingerprint of the current transcript
   const transcriptHash = crypto.createHash('md5').update(transcript).digest('hex');
   
-  // If we already summarized this exact block of text recently, return it instantly![cite: 3]
   if (summaryCache.has(transcriptHash)) {
       return summaryCache.get(transcriptHash);
   }
 
-  // 🚀 Force the AI to be extremely short and avoid fluff.[cite: 3]
   const prompt = `Summarize this Discord conversation. 
 RULES:
 1. ONLY return 2 short bullet points.
@@ -317,10 +314,8 @@ Conversation:\n${transcript}`;
     
     const finalSummary = response.choices[0]?.message?.content?.trim() || '';
     
-    // Save to cache[cite: 3]
     summaryCache.set(transcriptHash, finalSummary);
     
-    // Prevent cache from growing infinitely[cite: 3]
     if (summaryCache.size > MAX_CACHE_SIZE) {
         const oldestKey = summaryCache.keys().next().value;
         summaryCache.delete(oldestKey);
