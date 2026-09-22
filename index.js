@@ -57,12 +57,15 @@ const adminCooldown = new Set();
 // ─────────────────────────────────────────────────────────────
 // 🔍 Helper: Fuzzy & Normalized Member Name Resolver
 // ─────────────────────────────────────────────────────────────
+// 🚀 UPGRADE: Added pet names, Hinglish slangs, and common conversational words to prevent false member triggers
 const COMMON_IGNORE_WORDS = new Set([
     'alert', 'them', 'play', 'complete', 'their', 'clan', 'clash', 'battle', 
     'tell', 'with', 'about', 'from', 'this', 'that', 'here', 'there', 'what',
     'please', 'help', 'roast', 'insult', 'kick', 'babe', 'honey', 'love',
     'notify', 'events', 'event', 'other', 'guys', 'karo', 'both', 'also',
-    'send', 'regarding', 'advisor', 'management', 'request', 'known'
+    'send', 'regarding', 'advisor', 'management', 'request', 'known',
+    'bebu', 'babu', 'baby', 'jaan', 'chaddhi', 'darling', 'sweetheart', 'cutie',
+    'hello', 'kaise', 'kya', 'hai', 'shona', 'yaar', 'bhai', 'bro', 'color'
 ]);
 
 function cleanName(str) {
@@ -171,7 +174,7 @@ setInterval(async () => {
     } catch (err) { 
         console.error('❌ [CRON] Supabase Cleanup Error:', err.message); 
     }
-}, 12 * 60 * 60 * 1000); // Runs every 12 hours
+}, 12 * 60 * 60 * 1000);
 
 setInterval(async () => {
     try {
@@ -361,19 +364,7 @@ client.on(Events.MessageCreate, async (message) => {
         const flattenedCleanText = cleanText.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
         const lowerCleanFlat = flattenedCleanText.toLowerCase();
 
-        const directMentions = message.mentions.users
-            .filter(u => u.id !== client.user.id)
-            .map(u => ({ id: u.id, username: u.username }));
-
-        const mentionMap = new Map();
-        directMentions.forEach(u => mentionMap.set(u.id, u));
-
-        const textResolvedUsers = resolveMembersFromText(flattenedCleanText, message.guild, client.user.id);
-        textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
-
-        let targetUsers = Array.from(mentionMap.values());
-
-        const announceRegex = /\b(announce|notify|alert|ping everyone|sabko bol|bol do|boldo|message kardo|msg kardo|in dm|send dm to|dm to|send dm|message bhejo|send apology|tell them|dm me bolo|dm me|dm kardo|dm them|dm|ask|tell|say to)\b/i;
+        const announceRegex = /\b(announce|notify|alert|ping everyone|sabko bol|bol do|boldo|message kardo|msg kardo|in dm|send dm to|dm to|send dm|message bhejo|send apology|tell them|dm me bolo|dm me|dm kardo|dm them|dm|ask \w+ in|tell \w+ in)\b/i;
         const wantsAnnouncement = announceRegex.test(lowerCleanFlat);
 
         if (wantsAnnouncement) {
@@ -384,6 +375,19 @@ client.on(Events.MessageCreate, async (message) => {
                 return message.reply("❌ Only my Creator or a Clan Admin can ask me to route messages.").catch(() => {});
             }
 
+            const directMentions = message.mentions.users
+                .filter(u => u.id !== client.user.id)
+                .map(u => ({ id: u.id, username: u.username }));
+
+            const mentionMap = new Map();
+            directMentions.forEach(u => mentionMap.set(u.id, u));
+
+            // Only run fuzzy search during explicit announcements/routing!
+            const textResolvedUsers = resolveMembersFromText(flattenedCleanText, message.guild, client.user.id);
+            textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
+
+            let targetUsers = Array.from(mentionMap.values());
+
             const targetChannel = message.mentions.channels.first() || message.channel;
 
             let rawMessagePayload = flattenedCleanText;
@@ -392,7 +396,7 @@ client.on(Events.MessageCreate, async (message) => {
                 'sabko bol', 'bol do', 'boldo', 'message kardo', 'msg kardo',
                 'in dm', 'send dm to', 'dm to', 'send dm', 'message bhejo',
                 'send apology msg', 'send apology', 'tell them', 'dm me bolo',
-                'dm me', 'dm kardo', 'dm them', 'dm', 'ask', 'tell', 'say to', 'in'
+                'dm me', 'dm kardo', 'dm them', 'dm'
             ];
 
             for (const trigger of triggersToStrip) {
@@ -430,10 +434,8 @@ client.on(Events.MessageCreate, async (message) => {
 CRITICAL RULES:
 1. STRICTLY FORBIDDEN: DO NOT mention love, dating, romance, boyfriends, hearts, or personal relationships under ANY circumstances.
 2. NO PERSONA BLEED: Never add phrases like "my heart belongs to..." or "Beyonder is my boyfriend". Keep it 100% focused only on the admin's requested message.
-3. ADAPTIVE TONE:
-   - If greeting/casual: Friendly, warm, engaging.
-   - If moderation/warning/troll/ask: Translate the exact intent into natural language (e.g. Hindi/Hinglish if the prompt implies it). Keep it sharp.
-4. OUTPUT FORMAT: ONLY output the exact final message to be posted. DO NOT output conversational filler like "Sure, here is the message" or "Okay, I will ask".]
+3. ADAPTIVE TONE: Friendly, warm, engaging, or sharp based on instruction.
+4. OUTPUT FORMAT: ONLY output the exact final message to be posted. DO NOT output conversational filler.]
 
 Raw Instruction from Admin: "${rawMessagePayload}"`;
 
@@ -446,7 +448,7 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     isGroupContext: Boolean(message.guild),
                     mentionedUsers: targetUsers, 
                     knowledgeContext: "",
-                    recentChatLog: recentContext
+                    recentChatLog: ""
                 }));
 
                 if (melodyResult && melodyResult.text) {
@@ -500,7 +502,7 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                             return;
                         }
 
-                        await confirmation.update({ content: `⏳ Initiating DM broadcast to **${dmTargets.length}** members. Applying a strict 5-second delay between each message to protect the server connection... 💅`, components: [] });
+                        await confirmation.update({ content: `⏳ Initiating DM broadcast to **${dmTargets.length}** members... 💅`, components: [] });
 
                         let dmSuccessCount = 0;
 
@@ -515,14 +517,14 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                                     await new Promise(resolve => setTimeout(resolve, 5000));
                                 }
                             } catch (err) {
-                                console.warn(`Could not deliver DM to ${target.username}: DMs are likely locked.`);
+                                console.warn(`Could not deliver DM to ${target.username}.`);
                             }
                         }
 
                         if (dmSuccessCount > 0) {
                             await message.channel.send(`✅ DM broadcast complete! Successfully delivered to ${dmSuccessCount} members. 💌`);
                         } else {
-                            await message.channel.send(`⚠️ Broadcast complete, but unable to deliver any DMs. Recipients likely have their DMs closed.`);
+                            await message.channel.send(`⚠️ Broadcast complete, but unable to deliver DMs.`);
                         }
                     } catch (timeoutErr) {
                         await previewMsg.edit({ content: '⏳ DM confirmation timed out. Broadcast aborted.', components: [] });
@@ -556,6 +558,9 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
             }
         }
 
+        // ─────────────────────────────────────────────────────────────
+        // 🚀 4. GENERAL AI CONVERSATION (Strict Separation)
+        // ─────────────────────────────────────────────────────────────
         try {
             await message.channel.sendTyping();
 
@@ -574,9 +579,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
             try {
                 if (hasStrictGameIntent) {
                     gameResult = gameDomainRouter.route(cleanText, recentContext);
-                    console.log(`[GAME ROUTER] input="${cleanText}" intent=${gameResult.intent} resolved=${gameResult.resolved}`);
-                } else {
-                    console.log(`[GAME ROUTER SKIPPED] Non-game casual input detected.`);
                 }
             } catch (err) {
                 console.error('❌ [GAME ROUTER ERROR]', err);
@@ -646,7 +648,7 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                 else if (currentDay === 'Thu') activeEvent = '⚙️ Clan Clash Prep Day (Players must save their formations)';
                 else if (['Fri', 'Sat', 'Sun'].includes(currentDay)) activeEvent = '⚔️ Clan Clash PvP (Players must fight 3 battles today)';
 
-                let aiPromptContent = `[SYSTEM EVENT STATUS: Today is ${currentDay} in India. The current active clan event is: ${activeEvent}. If the user asks what to do today, refer to this event.]\n\n${cleanText}`;
+                let aiPromptContent = `[SYSTEM EVENT STATUS: Today is ${currentDay} in India. Current event: ${activeEvent}.]\n\n${cleanText}`;
 
                 if (gameResult.context) {
                     const compressedContext = typeof gameResult.context === 'object'
@@ -656,17 +658,18 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                         ? JSON.stringify(compressedContext)
                         : compressedContext;
 
-                    aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question. Compare the stats directly and provide strategic advice based ONLY on these numbers. Do not invent abilities or stats.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${aiPromptContent}`;
+                    aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${aiPromptContent}`;
                 }
 
+                // 🛡️ CRITICAL FIX: Only actual Discord @mentions are passed in normal chat
                 const directMentions = message.mentions.users
                     .filter(u => u.id !== client.user.id)
                     .map(u => ({ id: u.id, username: u.username }));
-                const textResolvedUsers = resolveMembersFromText(cleanText, message.guild, client.user.id);
-                const mentionMap = new Map();
-                directMentions.forEach(u => mentionMap.set(u.id, u));
-                textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
-                const allMentioned = Array.from(mentionMap.values());
+
+                // Filter out leaked system draft tags from recent chat history
+                const sanitizedChatLog = (chatContextForAI || '')
+                    .replace(/\[SYSTEM INSTRUCTION:.*?\]/gi, '')
+                    .replace(/\[CRITICAL TARGET PING DIRECTIVE:.*?\]/gi, '');
 
                 const turnData = await decisionPipeline.planTurn({
                     userId: message.author.id,
@@ -677,10 +680,10 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     isGroupContext: Boolean(message.guild),
                     mentions: {
                         everyone: message.mentions.everyone,
-                        users: allMentioned
+                        users: directMentions
                     },
                     gameData: gameResult.context,
-                    recentChatLog: chatContextForAI
+                    recentChatLog: sanitizedChatLog
                 });
 
                 const melodyResult = await requestQueue.enqueue(() => melody.generateContent({
@@ -690,9 +693,9 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     channelId: message.channel.id,
                     content: turnData.prompt,
                     isGroupContext: Boolean(message.guild),
-                    mentionedUsers: allMentioned, 
+                    mentionedUsers: directMentions, 
                     knowledgeContext,
-                    recentChatLog: chatContextForAI
+                    recentChatLog: sanitizedChatLog
                 }));
                 
                 aiReply = melodyResult.text;
@@ -708,31 +711,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
             }
 
             let finalReply = aiReply;
-
-            const directMentions = message.mentions.users
-                .filter(u => u.id !== client.user.id)
-                .map(u => ({ id: u.id, username: u.username }));
-            const textResolvedUsers = resolveMembersFromText(cleanText, message.guild, client.user.id);
-            const mentionMap = new Map();
-            directMentions.forEach(u => mentionMap.set(u.id, u));
-            textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
-            const allMentioned = Array.from(mentionMap.values());
-
-            if (allMentioned.length > 0) {
-                allMentioned.forEach(u => {
-                    const cleanUName = u.username.replace(/[^a-zA-Z0-9]/g, '');
-                    const malformedRegex = new RegExp(`<@!?${cleanUName}>`, 'gi');
-                    finalReply = finalReply.replace(malformedRegex, `<@${u.id}>`);
-                    
-                    if (u.matchedName) {
-                        const firstWord = u.matchedName.split(' ')[0].replace(/[^a-zA-Z0-9]/g, '');
-                        if (firstWord.length >= 3) {
-                            const wordRegex = new RegExp(`<@!?${firstWord}>`, 'gi');
-                            finalReply = finalReply.replace(wordRegex, `<@${u.id}>`);
-                        }
-                    }
-                });
-            }
 
             const isCreator = message.author.id === '1369404203880939650';
             const isAdmin = message.member?.roles.cache.has('1372987132855058504');
@@ -1012,23 +990,18 @@ try {
             });
             if (probeResult.status === 200) {
                 console.log('✅ [PROBE] REST API reachable AND token is valid (got 200 from /users/@me).');
-                console.log('✅ [PROBE] This means the network path to Discord works and the token is good — the problem is specific to the WebSocket gateway connection.');
             } else if (probeResult.status === 401) {
                 console.error('❌ [PROBE] REST API reachable but token was REJECTED (401 Unauthorized).');
-                console.error('❌ [PROBE] The token in DISCORD_TOKEN is invalid/revoked. Regenerate it in the Developer Portal and update the Render env var.');
             } else {
                 console.warn(`⚠️ [PROBE] REST API responded with unexpected status ${probeResult.status}:`, probeResult.body.slice(0, 200));
             }
         } catch (probeErr) {
             console.error('❌ [PROBE] Could not reach Discord REST API at all:', probeErr.message);
-            console.error('❌ [PROBE] This points to an outbound network/egress problem on Render, not your code or token.');
         }
     })();
 
     const loginWatchdog = setTimeout(() => {
         console.error('❌ [CRITICAL ERROR] Still not connected 20s after login() was called.');
-        console.error('❌ [LIKELY CAUSE] A privileged intent (e.g. MESSAGE CONTENT) requested in code is not enabled for this bot in the Discord Developer Portal, OR the token is invalid/regenerated.');
-        console.error('❌ [ACTION] Go to https://discord.com/developers/applications -> your app -> Bot -> enable "MESSAGE CONTENT INTENT" (and any other intents you request in code), then redeploy.');
     }, 20000);
 
     client.login(process.env.DISCORD_TOKEN)
