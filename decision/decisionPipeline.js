@@ -10,6 +10,9 @@
  *   🚀 UPGRADE: Trigger Word Tracing - Pipeline logs now reveal exact classifier triggers.
  *   🛡️ FIX: Passed `content` to getWorkingMemory to activate Keyword Overlap Pruning.
  *   🛡️ FIX: Passed `intent` to promptAssembler to activate Dynamic Persona Muting.
+ *   🧠 UPGRADE: Wired in contextBudgetManager — every decision about how much
+ *   long-term memory, chat summary, working-memory window, and final prompt
+ *   ceiling to use now comes from ONE place instead of scattered flags.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -20,6 +23,7 @@ const contextRanker = require('../contextRanker/contextRanker');
 const behaviorEngine = require('../behavior/behaviorEngine');
 const promptAssembler = require('../promptBuilder/promptAssembler');
 const targetResolver = require('./targetResolver');
+const budgetManager = require('../context/contextBudgetManager');
 
 const { compressGameData, deepCompress } = require('../promptBuilder/promptAssembler');
 
@@ -56,6 +60,18 @@ async function planTurn({
       const targetInfo = targetResolver.resolve({ mentions, botUserId: BOT_USER_ID });
       const gameTurn = isGameTurn({ gameData, intent: classification.intent });
 
+      // 🧠 BUDGET DECISION: single source of truth for how much history/memory
+      // this specific turn deserves. Now that real classification is available
+      // (unlike index.js's early content-only estimate), this is the authoritative
+      // profile for the rest of planTurn.
+      const budgetProfile = budgetManager.getBudgetProfile({
+        content,
+        intent: classification.intent,
+        isGameTurn: gameTurn,
+        isModeration: classification.isModeration,
+      });
+      budgetManager.traceBudget(budgetProfile, { channelId, userId });
+
       // 🛡️ FIX: Passed `content` so the memory engine can match keywords!
       const workingMemoryPromise = withTimeout(
         memoryEngine.getWorkingMemory(channelId, content), 
@@ -81,16 +97,19 @@ async function planTurn({
           gameData: optimizedGameData,
           userMessage: content,
           speakerName: displayName,
-          recentChatLog 
+          recentChatLog,
+          maxPromptChars: budgetProfile.maxPromptChars
         });
 
-        console.log(`[PIPELINE TRACE] intent=${classification.intent} trigger="${classification.triggerWord}" route=GameFastLane`);
+        console.log(`[PIPELINE TRACE] intent=${classification.intent} trigger="${classification.triggerWord}" route=GameFastLane tier=${budgetProfile.tier}`);
 
         return { prompt, classification, behaviorDirective: null, emotionalState: null, relationship, channelId, userId };
       }
 
       // --- FULL SOCIAL/BANTER PATH ---
-      const isCasualChat = classification.intent === 'banter' || classification.intent === 'social' || classification.intent === 'UNKNOWN';
+      // 🚀 UPGRADE: Wraps around ONE authority (budgetProfile) instead of an
+      // isCasualChat flag computed separately — the budget manager already
+      // folds in word-count + intent to decide whether this turn is casual.
 
       // 🚀 UPGRADE: Run Emotion calculation and Long-Term Memory fetch in PARALLEL
       const emotionalStatePromise = emotionEngine.updateState({
@@ -100,8 +119,8 @@ async function planTurn({
         isModeration: classification.isModeration,
       }).catch(() => ({ current: 'neutral' }));
 
-      // Only search deep long-term memory if it's not casual chat
-      const longTermPromise = !isCasualChat 
+      // Only search deep long-term memory if the budget profile allows it for this tier
+      const longTermPromise = budgetProfile.useLongTermMemory
         ? withTimeout(memoryEngine.getLongTermCandidates(userId), DB_TIMEOUT_MS, [], 'getLongTermCandidates')
         : Promise.resolve([]);
 
@@ -113,11 +132,16 @@ async function planTurn({
       ]);
 
       // Process and Rank Memories
-      const workingMemory = contextRanker.filterWorkingMemory({ turns: workingMemoryRaw, currentUserId: userId, isGroupContext });
-      const rankedMemories = !isCasualChat ? contextRanker.rankMemories({ currentMessage: content, candidates: longTermCandidates }).slice(0, 6) : [];
+      const workingMemory = contextRanker
+        .filterWorkingMemory({ turns: workingMemoryRaw, currentUserId: userId, isGroupContext })
+        .slice(-budgetProfile.maxWorkingMemoryTurns);
+
+      const rankedMemories = budgetProfile.rankedMemoryCount > 0
+        ? contextRanker.rankMemories({ currentMessage: content, candidates: longTermCandidates }).slice(0, budgetProfile.rankedMemoryCount)
+        : [];
 
       let chatSummary = "";
-      if (!isCasualChat && workingMemoryRaw && workingMemoryRaw.length >= 3) {
+      if (budgetProfile.useChatSummary && workingMemoryRaw && workingMemoryRaw.length >= 3) {
           chatSummary = await withTimeout(
               memoryEngine.generateChatSummary(workingMemoryRaw), 
               DB_TIMEOUT_MS, 
@@ -151,11 +175,12 @@ async function planTurn({
         userMessage: content,
         targetInfo,
         speakerName: displayName,
-        recentChatLog
+        recentChatLog,
+        maxPromptChars: budgetProfile.maxPromptChars
       });
 
-      // 🚀 UPGRADE: Expose the trigger word to your pipeline logs
-      console.log(`[PIPELINE TRACE] intent=${classification.intent} trigger="${classification.triggerWord}" isCasual=${isCasualChat} layers=[classifier,target,relationship,emotion,memory,behavior,assembler]`);
+      // 🚀 UPGRADE: Expose the trigger word AND the budget tier to your pipeline logs
+      console.log(`[PIPELINE TRACE] intent=${classification.intent} trigger="${classification.triggerWord}" tier=${budgetProfile.tier} layers=[classifier,target,relationship,emotion,memory,behavior,assembler]`);
 
       return { prompt, classification, behaviorDirective, emotionalState, relationship, channelId, userId };
 
