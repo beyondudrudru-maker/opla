@@ -5,6 +5,7 @@
  *   Tracks long-term relationship metrics (trust, respect, affection) per user.
  *   🚀 UPGRADE: Maximized Creator baseline stats to match the devoted persona.
  *   🚀 UPGRADE: Added severe penalty events for flirting and hostility.
+ *   🚀 UPGRADE: Added processIntent() to automatically trigger database penalties.
  */
 
 const db = require('../database/supabaseClient');
@@ -108,4 +109,28 @@ async function applyEvent(userId, eventKey) {
   return db.upsertUserProfile(userId, updated);
 }
 
-module.exports = { resolve, applyEvent, TIERS, SALIENT_EVENTS };
+/**
+ * 🚀 UPGRADE: Automatically routes specific classified intents to permanent database penalties.
+ */
+async function processIntent(userId, intent) {
+  if (!intent) return null;
+  const normalizedIntent = intent.toLowerCase();
+
+  try {
+      if (normalizedIntent === 'flirt' && userId !== CREATOR_ID) {
+          return await applyEvent(userId, 'unwanted_flirt');
+      }
+      if (normalizedIntent === 'hostile' || normalizedIntent === 'troll') {
+          return await applyEvent(userId, 'hostile_attack');
+      }
+      if (normalizedIntent === 'jealousy' || normalizedIntent === 'territorial') {
+          return await applyEvent(userId, 'jealousy_trigger');
+      }
+  } catch (error) {
+      console.error(`⚠️ [RELATIONSHIP ENGINE] Failed to process intent penalty:`, error.message);
+  }
+  
+  return null;
+}
+
+module.exports = { resolve, applyEvent, processIntent, TIERS, SALIENT_EVENTS };
