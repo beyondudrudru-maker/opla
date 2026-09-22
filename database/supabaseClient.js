@@ -6,10 +6,16 @@
  *   two separate Supabase projects:
  *
  *     ramClient  -> Project 1 ("RAM"): chat_ram, the lightweight ephemeral
- *                   activity log.
+ *                   activity log. Retention: 5 hours (wiped in index.js).
  *
  *     coreClient -> Project 2 ("Core"): persistent stats, emotions,
  *                   memory, and behavior tables owned by Melody's pipeline.
+ *                   conversation_turns retention: 24 hours (wiped in index.js).
+ *   🛡️ FIX: Added `deleteOldConversationTurns` — index.js was importing and
+ *   calling this function, but it never existed in this file's exports.
+ *   Every call silently threw "not a function" and was swallowed by
+ *   index.js's catch block, meaning conversation_turns was NEVER being
+ *   cleaned up and was growing unbounded since launch.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -129,6 +135,18 @@ async function getRecentTurns(channelId, limit = 12) {
     .slice(-limit);
 }
 
+// 🛡️ FIX: This was missing entirely. index.js has been calling
+// `deleteOldConversationTurns` since launch and getting `undefined`,
+// meaning conversation_turns has never actually been cleaned up.
+async function deleteOldConversationTurns(cutoffIso) {
+  if (coreClient) {
+    const { error } = await coreClient.from('conversation_turns').delete().lt('created_at', cutoffIso);
+    if (error) throw error;
+    return;
+  }
+  coreMemoryStore.conversationTurns = coreMemoryStore.conversationTurns.filter((t) => t.created_at >= cutoffIso);
+}
+
 // 🚀 OPTIMIZED: Dynamic limits and recency ordering
 async function getLongTermMemories(userId, limit = 30) {
   // Absolute safety bound to protect Render RAM
@@ -228,6 +246,7 @@ module.exports = {
   upsertEmotionalState,
   appendConversationTurn,
   getRecentTurns,
+  deleteOldConversationTurns,
   getLongTermMemories,
   addLongTermMemory,
   addModerationFlag,
