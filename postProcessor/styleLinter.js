@@ -8,6 +8,7 @@
  *   🚀 UPGRADE: Identity Prefix Stripper to prevent LLMs from outputting "Melody: ".
  *   🚀 UPGRADE: Dangling XML tag cleanup.
  *   🚀 FIX: String-to-Number Emoji Budget mapper added.
+ *   🛡️ FIX: Mention tag protection to prevent `<@ID>` corruption during cleanup.
  */
 
 const RECENT_REPLY_LIMIT = 8;
@@ -77,7 +78,7 @@ function stripBannedOpenerIfRepeated(channelId, text) {
 
 /**
  * Advanced Regex handles complex emojis and cleans up leftover horizontal whitespace 
- * while strictly preserving vertical line breaks (\n).
+ * while strictly preserving vertical line breaks (\n) and Discord Mention Tags.
  */
 function enforceEmojiBudget(text, numericBudget) {
   const emojiClusterRegex = /(?:\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])\u{FE0F}?(?:\u{200D}(?:\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])\u{FE0F}?)*/gu;
@@ -92,6 +93,7 @@ function enforceEmojiBudget(text, numericBudget) {
   processedText = processedText
     .replace(/ {2,}/g, ' ')               // Only collapse horizontal spaces, NOT new lines!
     .replace(/ +([.,!?])/g, '$1')         // Fix spaces before punctuation (e.g., "Hello ," -> "Hello,")
+    .replace(/<@!?\s+(\d+)>/g, '<@$1>')   // 🛡️ FIX: Protect malformed mention tags 
     .trim();
     
   return processedText;
@@ -110,7 +112,7 @@ function stripReasoning(text) {
     cleanText = cleanText.replace(/<\/(?:think|reasoning|reflection|plan|scratchpad)>/gi, '');
 
     // 🤖 Self-Prefix Hallucination Fix: Removes "Melody:", "**INF AI**:", "[Melody]:"
-    cleanText = cleanText.replace(/^(?:\*\*?(?:Melody|INF AI|Bot)\*\*?\s*:|\[?(?:Melody|INF AI|Bot)\]?\s*:)\s*/i, '');
+    cleanText = cleanText.replace(/^(?:\*\*?(?:Melody|INF AI|Bot)\*\*?\s*:|\[?(?:Melody\vert{}INF AI\vert{}Bot)\]?\s*:)\s*/i, '');
 
     // If the model leaked its "Draft:" section, grab ONLY what comes after "Draft:"
     const draftMatch = cleanText.match(/\bDraft:\s*([\s\S]*)$/i);
