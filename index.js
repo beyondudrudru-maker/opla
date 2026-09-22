@@ -166,16 +166,22 @@ setInterval(async () => {
     } catch (err) { console.error('❌ Cleanup Error:', err); }
 }, 3600000);
 
-// 🚀 CORE DB 3-Day Auto-Cleanup Cron Job
+// 🚀 CORE DB 24-Hour Auto-Cleanup Cron Job
+// 🛡️ FIX: deleteOldConversationTurns was missing from supabaseClient.js
+// entirely, so this job has been silently failing every run since launch —
+// conversation_turns was never actually being pruned. Now fixed, and
+// retention aligned to 24h (was 3 days) to match the short=5hr(chat_ram) /
+// log=24hr(conversation_turns) retention scheme. Checked every 6h so the
+// table stays tightly bounded instead of drifting up to ~30h of data.
 setInterval(async () => {
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     try {
-        await deleteOldConversationTurns(threeDaysAgo);
-        console.log('🧹 [CRON] 3-Day Conversation History pruned from Supabase successfully.');
+        await deleteOldConversationTurns(twentyFourHoursAgo);
+        console.log('🧹 [CRON] 24-Hour Conversation History pruned from Supabase successfully.');
     } catch (err) { 
         console.error('❌ [CRON] Supabase Cleanup Error:', err.message); 
     }
-}, 12 * 60 * 60 * 1000);
+}, 6 * 60 * 60 * 1000);
 
 setInterval(async () => {
     try {
