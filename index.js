@@ -4,7 +4,13 @@ dns.setDefaultResultOrder('ipv4first');
 require('dotenv').config();
 
 // 🚀 UPGRADE: Start the background Deep Clean Cron Job immediately
-require('./cleanDb');
+// 🛡️ FIX: cleanDb.js disabled. Its 3-day full-table wipe (chat_ram AND
+// conversation_turns, no cutoff — deletes everything) is redundant with the
+// rolling-window retention crons below (5h chat_ram, 24h conversation_turns)
+// and actively conflicts with reflectionJob's 24h memory-extraction sweep —
+// a full wipe firing between sweeps can permanently delete conversation
+// history before any long-term memory is ever extracted from it.
+// require('./cleanDb');
 
 const { 
     Client, 
