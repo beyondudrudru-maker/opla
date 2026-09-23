@@ -49,7 +49,9 @@ const TIERS = {
     useChatSummary: false,
     maxWorkingMemoryTurns: 4,
     rankedMemoryCount: 0,
-    maxPromptChars: 8000, // 🚀 UPGRADED: Allows core persona to breathe
+    maxPromptChars: 3500, // 🛡️ RESTORED: root cause (uncapped per-item content
+    // in renderWorkingMemory/renderMemoryBlock) is now fixed, so casual
+    // messages no longer need an inflated ceiling to avoid warnings.
   },
 
   // Normal conversation: real sentences, questions, small talk with substance.
@@ -62,7 +64,7 @@ const TIERS = {
     useChatSummary: false,
     maxWorkingMemoryTurns: 8,
     rankedMemoryCount: 4,
-    maxPromptChars: 12000, // 🚀 UPGRADED: Fits persona + short memory
+    maxPromptChars: 5500, // 🛡️ RESTORED
   },
 
   // Long/complex asks: explain, code, essay, multi-turn planning, anything
@@ -76,7 +78,9 @@ const TIERS = {
     useChatSummary: true,
     maxWorkingMemoryTurns: 10,
     rankedMemoryCount: 6,
-    maxPromptChars: 16000, // 🚀 UPGRADED: Fits heavy task + lore without trimming
+    maxPromptChars: 9000, // 🛡️ RESTORED: still generous for heavy tasks —
+    // real headroom now comes from the per-item caps actually working,
+    // not from an inflated ceiling.
   },
 
   // Kingdom Clash strategy/game queries. These already carry a big
@@ -91,7 +95,10 @@ const TIERS = {
     useChatSummary: false,
     maxWorkingMemoryTurns: 0,
     rankedMemoryCount: 0,
-    maxPromptChars: 18000, // 🚀 UPGRADED: Allows massive GameData dumps safely
+    maxPromptChars: 6500, // 🛡️ RESTORED: GameData itself is separately capped
+    // at 4000 chars inside renderGameContext (GAME_CONTEXT_SOFT_CAP_CHARS),
+    // and this tier carries zero working-memory turns, so 18000 was never
+    // actually needed — it just masked the same uncapped-item issue.
   },
 
   // Moderation / conflict messages: keep it fast and cheap, no memory needed
@@ -105,7 +112,7 @@ const TIERS = {
     useChatSummary: false,
     maxWorkingMemoryTurns: 2,
     rankedMemoryCount: 0,
-    maxPromptChars: 8000, // 🚀 UPGRADED
+    maxPromptChars: 3000, // 🛡️ RESTORED — this tier is meant to be fast/cheap
   },
 };
 
