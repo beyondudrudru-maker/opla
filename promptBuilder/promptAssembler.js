@@ -56,17 +56,36 @@ function renderRelationshipFraming(relationship = {}) {
   return `<UserContext tier="${tier}" familiarity="${familiarity}" />`;
 }
 
+// 🛡️ FIX: Per-item char cap added. Previously only the ARRAY was capped
+// (slice(0,10)), never each memory's `content` length — a single
+// unexpectedly long memory (e.g. a bad extraction) could blow the whole
+// prompt budget on its own. 220 chars is plenty for a durable fact/tag.
+const MEMORY_ITEM_CHAR_CAP = 220;
+
 function renderMemoryBlock(memories) {
   if (!Array.isArray(memories) || memories.length === 0) return '';
 
   const content = memories
     .slice(0, 10)
-    .map(m => sanitize(m?.content))
+    .map(m => {
+      const raw = sanitize(m?.content) || '';
+      return raw.length > MEMORY_ITEM_CHAR_CAP ? raw.slice(0, MEMORY_ITEM_CHAR_CAP) + '…' : raw;
+    })
     .filter(Boolean)
     .join(' | ');
 
   return content ? `<LongTermMemory>\n${content}\n</LongTermMemory>` : '';
 }
+
+// 🛡️ FIX: Per-turn char cap added. This was the actual root cause of the
+// recurring prompt bloat (see [PROMPT ASSEMBLER] overage warnings even after
+// full DB wipes): Melody's own past replies get stored in conversation_turns
+// at their FULL length (up to ~1950 chars per Discord message), and this
+// function only capped the turn COUNT (slice(-10)), never each turn's
+// content length. A handful of long melody replies sitting in the working-
+// memory window could alone exceed the tier's entire prompt budget — no
+// amount of DB wiping fixes this, it just refills within a few messages.
+const WORKING_MEMORY_ITEM_CHAR_CAP = 220;
 
 function renderWorkingMemory(workingMemory) {
   if (!Array.isArray(workingMemory) || workingMemory.length === 0) return '';
@@ -75,7 +94,11 @@ function renderWorkingMemory(workingMemory) {
     .slice(-10)
     .map(t => {
       const roleName = t.role === 'melody' ? 'Melody' : (t.playerName || t.name || 'User');
-      return `[${roleName}]: ${sanitize(t.content)}`;
+      const raw = sanitize(t.content) || '';
+      const content = raw.length > WORKING_MEMORY_ITEM_CHAR_CAP
+        ? raw.slice(0, WORKING_MEMORY_ITEM_CHAR_CAP) + '…'
+        : raw;
+      return `[${roleName}]: ${content}`;
     })
     .join('\n');
 
