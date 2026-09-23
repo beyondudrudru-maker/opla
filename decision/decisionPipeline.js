@@ -13,6 +13,7 @@
  *   🧠 UPGRADE: Wired in contextBudgetManager — every decision about how much
  *   long-term memory, chat summary, working-memory window, and final prompt
  *   ceiling to use now comes from ONE place instead of scattered flags.
+ *   🚀 UPGRADE: Dynamic Architecture Path tracing added for Render logs.
  */
 
 const intentClassifier = require('../classifier/intentClassifier');
@@ -102,6 +103,7 @@ async function planTurn({
         });
 
         console.log(`[PIPELINE TRACE] intent=${classification.intent} trigger="${classification.triggerWord}" route=GameFastLane tier=${budgetProfile.tier}`);
+        console.log(`[ARCHITECTURE PATH] intentClassifier ➔ targetResolver ➔ gameFastLane ➔ promptAssembler`);
 
         return { prompt, classification, behaviorDirective: null, emotionalState: null, relationship, channelId, userId };
       }
@@ -181,6 +183,17 @@ async function planTurn({
 
       // 🚀 UPGRADE: Expose the trigger word AND the budget tier to your pipeline logs
       console.log(`[PIPELINE TRACE] intent=${classification.intent} trigger="${classification.triggerWord}" tier=${budgetProfile.tier} layers=[classifier,target,relationship,emotion,memory,behavior,assembler]`);
+
+      // 🚀 ARCHITECTURE TRACE: Track exactly which engines touched this prompt
+      const activeLayers = ['intentClassifier', 'targetResolver', 'relationshipEngine', 'emotionEngine'];
+      
+      if (budgetProfile.useLongTermMemory) activeLayers.push('memoryEngine (Fetch)');
+      if (budgetProfile.rankedMemoryCount > 0) activeLayers.push('contextRanker');
+      if (budgetProfile.useChatSummary) activeLayers.push('chatSummarizer');
+      
+      activeLayers.push('behaviorEngine', 'promptAssembler');
+
+      console.log(`[ARCHITECTURE PATH] ${activeLayers.join(' ➔ ')}`);
 
       return { prompt, classification, behaviorDirective, emotionalState, relationship, channelId, userId };
 
