@@ -243,7 +243,10 @@ async function generateContent(turn) {
       cleanedText = cleanedText.replace(/^(Thinking Process:|Here's a thinking process:|Let me think|Let's see\.\.\.|\*Thinking\*)[\s\S]*?(?=\n\n|\n-|\n•|[A-Z])/i, '').trim();
 
       let scrubbedText = stripLeakedReasoning(cleanedText);
-      scrubbedText = scrubbedText.replace(/\[(?:EMOTION\vert{}REL\vert{}WM):.*?\]/gi, '').trim();
+      // 🛡️ FIX: Was `\[(?:EMOTION\vert{}REL\vert{}WM:).*?\]` — `\vert{}` is not
+      // regex alternation, it was a stray artifact. Leaked debug tags like
+      // [EMOTION:...], [REL:...], [WM:...] were NEVER actually being stripped.
+      scrubbedText = scrubbedText.replace(/\[(?:EMOTION|REL|WM):.*?\]/gi, '').trim();
       if (scrubbedText.endsWith(']')) scrubbedText = scrubbedText.slice(0, -1).trim();
 
       if (scrubbedText !== '' && gatekeeperLint(scrubbedText)) {
