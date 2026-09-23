@@ -8,9 +8,8 @@
  * 🚀 UPGRADE: Pre-compiled regex with \b (Word Boundaries) for max CPU performance.
  * 🚀 UPGRADE: Now extracts and returns the exact `triggerWord` for easy debugging.
  * 🛡️ FIX: Added missing TROLL and TERRITORIAL logic to match INTENTS dictionary.
- * 🚀 UPGRADE: Expanded Hinglish and Gen-Z slang for better Flirt/Troll detection.
- * 🚀 UPGRADE: Mid-sentence question detection for accurate factual routing.
- * 🚀 UPGRADE: Expanded HARD_DOMAINS to catch politics and history.
+ * ❤️ UPGRADE: Massively expanded Flirt/Romance vocabulary (Hinglish + Gen-Z).
+ * 🧠 UPGRADE: Separated emotional sadness from romantic expressions.
  */
 
 const INTENTS = Object.freeze({
@@ -31,23 +30,24 @@ const INTENTS = Object.freeze({
 });
 
 const HEAVY_ACTIONS = /\b(explain|analyze|compare|summary|summarize|translate|solve|debug)\b/i;
-// Added history, politics, elections, science to trigger objective persona overrides
 const HARD_DOMAINS = /\b(code|python|javascript|c\+\+|html|css|hardware|specs|math|calculate|database|algorithm|architecture|geopolitics|politics|history|elections|science|physics|thesis)\b/i;
 const SOFT_DOMAINS = /\b(bhajan|lyrics|song|poem|mantra)\b/i;
 
 const GAME_KEYWORDS = /\b(kingdom clash|troop|troops|hero|heroes|anavin|trishtan|arena|gold farming|gem farming|synergy|stats|damage|hp|defense|ability|talent|boss raid)\b/i;
 
-// Added ask, tell, say, send to catch cross-channel routing commands
 const COMMAND_PATTERN = /^(ban|kick|mute|delete|fix|solve|generate|write|announce|event|dm|ping|ask|tell|say|send)\b/i;
 const CASUAL_KEYWORDS = /\b(hi|hello|hey|morning|night|lol|lmao|bye|test|yo|kaise|wassup|sup|gm|gn)\b/i;
 const MODERATION_KEYWORDS = /\b(kys|kill yourself|slur|nsfw|raid|spam|nuke)\b/i;
-const EMOTIONAL_KEYWORDS = /\b(sad|depressed|anxious|scared|worried|lonely|love you|miss you|hurt|crying|tired of|can't sleep)\b/i;
 
-// Re-structured to catch WH-words and Hinglish question words anywhere in the string, not just at the start
+// Removed romantic terms from here so they route to FLIRT instead
+const EMOTIONAL_KEYWORDS = /\b(sad|depressed|anxious|scared|worried|lonely|miss you|hurt|crying|tired of|can't sleep)\b/i;
+
 const QUESTION_PATTERN = /^(is|are|do|does|did|will|can you|could you)\b|\b(who|what|when|where|why|how|kya|kyu|kyo|kaun|kab|kaha|kidhar|kisne)\b(?!.*\b(ho)\b)|\?$|^(tell me|give me|show me|list|name|recommend|suggest)\b/i;
 const VS_PATTERN = /\b(vs|versus)\b/i; 
 
-const FLIRT_KEYWORDS = /\b(cute|hot|kiss me|hug me|marry me|set ho jayegi|pat jayegi|cutie|hottie|jaan|meri jaan|hot lag rahi|baby|babe|sexy|daddy|mommy)\b/i;
+// 🚀 UPGRADE: Hyper-expanded romantic and flirty triggers (Hinglish + Global)
+const FLIRT_KEYWORDS = /\b(cute|hot|kiss|hug me|marry me|set ho jayegi|pat jayegi|cutie|hottie|jaan|meri jaan|hot lag rahi|baby|babe|sexy|daddy|mommy|bebu|ily|love you|muah|cuddle|romantic|handsome|gorgeous|beautiful)\b/i;
+
 const JEALOUSY_KEYWORDS = /\b(other girl|another girl|baddie|sidekick|cheat|dhoka|replace|steal him|teri sautan|body count)\b/i;
 const HOSTILE_KEYWORDS = /\b(stfu|dumb|idiot|shut up|loser|pagal|aukat|chup|bakwas|bitch)\b/i;
 
