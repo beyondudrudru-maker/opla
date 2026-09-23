@@ -2,6 +2,10 @@ const dns = require('node:dns');
 dns.setDefaultResultOrder('ipv4first');
 
 require('dotenv').config();
+
+// 🚀 UPGRADE: Start the background Deep Clean Cron Job immediately
+require('./cleanDb');
+
 const { 
     Client, 
     GatewayIntentBits, 
@@ -58,7 +62,6 @@ const adminCooldown = new Set();
 // ─────────────────────────────────────────────────────────────
 // 🔍 Helper: Fuzzy & Normalized Member Name Resolver
 // ─────────────────────────────────────────────────────────────
-// 🚀 UPGRADE: Added pet names, Hinglish slangs, and common conversational words to prevent false member triggers
 const COMMON_IGNORE_WORDS = new Set([
     'alert', 'them', 'play', 'complete', 'their', 'clan', 'clash', 'battle', 
     'tell', 'with', 'about', 'from', 'this', 'that', 'here', 'there', 'what',
@@ -166,13 +169,6 @@ setInterval(async () => {
     } catch (err) { console.error('❌ Cleanup Error:', err); }
 }, 3600000);
 
-// 🚀 CORE DB 24-Hour Auto-Cleanup Cron Job
-// 🛡️ FIX: deleteOldConversationTurns was missing from supabaseClient.js
-// entirely, so this job has been silently failing every run since launch —
-// conversation_turns was never actually being pruned. Now fixed, and
-// retention aligned to 24h (was 3 days) to match the short=5hr(chat_ram) /
-// log=24hr(conversation_turns) retention scheme. Checked every 6h so the
-// table stays tightly bounded instead of drifting up to ~30h of data.
 setInterval(async () => {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     try {
@@ -260,13 +256,6 @@ client.on(Events.MessageCreate, async (message) => {
     let recentContext = '';
     let chatContextForAI = '';
 
-    // 🧠 BUDGET-AWARE HISTORY FETCH
-    // Intent classification hasn't happened yet at this point (it happens later,
-    // inside decisionPipeline), so this is a content-only estimate: word count +
-    // regex signals decide CASUAL vs STANDARD vs HEAVY. That alone is enough to
-    // stop a "hello" from ever pulling 50 rows and building a 100K-char string,
-    // which is exactly what was happening before (see the 114,513 char prompt
-    // in the logs for the "hello" banter case).
     const earlyWordCount = message.content.trim().split(/\s+/).filter(Boolean).length;
     const earlyProfile = budgetManager.getBudgetProfile({
         content: message.content,
@@ -281,14 +270,8 @@ client.on(Events.MessageCreate, async (message) => {
             .limit(earlyProfile.fetchHistoryLimit);
             
         if (data && data.length > 0) {
-            // Used as-is (not budget-trimmed) for gold/gem/difficulty trigger
-            // scanning below — those just need a small recent window, not a
-            // prompt-safe string.
             sharedHistory = data;
             recentContext = data.slice(0, 3).map(r => r.message_content).join(' ');
-
-            // Budget-capped join: respects per-message and total char caps for
-            // whatever tier this message landed in.
             chatContextForAI = budgetManager.buildChatLog(data, earlyProfile);
         }
     } catch (err) {
@@ -408,7 +391,6 @@ client.on(Events.MessageCreate, async (message) => {
             const mentionMap = new Map();
             directMentions.forEach(u => mentionMap.set(u.id, u));
 
-            // Only run fuzzy search during explicit announcements/routing!
             const textResolvedUsers = resolveMembersFromText(flattenedCleanText, message.guild, client.user.id);
             textResolvedUsers.forEach(u => mentionMap.set(u.id, u));
 
@@ -687,12 +669,10 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${aiPromptContent}`;
                 }
 
-                // 🛡️ CRITICAL FIX: Only actual Discord @mentions are passed in normal chat
                 const directMentions = message.mentions.users
                     .filter(u => u.id !== client.user.id)
                     .map(u => ({ id: u.id, username: u.username }));
 
-                // Filter out leaked system draft tags from recent chat history
                 const sanitizedChatLog = (chatContextForAI || '')
                     .replace(/\[SYSTEM INSTRUCTION:.*?\]/gi, '')
                     .replace(/\[CRITICAL TARGET PING DIRECTIVE:.*?\]/gi, '');
@@ -727,12 +707,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                 aiReply = melodyResult.text;
                 modelUsed = melodyResult.modelUsed;
                 debug = melodyResult.debug;
-
-                // 🛡️ FIX: Removed duplicate finalizeTurn call here.
-                // melody.generateContent() (in api/gemini.js) already calls
-                // decisionPipeline.finalizeTurn() internally at the end of every
-                // generation, so calling it again here was writing every
-                // casual/social turn into conversation_turns TWICE.
             }
 
             let finalReply = aiReply;
