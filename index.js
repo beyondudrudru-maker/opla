@@ -660,13 +660,20 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                 pipelineUsed = 'decisionPipeline';
                 let knowledgeContext = knowledgeRetrieval.retrieve(cleanText, { rawGoldData, rawGemData });
 
-                const currentDay = new Date().toLocaleString('en-US', { weekday: 'short', timeZone: 'Asia/Kolkata' });
-                let activeEvent = 'None';
-                if (['Mon', 'Tue', 'Wed'].includes(currentDay)) activeEvent = '🛡️ Glorious Boss Hunt (Players must use 3 daily attacks)';
-                else if (currentDay === 'Thu') activeEvent = '⚙️ Clan Clash Prep Day (Players must save their formations)';
-                else if (['Fri', 'Sat', 'Sun'].includes(currentDay)) activeEvent = '⚔️ Clan Clash PvP (Players must fight 3 battles today)';
+                let aiPromptContent = cleanText;
 
-                let aiPromptContent = `[SYSTEM EVENT STATUS: Today is ${currentDay} in India. Current event: ${activeEvent}.]\n\n${cleanText}`;
+                // 🚀 FIX: Sirf tabhi event status inject hoga jab user game ya strategy ki baat karega!
+                const isGameOrStrategyTalk = /\b(boss|hunt|attack|clan clash|pvp|strategy|quest|game)\b/i.test(cleanText);
+
+                if (isGameOrStrategyTalk) {
+                    const currentDay = new Date().toLocaleString('en-US', { weekday: 'short', timeZone: 'Asia/Kolkata' });
+                    let activeEvent = 'None';
+                    if (['Mon', 'Tue', 'Wed'].includes(currentDay)) activeEvent = '🛡️ Glorious Boss Hunt (Players must use 3 daily attacks)';
+                    else if (currentDay === 'Thu') activeEvent = '⚙️ Clan Clash Prep Day (Players must save their formations)';
+                    else if (['Fri', 'Sat', 'Sun'].includes(currentDay)) activeEvent = '⚔️ Clan Clash PvP (Players must fight 3 battles today)';
+
+                    aiPromptContent = `[SYSTEM EVENT STATUS: Today is ${currentDay} in India. Current event: ${activeEvent}.]\n\n${cleanText}`;
+                }
 
                 if (gameResult.context) {
                     const compressedContext = typeof gameResult.context === 'object'
