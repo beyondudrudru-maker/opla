@@ -9,9 +9,9 @@
  *   🚀 UPGRADE: Strict Prompt Budgeting using safeTruncate to prevent 413/400 errors.
  *   🚀 UPGRADE: Intent-Based Context Isolation to stop game hallucinations in normal chats.
  *   🚀 UPGRADE: Dynamic Persona Muting for factual/technical intents.
- *   🛡️ UPGRADE: Hard Character Ceiling (Max 8,000 chars) to completely eliminate 413 Payload Too Large errors.
+ *   🛡️ UPGRADE: Hard Character Ceiling (Max 16,000 chars) to comfortably fit complex tasks.
  *   🧠 UPGRADE: Hard ceiling is now configurable via `maxPromptChars`, driven by
- *   context/contextBudgetManager. The 8,000 constant below is only the
+ *   context/contextBudgetManager. The 16,000 constant below is only the
  *   fallback default for any caller that doesn't pass a budget profile.
  */
 
@@ -454,7 +454,7 @@ function renderGameContext(gameData, userMessage) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Fallback default only — real callers (decisionPipeline.js) pass
 // maxPromptChars from contextBudgetManager's per-tier profile instead.
-const MAX_PROMPT_CHARS = 8000;
+const MAX_PROMPT_CHARS = 16000;
 
 function assembleLean({ intent, relationship, gameData, userMessage, targetInfo, speakerName, recentChatLog, maxPromptChars = MAX_PROMPT_CHARS }) {
   const currentIntent = String(intent || '').toLowerCase();
@@ -514,7 +514,7 @@ function assemble({
   const finalPrompt = promptBlocks.filter(Boolean).join('\n');
 
   // 🛡️ HARD CEILING GUARD: Trims oldest blocks if total prompt exceeds the
-  // budget-provided ceiling (falls back to 8,000 chars if none was passed).
+  // budget-provided ceiling (falls back to 16,000 chars if none was passed).
   if (finalPrompt.length > maxPromptChars) {
       console.warn(`⚠️ [PROMPT ASSEMBLER] Prompt exceeded ${maxPromptChars} chars (${finalPrompt.length}). Hard trimming from top...`);
       return finalPrompt.substring(finalPrompt.length - maxPromptChars);
