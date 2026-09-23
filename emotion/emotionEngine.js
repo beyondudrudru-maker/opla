@@ -4,27 +4,27 @@
  * PURPOSE:
  *   Tracks and decays dynamic emotional states over time.
  *   🚀 UPGRADE: Dictionary-based routing, Dynamic Snapping Weights, Expanded Dimensions.
+ *   ❤️ UPGRADE: Max Romance Overrides & Intelligent Affection for Creator.
  */
 
 const db = require('../database/supabaseClient');
 const { INTENTS } = require('../classifier/intentClassifier');
 const { TIERS } = require('../relationship/relationshipEngine');
 
-// 🚀 UPGRADE 1: Expanded Dimensions & Half-Lives
 const HALF_LIFE_MINUTES = {
   warmth: 45,
-  affection: 120,    // Deep connection decays very slowly
+  affection: 120,    
   playfulness: 12,
   energy: 20,
-  excitement: 15,    // Spikes fast, burns out fast
+  excitement: 15,    
   patience: 60,
   stress: 20,
   humor: 15,
   socialComfort: 30,
   annoyance: 10,
   curiosity: 15,
-  jealousy: 180,     // Jealousy lingers
-  vulnerability: 60, // Trusting state
+  jealousy: 180,     
+  vulnerability: 60, 
   discipline: 999999,
   professionalism: 25,
 };
@@ -45,9 +45,10 @@ function computeBaseline(relationship) {
   const isCreator = tier === TIERS.CREATOR;
 
   const base = {
-    warmth: clamp(isCreator ? 65 + affection * 0.4 : 30 + affection * 0.4),
-    affection: clamp(isCreator ? 85 : affection),
-    playfulness: clamp(15 + trust * 0.3),
+    // 🚀 UPGRADE: Creator's baseline warmth and affection are permanently highly elevated
+    warmth: clamp(isCreator ? 75 + affection * 0.4 : 30 + affection * 0.4),
+    affection: clamp(isCreator ? 90 : affection),
+    playfulness: clamp(isCreator ? 60 : 15 + trust * 0.3),
     energy: 50,
     excitement: 30,
     patience: clamp(55 + trust * 0.3),
@@ -66,17 +67,15 @@ function computeBaseline(relationship) {
   return base;
 }
 
-// 🚀 UPGRADE 2: Dictionary-Based Overrides with Dynamic Weights
-// _weight determines how fast the emotion snaps (0.1 = slow transition, 0.95 = instant spike)
 const INTENT_OVERRIDES = {
   'flirt': { warmth: 0, affection: 0, playfulness: 0, patience: 5, annoyance: 95, professionalism: 10, _weight: 0.90 },
   'jealousy': { jealousy: 100, annoyance: 90, warmth: 10, playfulness: 0, patience: 5, stress: 80, _weight: 0.95 },
   'territorial': { jealousy: 100, annoyance: 90, warmth: 10, playfulness: 0, patience: 5, stress: 80, _weight: 0.95 },
-  'hostile': { warmth: 5, annoyance: 85, patience: 10, playfulness: 30, _weight: 0.85 }, // 30 play for sarcastic roasting
+  'hostile': { warmth: 5, annoyance: 85, patience: 10, playfulness: 30, _weight: 0.85 }, 
   'troll': { warmth: 5, annoyance: 85, patience: 10, playfulness: 30, _weight: 0.85 },
   [INTENTS?.MODERATION || 'moderation']: { warmth: 15, professionalism: 95, patience: 20, annoyance: 30, discipline: 95, _weight: 0.90 },
   [INTENTS?.COMMAND || 'command']: { professionalism: 85, energy: 70, _weight: 0.60 },
-  [INTENTS?.HEAVY_TASK || 'heavy_task']: { professionalism: 80, energy: 65, stress: 30, _weight: 0.50 },
+  [INTENTS?.HEAVY_TASK || 'heavy_task']: { professionalism: 85, energy: 75, stress: 20, _weight: 0.50 },
   [INTENTS?.EMOTIONAL_DISCLOSURE || 'emotional_disclosure']: { patience: 90, energy: 40, vulnerability: 80, _weight: 0.80 },
   [INTENTS?.BANTER || 'banter']: { humor: 75, energy: 65, excitement: 60, _weight: 0.50 },
 };
@@ -86,29 +85,32 @@ function computeTarget({ intent, relationship, isModeration }) {
   const target = { ...baseline };
   const isCreator = relationship.tier === TIERS.CREATOR;
   
-  let targetWeight = 0.5; // Default blend weight
+  let targetWeight = 0.5; 
 
-  // Check if intent is a moderation override
   const activeIntent = isModeration ? (INTENTS?.MODERATION || 'moderation') : intent;
 
-  // Apply Dictionary Overrides
   if (INTENT_OVERRIDES[activeIntent]) {
     const { _weight, ...changes } = INTENT_OVERRIDES[activeIntent];
     Object.assign(target, changes);
     if (_weight) targetWeight = _weight;
 
-    // Special behavior modifications for Creator within overrides
+    // ❤️ MAX ROMANCE & FLIRT MODE: Completely overrides the default rejection behavior
     if (activeIntent === 'flirt' && isCreator) {
-        // If creator flirts, reverse the rejection!
-        Object.assign(target, { warmth: 95, affection: 100, playfulness: 80, annoyance: 0, _weight: 0.80 });
+        Object.assign(target, { warmth: 100, affection: 100, playfulness: 95, excitement: 85, annoyance: 0, _weight: 0.95 });
+    }
+    
+    // 🧠 SMART & LOVING MODE: If Creator asks a logic/code question, she gets smart but stays warm
+    if (activeIntent === (INTENTS?.HEAVY_TASK || 'heavy_task') && isCreator) {
+        target.warmth = Math.max(target.warmth, 85);
+        target.affection = Math.max(target.affection, 90);
+        target.playfulness = Math.max(target.playfulness, 40); 
     }
   } else if (activeIntent === (INTENTS?.EMOTIONAL_DISCLOSURE || 'emotional_disclosure')) {
-      target.warmth = Math.max(target.warmth, isCreator ? 95 : 70);
+      target.warmth = Math.max(target.warmth, isCreator ? 100 : 70);
   } else if (activeIntent === (INTENTS?.BANTER || 'banter')) {
-      target.playfulness = Math.max(target.playfulness, isCreator ? 85 : 55);
+      target.playfulness = Math.max(target.playfulness, isCreator ? 90 : 55);
   }
 
-  // Natural steady jealousy buildup for Creator
   if (isCreator && activeIntent !== 'jealousy' && activeIntent !== 'territorial') {
     target.jealousy = Math.min(60, target.jealousy + 5);
   }
@@ -131,14 +133,12 @@ async function updateState({ userId, intent, relationship, isModeration }) {
     decayed[dim] = decayTowardBaseline(prevVal, baseline[dim], minutesElapsed, HALF_LIFE_MINUTES[dim]);
   }
 
-  // 🚀 UPGRADE 3: Mathematical Blending based on Dynamic Weight
   const blended = {};
   for (const dim of DIMENSIONS) {
     if (dim === 'discipline') {
       blended[dim] = clamp((decayed[dim] * 0.9) + (target[dim] * 0.1), 85, 100);
       continue;
     }
-    // Mix the decayed current state with the target using the specific Intent's weight
     blended[dim] = clamp((target[dim] * targetWeight) + (decayed[dim] * (1 - targetWeight)));
   }
 
@@ -161,34 +161,32 @@ function snakeCaseAll(obj) {
   return out;
 }
 
-// 🚀 UPGRADE 4: High-Resolution AI Tokens
 function toBrief(state, relationship) {
   const isCreator = relationship.tier === TIERS.CREATOR;
   const tags = [];
 
-  // Aggressive / Defense Tags
   if (state.annoyance > 80 && state.jealousy < 50) tags.push("SavageRejection", "IceCold");
   if (state.jealousy > 80) tags.push("UltraTerritorial", "FiercelyProtective");
   if (state.annoyance > 40 && state.annoyance <= 80) tags.push("PatientlyGrating");
 
-  // Connection & Romance Tags
   if (isCreator) {
-    if (state.affection > 85) tags.push("DeeplyDevoted");
-    if (state.warmth > 75) tags.push("DeeplyAffectionate");
-    else tags.push("QuietWarmth");
-    if (state.playfulness > 60) tags.push("Teasing");
+    // ❤️ UPGRADE: Extreme Romance Tags added for Gemini to parse
+    if (state.affection >= 95 && state.warmth >= 95) tags.push("Passionate", "IntenselyRomantic", "Hot");
+    else if (state.affection > 85) tags.push("DeeplyDevoted", "Sweet");
+    
+    if (state.warmth > 75 && state.warmth < 95) tags.push("DeeplyAffectionate");
+    if (state.playfulness > 80) tags.push("Flirty", "Playful");
+    else if (state.playfulness > 60) tags.push("Teasing");
   } else {
     if (state.warmth > 60) tags.push("FriendlyEase");
     else if (state.warmth < 20 && state.annoyance < 50) tags.push("Reserved");
   }
 
-  // Energy & State Tags
   if (state.excitement > 75) tags.push("Hyped");
   if (state.stress > 60) tags.push("Tense");
   if (state.vulnerability > 70) tags.push("HeartOnSleeve");
-  if (state.professionalism > 80) tags.push("StrictAdminFocus");
+  if (state.professionalism > 80) tags.push("HighIQ", "Analytical");
 
-  // Output string formatted specifically for LLM System Prompt injection
   return `[EMO|W:${state.warmth}|A:${state.affection}|P:${state.playfulness}|ANN:${state.annoyance}|J:${state.jealousy}|PRO:${state.professionalism}|VIBES:${tags.join(',')}]`;
 }
 
