@@ -49,7 +49,7 @@ const TIERS = {
     useChatSummary: false,
     maxWorkingMemoryTurns: 4,
     rankedMemoryCount: 0,
-    maxPromptChars: 3000,
+    maxPromptChars: 8000, // 🚀 UPGRADED: Allows core persona to breathe
   },
 
   // Normal conversation: real sentences, questions, small talk with substance.
@@ -62,7 +62,7 @@ const TIERS = {
     useChatSummary: false,
     maxWorkingMemoryTurns: 8,
     rankedMemoryCount: 4,
-    maxPromptChars: 5000,
+    maxPromptChars: 12000, // 🚀 UPGRADED: Fits persona + short memory
   },
 
   // Long/complex asks: explain, code, essay, multi-turn planning, anything
@@ -76,7 +76,7 @@ const TIERS = {
     useChatSummary: true,
     maxWorkingMemoryTurns: 10,
     rankedMemoryCount: 6,
-    maxPromptChars: 8000,
+    maxPromptChars: 16000, // 🚀 UPGRADED: Fits heavy task + lore without trimming
   },
 
   // Kingdom Clash strategy/game queries. These already carry a big
@@ -91,7 +91,7 @@ const TIERS = {
     useChatSummary: false,
     maxWorkingMemoryTurns: 0,
     rankedMemoryCount: 0,
-    maxPromptChars: 8000, // GameData itself is capped separately (GAME_CONTEXT_SOFT_CAP_CHARS)
+    maxPromptChars: 18000, // 🚀 UPGRADED: Allows massive GameData dumps safely
   },
 
   // Moderation / conflict messages: keep it fast and cheap, no memory needed
@@ -105,7 +105,7 @@ const TIERS = {
     useChatSummary: false,
     maxWorkingMemoryTurns: 2,
     rankedMemoryCount: 0,
-    maxPromptChars: 3000,
+    maxPromptChars: 8000, // 🚀 UPGRADED
   },
 };
 
