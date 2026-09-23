@@ -447,12 +447,16 @@ CRITICAL RULES:
 
 Raw Instruction from Admin: "${rawMessagePayload}"`;
 
+                // 🚀 UPGRADE: Passed rawMessage and isSystemDraft flag
                 const melodyResult = await requestQueue.enqueue(() => melody.generateContent({
                     userId: message.author.id,
                     displayName: message.author.username,
                     roles: message.member?.roles.cache.map(r => r.name.toLowerCase()) || [],
                     channelId: message.channel.id,
                     content: aiPrompt,
+                    rawMessage: rawMessagePayload,
+                    isSystemDraft: true,
+                    classification: { intent: 'moderation' },
                     isGroupContext: Boolean(message.guild),
                     mentionedUsers: targetUsers, 
                     knowledgeContext: "",
@@ -692,12 +696,17 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     recentChatLog: sanitizedChatLog
                 });
 
+                // 🚀 UPGRADE: Passed rawMessage, classification, and behaviorDirective cleanly
                 const melodyResult = await requestQueue.enqueue(() => melody.generateContent({
                     userId: message.author.id,
                     displayName: message.author.username,
                     roles,
                     channelId: message.channel.id,
                     content: turnData.prompt,
+                    rawMessage: cleanText,
+                    classification: turnData.classification,
+                    behaviorDirective: turnData.behaviorDirective,
+                    gameData: gameResult.context,
                     isGroupContext: Boolean(message.guild),
                     mentionedUsers: directMentions, 
                     knowledgeContext,
