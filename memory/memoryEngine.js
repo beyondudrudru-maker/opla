@@ -44,7 +44,7 @@ if (groqKey && typeof groqKey === 'string' && groqKey.trim()) {
 // ============================================================
 
 const SESSION_GAP_MINUTES = 45;
-const WORKING_MEMORY_SIZE = 10;
+const WORKING_MEMORY_SIZE = 20; // 🚀 UPGRADED to support HEAVY tiers from budgetManager
 const LONG_TERM_MEMORY_LIMIT = 30;
 const DEFAULT_LTM_MAX_CHARS = 1800;
 
