@@ -10,15 +10,15 @@
  *   - Reasoning leak filtering
  *   - Retry handling
  *   - User-input delimiter sanitization (Untrusted Data Isolation)
+ *   🛡️ FIX: Removed missing fitGameDataToBudget dependency.
  */
 
 const modelRouter = require('../router/modelRouter.js');
 const { stripLeakedReasoning, gatekeeperLint } = require('../postProcessor/leakFilter');
-const { compressGameData, deepCompress, fitGameDataToBudget } = require('../promptBuilder/promptAssembler');
+const { compressGameData, deepCompress } = require('../promptBuilder/promptAssembler');
 const { buildInstruction } = require('./promptInstructions');
 const strategyCache = require('../cache/strategyCache');
 
-const GAME_CONTEXT_SOFT_CAP_CHARS = 6000;
 const MAX_RETRIES = 2;
 
 /* =========================================================
@@ -128,15 +128,12 @@ async function askAI({
   }
 
   /* =======================================================
-     GAME DATA PIPELINE & BUDGET
+     GAME DATA PIPELINE & COMPRESSION
      ======================================================= */
 
+  // 🛡️ FIX: We use deepCompress directly, dropping the missing budget function
   const compressedContext = context ? deepCompress(compressGameData(context)) : null;
-  let gameDataBlock = compressedContext ? JSON.stringify(compressedContext) : 'No exact data found in database.';
-
-  if (compressedContext && gameDataBlock.length > GAME_CONTEXT_SOFT_CAP_CHARS) {
-    gameDataBlock = fitGameDataToBudget(compressedContext, GAME_CONTEXT_SOFT_CAP_CHARS);
-  }
+  const gameDataBlock = compressedContext ? JSON.stringify(compressedContext) : 'No exact data found in database.';
 
   /* =======================================================
      TOKEN / CONTEXT TELEMETRY
