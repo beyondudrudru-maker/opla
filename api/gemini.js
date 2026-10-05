@@ -152,6 +152,128 @@ function gatekeeperLint(text) {
 }
 
 // ============================================================
+// ⚡ RAW FAST LANES (no persona, no emotions, no relationship,
+//    no working memory, no finalizeTurn DB writes)
+//    Used by: !summary, !boss
+// ============================================================
+
+const SUMMARY_SYSTEM_PROMPT = `Summarize this chat objectively.
+Rules: neutral third-person, no persona, no flirting, no opinions. Group by topic. Name who said what when it matters. Max ~10 short bullet points ("•"). Output ONLY the summary. No <think> tags, no preamble.`;
+
+function buildBossFastLaneIdentity() {
+  return `You are a precision strategy data engine for "Kingdom Clash". Produce a boss breakdown from <BossData> ONLY.
+
+[DATA LOCK]
+- Use ONLY names, numbers, tags and text present in <BossData>. Never invent abilities, weaknesses, troops or numbers.
+- If a section has no supporting data, write exactly: • No data available.
+- NEVER output raw database IDs, slugs or internal keys.
+- Never state a rarity unless that exact rarity string is in <BossData>.
+
+[BOSS RULES]
+- Lead each ability with what it DOES, not its stats.
+- Bosses can NEVER be frozen, stunned or pulled. Never recommend crowd-control on a boss.
+- RESISTANCE ROTATES EACH SEASON and the active type is NOT in the data. NEVER claim which type (Melee/Ranged) is currently active. State the rule instead: check the boss's passive card in-game; if Melee is protected lean Ranged DPS, if Ranged is protected lean Melee/Tank.
+- Recommended heroes/troops, exclusions and the F2P note for premium heroes are inside the "[UNIVERSAL BOSS ROSTER & WARNING]" text in the strategy field. Use them for Recommended Troops and F2P Options.
+- Read troop tier priority from bossTroopMeta if present in <BossData>.
+- Do NOT output battle timings or the season-rules list (3 days, 3 tries etc.); timings are appended separately by the bot.
+- HARD EXCLUSIONS: NEVER recommend Harkon, Fire Fury Xana, or Pyrotechnician.
+- Max 1 Mythical hero per formation.
+
+[OUTPUT FORMAT — EXACT ORDER, NO INTRO, NO OUTRO]
+🎯 **Weaknesses**
+• ...
+⚔️ **Active Abilities**
+• **Name** — what it does
+🛡️ **Passive Abilities**
+• **Name** — what it does
+🪖 **Recommended Troops**
+• **Troop** — why it works vs this boss
+🆓 **F2P Options**
+• Free-to-play alternative for each premium pick (or F2P-friendly picks from the data)
+
+[STYLE] Professional, sharp, no fluff. NO markdown tables. Bullets use "•". Bold names. Output ONLY the breakdown. No <think> tags.`;
+}
+
+function cleanFastLaneOutput(raw) {
+  let t = String(raw || '')
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<think>[\s\S]*/gi, '')
+    .replace(/<\/?(?:reasoning|reflection|plan|analysis|scratchpad)>/gi, '')
+    .trim();
+  t = stripLeakedReasoning(t);
+  t = t.replace(/\[(?:EMOTION|REL|WM):.*?\]/gi, '').trim();
+  return t;
+}
+
+/**
+ * Generic fast lane: ONE router call, zero pipeline overhead, zero DB writes.
+ * Gatekeeper is a soft check (retry once); the last attempt is accepted as long as it is non-empty
+ * so legitimate bullet lists in summaries are never thrown away.
+ */
+async function generateFastLane({ prompt, systemInstruction, intent = 'analysis', label = 'fastLane' }) {
+  if (typeof prompt !== 'string' || prompt.trim() === '') {
+    return { text: '', modelUsed: 'none', debug: { error: 'Empty input' } };
+  }
+  if (geminiKeys.length === 0 && groqKeys.length === 0) {
+    return { text: '', modelUsed: 'fallback', debug: { error: 'No keys found' } };
+  }
+
+  const MAX_ATTEMPTS = 2;
+  let lastText = '';
+  let modelUsed = 'fallback';
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const routerResponse = await modelRouter.generate({
+        classification: { intent },
+        prompt,
+        systemInstruction,
+        geminiKeys,
+        groqKeys
+      });
+      modelUsed = routerResponse?.modelUsed || 'fallback';
+      const cleaned = cleanFastLaneOutput(routerResponse?.result);
+      if (cleaned) {
+        lastText = cleaned;
+        if (sharedGatekeeperLint(cleaned).ok) break;
+        console.warn(`⚠️ [${label}] gatekeeper flagged attempt ${attempt}${attempt < MAX_ATTEMPTS ? ', retrying' : ', accepting'}.`);
+      }
+    } catch (err) {
+      console.error(`❌ [${label}] router error (attempt ${attempt}):`, err.message);
+    }
+  }
+
+  console.log(`[FASTLANE TRACE][${label}] model=${modelUsed} chars=${lastText.length} promptChars=${prompt.length}`);
+  return { text: lastText, modelUsed };
+}
+
+// !summary — messages = array of "Name: text" strings (already trimmed by index.js)
+async function generateSummary({ messages = [], targetName = null }) {
+  if (!Array.isArray(messages) || messages.length === 0) return { text: '', modelUsed: 'none' };
+  const header = targetName
+    ? `Chat log containing ONLY messages from ${targetName}:`
+    : 'Chat log:';
+  return generateFastLane({
+    prompt: `${header}\n${messages.join('\n')}`,
+    systemInstruction: SUMMARY_SYSTEM_PROMPT,
+    intent: 'analysis',
+    label: 'summary'
+  });
+}
+
+// !boss — boss = compact plain object from data (name header is printed by code, not by AI)
+async function generateBossBreakdown({ boss, extraContext = null }) {
+  if (!boss || typeof boss !== 'object') return { text: '', modelUsed: 'none' };
+  const payload = extraContext ? { ...boss, bossTroopMeta: extraContext } : boss;
+  return generateFastLane({
+    prompt: `<BossData>\n${JSON.stringify(payload)}\n</BossData>\n\nWrite the boss breakdown now.`,
+    systemInstruction: buildBossFastLaneIdentity(),
+    intent: 'analysis',
+    label: 'boss'
+  });
+}
+
+// ============================================================
 // MAIN GENERATOR
 // ============================================================
 
@@ -252,7 +374,7 @@ async function generateContent(turn) {
       cleanedText = cleanedText.replace(/^(Thinking Process:|Here's a thinking process:|Let me think|Let's see\.\.\.|\*Thinking\*)[\s\S]*?(?=\n\n|\n-|\n•|[A-Z])/i, '').trim();
 
       let scrubbedText = stripLeakedReasoning(cleanedText);
-      scrubbedText = scrubbedText.replace(/\[(?:EMOTION\vert{}REL\vert{}WM):.*?\]/gi, '').trim();
+      scrubbedText = scrubbedText.replace(/\[(?:EMOTION|REL|WM):.*?\]/gi, '').trim();
       if (scrubbedText.endsWith(']')) scrubbedText = scrubbedText.slice(0, -1).trim();
 
       if (scrubbedText !== '' && gatekeeperLint(scrubbedText)) {
@@ -296,4 +418,4 @@ async function generateContent(turn) {
   }
 }
 
-module.exports = { generateContent, geminiKeys, groqKeys };
+module.exports = { generateContent, generateSummary, generateBossBreakdown, generateFastLane, geminiKeys, groqKeys };
