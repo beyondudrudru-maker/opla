@@ -40,6 +40,7 @@ const bossCommand = require('./commands/bossCommand');
 const { ensureSingleMention, collapseDuplicateMentions } = require('./utils/mentionGuard');
 const { replyChunked } = require('./utils/replyChunked');
 const { FAST_CMD_REGEX, SUMMARY_CMD, EVENT_CMD, bossLabel, summaryLabel } = require('./commands/commandConfig');
+const { parseSummaryArgs } = require('./commands/summaryArgs');
 const eventState = require('./commands/eventState');
 const eventCommand = require('./commands/eventCommand');
 
@@ -150,10 +151,20 @@ const SUMMARY_MAX_CHARS_PER_MSG = 300;
 const SUMMARY_MAX_TOTAL_CHARS = 12000;
 const FAST_CMD_COOLDOWN_MS = 8000;
 
+// Localized headline (the body is written by the AI in the requested language).
+// Languages not listed here fall back to the English headline.
+const SUMMARY_TITLES = {
+    English:  { channel: n => `📝 **Chat Summary** (last ${n} messages)`,        user: (u, n) => `📝 **Summary of ${u}** (last ${n} messages)` },
+    Hindi:    { channel: n => `📝 **चैट सारांश** (पिछले ${n} संदेश)`,             user: (u, n) => `📝 **${u} का सारांश** (पिछले ${n} संदेश)` },
+    Hinglish: { channel: n => `📝 **Chat Summary** (pichle ${n} messages)`,       user: (u, n) => `📝 **${u} ka Summary** (pichle ${n} messages)` },
+    Spanish:  { channel: n => `📝 **Resumen del chat** (últimos ${n} mensajes)`,  user: (u, n) => `📝 **Resumen de ${u}** (últimos ${n} mensajes)` },
+    French:   { channel: n => `📝 **Résumé du chat** (${n} derniers messages)`,   user: (u, n) => `📝 **Résumé de ${u}** (${n} derniers messages)` },
+    German:   { channel: n => `📝 **Chat-Zusammenfassung** (letzte ${n} Nachrichten)`, user: (u, n) => `📝 **Zusammenfassung von ${u}** (letzte ${n} Nachrichten)` },
+};
+
 async function handleSummaryCommand(message, argText) {
-    const targetMatch = argText.match(/<@!?(\d+)>/);
-    let targetId = targetMatch ? targetMatch[1] : null;
-    if (targetId === client.user.id) targetId = null; // "!summary @Melody" = whole channel
+    // "!summary [language] [@user]" — order-independent; a mention of the bot itself = whole channel
+    const { targetId, language } = parseSummaryArgs(argText, { botId: client.user.id });
 
     await message.channel.sendTyping().catch(() => {});
 
@@ -193,12 +204,13 @@ async function handleSummaryCommand(message, argText) {
         ? (message.guild?.members.cache.get(targetId)?.displayName || data?.[0]?.player_name || 'that user')
         : null;
 
-    const result = await requestQueue.enqueue(() => melody.generateSummary({ messages: lines, targetName }));
+    const result = await requestQueue.enqueue(() => melody.generateSummary({ messages: lines, targetName, language }));
     if (!result?.text) {
         return message.reply('⚠️ I could not generate a summary right now. Try again in a moment.').catch(() => {});
     }
 
-    const title = targetName ? `📝 **Summary of ${targetName}** (last ${lines.length} messages)` : `📝 **Chat Summary** (last ${lines.length} messages)`;
+    const L = SUMMARY_TITLES[language] || SUMMARY_TITLES.English;
+    const title = targetName ? L.user(targetName, lines.length) : L.channel(lines.length);
     // No pings from summaries: allowedMentions.parse = []
     return replyChunked(message, `${title}\n\n${result.text}`);
 }
