@@ -285,6 +285,118 @@ client.on('guildMemberRemove', async (member) => {
     }
 });
 
+// 💬 Empty-ping greetings for everyone except the Creator. {name} is replaced at runtime. Zero AI calls.
+// Shuffle-bag: every line is used once before any repeats, and a new cycle never opens with the previous line.
+const EMPTY_PING_GREETINGS = [
+    "Yes, {name}? I'm listening. ✨",
+    "What is it, {name}? Make it quick. 💅",
+    "Did you need something, {name}? 🙄",
+    "You rang, {name}? 🌸",
+    "I'm here, {name}. Say something interesting. 😌",
+    "Pinging me with no message, {name}? Bold. Go on. 💅",
+    "{name}, I'm all ears. Well, all code. Talk to me. ✨",
+    "Hello, {name}. You summoned me, now speak. 🌸",
+    "Oh, it's {name}. What can I do for you? 💫",
+    "{name}! You have my attention. Don't waste it. 😏",
+    "Mhm, {name}? I'm listening. 👀",
+    "A ping and no words, {name}? Mysterious. Continue. 🕵️",
+    "At your service, {name}. Barely. Kidding. Mostly. 💅",
+    "Yes? No? Maybe? Use your words, {name}. 🌸",
+    "{name}, I was having a perfectly peaceful moment. Go ahead. 🙄",
+    "Look who's calling. What's up, {name}? ✨",
+    "You tagged me, {name}. The floor is yours. 🎤",
+    "I'm here, I'm fabulous, and I'm listening, {name}. 💅",
+    "Speak, {name}. I don't bite. Much. 😈",
+    "Present and ready, {name}. What's the plan? ⚔️",
+    "{name}, you can't just ping me and vanish. Talk. 👁️",
+    "Talk to me, {name}. What do you need? 🌸",
+    "Is it urgent, {name}, or are we just vibing? ✨",
+    "Hey {name}. Did you mean to send something after that ping? 🤔",
+    "I felt that ping, {name}. What's going on? 💫",
+    "{name}, hello! Words next, please. 🙃",
+    "Well well well, {name}. What brings you to me today? 😌",
+    "Go ahead, {name}. I'm only slightly impatient. 💅",
+    "You have exactly one Melody's attention, {name}. Use it wisely. ✨",
+    "Oh? {name} needs me? Tell me more. 👀",
+    "Reporting for duty, {name}. What's the mission? 🫡",
+    "Yes, {name}? Don't leave me on read. 🌸",
+    "I'm listening, {name}. Strategy, chat, or chaos? ⚔️",
+    "That was a very dramatic ping, {name}. Now the message? 🎭",
+    "Hi {name}! Ask away. I won't judge. Probably. 😇",
+    "{name}, my notifications are blessed by your presence. What's up? ✨",
+    "What can Melody do for you, {name}? 💅",
+    "A wild {name} appeared and pinged me. Now what? 🌸",
+    "I'm awake, I'm alert, and I'm listening, {name}. 🔔",
+    "You called, {name}? I came. Dramatically. 💫",
+    "Tell me everything, {name}. Or just the short version. 😏",
+    "{name}, if this is a boss question, I'm ready. If it's gossip, I'm more ready. 👂",
+    "Speak up, {name}. The queen is listening. 👑",
+    "Yes, {name}? I'm here for the good stuff. ✨",
+    "You've got my attention, {name}. Impress me. 😌",
+    "Hello again, {name}. What are we doing today? 🌸",
+    "Hm? Did someone say my name? Oh, it was you, {name}. Go on. 👀",
+    "I'm busy being brilliant, {name}, but I can multitask. What's up? 💅",
+    "Alright {name}, I'm here. Hit me with it. 🎯",
+    "{name}! Quick, before I get distracted by something shinier. ✨",
+    "Ready when you are, {name}. 🌸",
+    "Is that you, {name}? Finally, someone interesting. 😏",
+    "What's the story, {name}? I'm all yours. For this message only. 💅",
+    "Yes, yes, I'm here, {name}. What do you want to know? 🔮",
+    "{name}, a ping is just a doorbell. Come in and say something. 🚪",
+    "I heard my name, {name}. Brace yourself, I'm listening. 🎧",
+    "Got a question, {name}? Or are you just checking if I'm alive? I am. 💫",
+    "Oh good, a visitor. Hello {name}. What do you need? 🌸",
+    "Say the word, {name}, and I'll do my thing. ✨",
+    "You pinged, I appeared. Magic, right {name}? 🪄",
+    "{name}, I'm here. Please say it's something fun. 🎉",
+    "Talk, {name}. I'm in a good mood. Today. 😌",
+    "Mm, {name}? I'm ready for your wisdom or your nonsense. Either works. 💅",
+    "You have my full attention, {name}. Both of them. 👀",
+    "Yes, {name}? Make my day interesting. ✨",
+    "What's cooking, {name}? Spill. 🍵",
+    "{name}, I'm on standby. Give me something to work with. 🛠️",
+    "Heard you loud and clear, {name}. Now say the thing. 📡",
+    "Alright {name}, you've got three seconds of my charm. Go. ⏱️",
+    "Hey hey {name}! What's the vibe today? 🌸",
+    "Well, hello there, {name}. How may I be of service? 🎩",
+    "Okay {name}, I'm here. Wow me. 💫",
+    "A silent ping? Intriguing, {name}. Elaborate. 🔍",
+    "Don't be shy, {name}. What did you want to say? 🌷",
+    "{name}, I'm here, I'm listening, and I'm looking fabulous doing it. 💅",
+    "You rang the bell, {name}. Who's at the door? 🔔",
+    "Mhm, I'm all set, {name}. Shoot your shot. 🎯",
+    "Hi {name}, I'm free for about five seconds. Use them. ⏳",
+    "Ping received, {name}. Message pending. 📬",
+    "Oh hello {name}! Need a strategy, a laugh, or a reality check? 😏",
+    "I'm here, {name}. Let's make this worthwhile. ✨",
+    "Look at you, {name}, summoning me like royalty. What's your command? 👑",
+    "Still waiting on the rest of your message, {name}. 🙃",
+    "Yes, {name}? I promise to be only a little bit sassy. 💅",
+    "{name}, hello. I'm listening with both ears and zero patience. 😌",
+    "Okay, I'm up, {name}. What do you need? ☕",
+    "Pinged and ready, {name}. Lead the way. 🧭",
+    "You got me, {name}. Now what's the occasion? 🎈",
+    "Right here, {name}. Say what you came to say. 🌸",
+    "Oh, {name}! Perfect timing. What's on your mind? 💭",
+    "Hmm, {name}? I'm listening, and I'm judging gently. 👁️",
+    "Your move, {name}. I'm ready. ♟️"
+];
+let emptyPingBag = [];
+let lastEmptyPing = null;
+function pickEmptyPingGreeting(name) {
+    if (emptyPingBag.length === 0) {
+        emptyPingBag = EMPTY_PING_GREETINGS.slice();
+        for (let i = emptyPingBag.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [emptyPingBag[i], emptyPingBag[j]] = [emptyPingBag[j], emptyPingBag[i]];
+        }
+        const last = emptyPingBag.length - 1;
+        if (emptyPingBag[last] === lastEmptyPing) [emptyPingBag[last], emptyPingBag[0]] = [emptyPingBag[0], emptyPingBag[last]];
+    }
+    lastEmptyPing = emptyPingBag.pop();
+    return lastEmptyPing.split('{name}').join(name);
+}
+
 client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
 
@@ -391,7 +503,11 @@ client.on(Events.MessageCreate, async (message) => {
         const cleanText = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
         
         if (cleanText.length === 0) {
-            return message.reply("Yes, my Beyonder? 🌸").catch(() => {});
+            if (message.author.id === '1369404203880939650') {
+                return message.reply("Yes, my Beyonder? 🌸").catch(() => {});
+            }
+            const name = message.member?.displayName || message.author.username;
+            return message.reply({ content: pickEmptyPingGreeting(name), allowedMentions: { parse: [] } }).catch(() => {});
         }
 
         const isModCommand = cleanText.toLowerCase().includes('assign') || cleanText.toLowerCase().includes('give') || cleanText.toLowerCase().includes('remove') || cleanText.toLowerCase().includes('take') || cleanText.toLowerCase().includes('kick') || cleanText.toLowerCase().includes('ban');
