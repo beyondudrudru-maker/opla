@@ -24,7 +24,7 @@ const {
 } = require('discord.js');
 const express = require('express');
 
-const { ramClient, deleteOldConversationTurns } = require('./database/supabaseClient');
+const { ramClient, coreClient, deleteOldConversationTurns } = require('./database/supabaseClient');
 const melody = require('./api/gemini');
 const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval');
 const reflectionJob = require('./reflection/reflectionJob');
@@ -267,7 +267,13 @@ setInterval(async () => {
 
 client.on('guildMemberRemove', async (member) => {
     try {
-        const { error } = await ramClient
+        // 🛡️ FIX: conversation_turns lives in the CORE project (coreClient), not the RAM project.
+        // Using ramClient here meant the table never existed there, so leaving members were never wiped.
+        if (!coreClient) {
+            console.warn('⚠️ Core DB not configured — skipping member data wipe.');
+            return;
+        }
+        const { error } = await coreClient
             .from('conversation_turns')
             .delete()
             .eq('user_id', member.id);
