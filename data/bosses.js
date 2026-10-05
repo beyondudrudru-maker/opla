@@ -21,6 +21,53 @@
 
 const bossRosterWarning = "\n\n[UNIVERSAL BOSS ROSTER & WARNING]: Do NOT use Harkon, Fire Fury Xana, or Pyrotechnician. Their talents/abilities do not function or are disabled in boss battles. Recommended Heroes: Lireal, Calyra, Remus, Tristan, Anavin, Drake, Dragon Rider, Bone Dragon. (Remus is a Mythical/premium hero — F2P players should lean on Lireal, Calyra, Tristan, Drake, or Bone Dragon instead.) Recommended Troops: Imp, Alchemist, Bone Breaker, Headless, Storm Mistress, Assassin, Bone Thrower, Archer, Paladin, Axe Thrower.";
 
+// ─────────────────────────────────────────────────────────────
+// ⏱️ MAX-SCORE TIMINGS (single source of truth)
+// Used by: (a) strategy text below (for aiFallback / router consumers)
+//          (b) commands/bossCommand.js (!mboss) which prints them DIRECTLY — never AI-generated.
+// `action: null` = time confirmed from screenshot, attack/ability label not yet confirmed.
+// ─────────────────────────────────────────────────────────────
+const KRAKEN_TIMINGS = {
+  notes: ["Turn OFF Auto Hero Ability!", "Place Bone Dragon at the RIGHT of the formation."],
+  items: [
+    { t: "4:51", action: "Mouth" },     { t: "4:39", action: "Barrel" },
+    { t: "4:24", action: "Tentacles" }, { t: "4:13", action: "Barrel" },
+    { t: "4:03", action: "Tentacles" },
+    { t: "3:40", action: "Tentacles" }, { t: "3:21", action: "Tentacles" },
+    { t: "3:10", action: "Mouth" },     { t: "3:00", action: "Tentacles" },
+    { t: "2:37", action: "Tentacles" }, { t: "2:18", action: "Tentacles" },
+    { t: "2:07", action: "Mouth" },
+    { t: "1:57", action: "Tentacles" },  // was 1:56
+    { t: "1:34", action: "Tentacles" }, { t: "1:15", action: "Tentacles" },
+    { t: "1:04", action: "Mouth" },
+    { t: "0:54", action: "Tentacles" },
+    { t: "0:36", action: "Tentacles" },  // was 0:31
+    { t: "0:24", action: "Mouth" },      // was 0:21
+    { t: "0:11", action: "Tentacles" },
+    { t: "0:01", action: null }          // NEW (screenshot) — label unconfirmed
+  ]
+};
+
+const BALTHAZAR_TIMINGS = {
+  notes: [],
+  items: [
+    { t: "4:51", action: null }, { t: "4:24", action: null }, { t: "4:07", action: null },
+    { t: "3:42", action: null }, { t: "3:24", action: null }
+  ]
+};
+
+function timingsText(tm, label) {
+  const byMin = {};
+  tm.items.forEach(i => {
+    const m = i.t.split(":")[0];
+    (byMin[m] = byMin[m] || []).push(i.action ? `${i.t} ${i.action}` : i.t);
+  });
+  const body = Object.keys(byMin).sort((a, b) => b - a)
+    .map(m => `Minute ${m} (${byMin[m].join(", ")})`).join(", ");
+  const notes = tm.notes.length ? tm.notes.join(" ") + " " : "";
+  return `\n\n[${label} BOSS MAX SCORE TIMINGS]: ${notes}Target Timings: ${body}.`;
+}
+
 const bosses = [
   {
     "name": "KALIDOR",
@@ -104,7 +151,8 @@ const bosses = [
         "damage": 7200
       }
     ],
-    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Balthazar's Sharp Growths grants 30% protection against whichever damage type (Melee or Ranged) is active this season — check the boss's passive card in-game and deploy the OPPOSITE damage type as your primary DPS. Bring strong healers to sustain your troops through his massive, battlefield-wide AoE attacks like Fury from the Deep." + bossRosterWarning
+    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Balthazar's Sharp Growths grants 30% protection against whichever damage type (Melee or Ranged) is active this season — check the boss's passive card in-game and deploy the OPPOSITE damage type as your primary DPS. Bring strong healers to sustain your troops through his massive, battlefield-wide AoE attacks like Fury from the Deep." + timingsText(BALTHAZAR_TIMINGS, "BALTHAZAR") + bossRosterWarning,
+    "timings": BALTHAZAR_TIMINGS
   },
   {
     "name": "ASHIRA",
@@ -195,7 +243,8 @@ const bosses = [
         "damage": 8000
       }
     ],
-    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Dagon's passive grants 30% protection against whichever damage type (Melee or Ranged) is active this season — check the boss's passive card in-game and deploy the OPPOSITE damage type as your primary DPS. Be extremely vigilant with the Hungry Jaws mechanic—keep your finger ready on the ship's cannon to interrupt him and save your 15 units. High-health troops are required to survive the massive 18,000 DMG Tentacle Smash!\n\n[KRAKEN BOSS MAX SCORE TIMINGS]: Turn OFF Auto Hero Ability! Place Bone Dragon at the RIGHT of the formation. Target Timings: Minute 4 (4:51 Mouth, 4:39 Barrel, 4:24 Tentacles, 4:13 Barrel, 4:03 Tentacles), Minute 3 (3:40 Tentacles, 3:21 Tentacles, 3:10 Mouth, 3:00 Tentacles), Minute 2 (2:37 Tentacles, 2:18 Tentacles, 2:07 Mouth), Minute 1 (1:56 Tentacles, 1:34 Tentacles, 1:15 Tentacles, 1:04 Mouth), Minute 0 (0:54 Tentacles, 0:31 Tentacles, 0:21 Mouth, 0:11 Tentacles)." + bossRosterWarning
+    "strategy": "1. Season lasts 3 days. 3 tries per day.\n\n2. Top players formed by total damage dealt over the season.\n\n3. Earn coins based on damage dealt.\n\n4. Boss power increases every 30 seconds of battle.\n\n5. Demo battles don't waste attempts but earn no gold.\n\n[TACTIC]: Dagon's passive grants 30% protection against whichever damage type (Melee or Ranged) is active this season — check the boss's passive card in-game and deploy the OPPOSITE damage type as your primary DPS. Be extremely vigilant with the Hungry Jaws mechanic—keep your finger ready on the ship's cannon to interrupt him and save your 15 units. High-health troops are required to survive the massive 18,000 DMG Tentacle Smash!" + timingsText(KRAKEN_TIMINGS, "KRAKEN") + bossRosterWarning,
+    "timings": KRAKEN_TIMINGS
   }
 ];
 
