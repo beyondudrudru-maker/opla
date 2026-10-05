@@ -66,8 +66,9 @@ for (const [canonical, aliases] of Object.entries(LANGUAGE_ALIASES)) {
   for (const alias of aliases) ALIAS_MAP.set(alias.toLocaleLowerCase(), canonical);
 }
 
-// Letters/marks/hyphen only, 2-24 chars. No digits, quotes, braces or newlines.
-const SAFE_LANGUAGE_TOKEN = /^[\p{L}\p{M}-]{2,24}$/u;
+// Must start with a letter; then letters/marks/hyphen only, 2-24 chars total.
+// No digits, quotes, braces or newlines.
+const SAFE_LANGUAGE_TOKEN = /^\p{L}[\p{L}\p{M}-]{1,23}$/u;
 
 /**
  * @param {string|undefined} word
