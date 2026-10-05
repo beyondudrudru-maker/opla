@@ -157,8 +157,14 @@ function gatekeeperLint(text) {
 //    Used by: !summary, !boss
 // ============================================================
 
-const SUMMARY_SYSTEM_PROMPT = `Summarize this chat objectively.
-Rules: neutral third-person, no persona, no flirting, no opinions. Group by topic. Name who said what when it matters. Max ~10 short bullet points ("•"). Output ONLY the summary. No <think> tags, no preamble.`;
+function buildSummarySystemPrompt(language = 'English') {
+  // `language` is already normalised/sanitised by commands/summaryArgs.js (alias map or letters-only token)
+  const lang = typeof language === 'string' && language.trim() ? language.trim() : 'English';
+  const scriptNote = lang === 'Hindi' ? ' Use Devanagari script.' : (lang === 'Hinglish' ? ' Use Hindi written in Roman (Latin) script mixed naturally with English.' : '');
+  return `Summarize this chat objectively.
+Rules: neutral third-person, no persona, no flirting, no opinions. Group by topic. Name who said what when it matters. Max ~10 short bullet points ("•"). Output ONLY the summary. No <think> tags, no preamble.
+[OUTPUT LANGUAGE — MANDATORY] Write the ENTIRE summary in ${lang}, even if the chat log is in a different language.${scriptNote} Translate the meaning; keep usernames, @names, bot command text (like !boss) and game item/hero/boss names unchanged.`;
+}
 
 function buildBossFastLaneIdentity() {
   return `You are a precision strategy data engine for "Kingdom Clash". Produce a boss breakdown from <BossData> ONLY.
@@ -248,14 +254,15 @@ async function generateFastLane({ prompt, systemInstruction, intent = 'analysis'
 }
 
 // !summary — messages = array of "Name: text" strings (already trimmed by index.js)
-async function generateSummary({ messages = [], targetName = null }) {
+async function generateSummary({ messages = [], targetName = null, language = 'English' }) {
   if (!Array.isArray(messages) || messages.length === 0) return { text: '', modelUsed: 'none' };
   const header = targetName
     ? `Chat log containing ONLY messages from ${targetName}:`
     : 'Chat log:';
+  const footer = `\n\nWrite the summary now, entirely in ${language}.`;
   return generateFastLane({
-    prompt: `${header}\n${messages.join('\n')}`,
-    systemInstruction: SUMMARY_SYSTEM_PROMPT,
+    prompt: `${header}\n${messages.join('\n')}${footer}`,
+    systemInstruction: buildSummarySystemPrompt(language),
     intent: 'analysis',
     label: 'summary'
   });
