@@ -38,10 +38,10 @@ const {
 // ============================================================
 async function generate({ classification, prompt, userMessage, systemInstruction, geminiKeys = [], groqKeys = [] }) {
   const { category, isLong, intent } = classifyRequest({ classification, prompt, userMessage });
-  const temp = getDynamicTemp(intent);
+  const temp = classification?.temp ?? getDynamicTemp(intent);
   const cloudflareEnabled = !!getCloudflareConfig();
   const openRouterFreeOnly = FREE_ONLY_MODE || OPENROUTER_FREE_ONLY;
-  const maxTokens = MAX_TOKENS_BY_CATEGORY[category] || 768;
+  const maxTokens = classification?.maxTokens || MAX_TOKENS_BY_CATEGORY[category] || 768;
 
   maybeRunDiscovery({ groqKeys }).catch(() => {});
 
