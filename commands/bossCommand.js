@@ -344,4 +344,12 @@ function formatNoMatch(query, r) {
     return `❌ I have no boss named **"${q}"** in my data.${sug}\nUse \`${bossLabel} list\` to see all of them.`;
 }
 
-module.exports = { handle, startCron, refreshCurrentBoss, setCurrentBoss, resolveBoss, loadBossList };
+function getCurrentBoss() {
+    return state.id ? (loadBossList().find(b => b.id === state.id) || null) : null;
+}
+
+function getBossTroopMeta() {
+    return loadFromData(TROOP_META_EXPORTS) ?? null;
+}
+
+module.exports = { handle, startCron, refreshCurrentBoss, setCurrentBoss, resolveBoss, loadBossList, getCurrentBoss, getBossTroopMeta, buildPayload };
