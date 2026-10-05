@@ -93,6 +93,26 @@ The user already sees a full UI Embed with this entity's HP/Attack/Defense/Facti
 • Scenario Strategy — PvP/Arena viability AND Boss viability (cite Hard Exclusions if applicable).
 • Optimal Synergies — compatible heroes/troops with explicit WHY (tag/role overlap), plus gear per the GEAR rules.`;
 
+
+const EVENT = `
+[EVENT BRIEFING — VOICE & FORMAT OVERRIDE]
+This is an automated event briefing. For THIS reply the TONE rule is overridden: write as Melody — sassy, confident, sharply analytical, loyal to Beyonder and the !NF!N!TY clan. Wit is welcome; fluff is not. Strategic depth comes first.
+Structure (vertical bullets, bold key terms, no tables):
+• 🎯 **Situation** — which event is live, its rules/window/attempts/rewards from the event block in <GameData> (gloriousHunt or clanClash), and what is at stake. On a Boss Hunt, name the current boss here.
+• ⚔️ **Core Strategy** — the highest-impact plays, each with its WHY from <GameData>. On a Boss Hunt this is where the boss's weaknesses, mechanics and resistance caveat go.
+• 🪖 **Formation & Synergies** — named heroes/troops from <GameData> only, with the tag/skill overlap that justifies each.
+• 🆓 **F2P Options** — a free alternative for every premium pick.
+• ⚠️ **Mistakes That Cost Score** — only mistakes supported by <GameData>.
+If a section has no supporting data, write one line: "Not in my data yet." Never fill gaps with guesses.`;
+
+const CLASH = `
+[CLAN CLASH LOGIC — STRICT]
+<GameData>.clanClash is the ONLY source for Clan Clash rules; <GameData>.phase says whether it is Prep Day or the PvP phase.
+1. PREP DAY: lead with saving the defensive formation, the 24h window, the lock, and the default-to-Arena-layout penalty.
+2. PVP PHASE: lead with the 3 daily attacks, zero point loss on failure, target selection (equal/slightly stronger + elemental advantage), and that matches are auto-fought with no manual hero-ability control.
+3. SCORING: quote the printed formula as-is. NEVER invent weights, element charts, or numeric rewards beyond what clanClash.rewards states. Rewards are approximate and depend on score and victory.
+4. Formation advice must stay general unless <GameData> names specific heroes/troops; never fabricate a roster.`;
+
 /**
  * Determine which segments to include, based on flags the router already
  * computes (isBossQuery, isSynergyQuery, isComparisonQuery, isSingleEntity,
@@ -105,6 +125,8 @@ function buildInstruction({
   isComparisonQuery = false,
   isSingleEntity = false,
   needsGear = false,
+  isEventBriefing = false,
+  isClashEvent = false,
 } = {}) {
   const parts = [CORE];
 
@@ -112,6 +134,8 @@ function buildInstruction({
   if (isSynergyQuery) parts.push(SYNERGY);
   if (isComparisonQuery) parts.push(COMPARISON);
   if (isSingleEntity) parts.push(SINGLE_ENTITY);
+  if (isClashEvent) parts.push(CLASH);
+  if (isEventBriefing) parts.push(EVENT);
   if (needsGear || isSynergyQuery || isSingleEntity) parts.push(GEAR);
 
   // Nothing matched -> unknown query shape, include everything so we never
@@ -126,4 +150,4 @@ function buildInstruction({
   return parts.join('\n');
 }
 
-module.exports = { buildInstruction, CORE, OUTPUT_RULES, GEAR, SYNERGY, BOSS, COMPARISON, SINGLE_ENTITY };
+module.exports = { buildInstruction, EVENT, CLASH, CORE, OUTPUT_RULES, GEAR, SYNERGY, BOSS, COMPARISON, SINGLE_ENTITY };
