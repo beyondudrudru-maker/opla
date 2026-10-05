@@ -345,4 +345,3 @@ function formatNoMatch(query, r) {
 }
 
 module.exports = { handle, startCron, refreshCurrentBoss, setCurrentBoss, resolveBoss, loadBossList };
-  
