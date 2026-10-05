@@ -24,7 +24,7 @@ const {
 } = require('discord.js');
 const express = require('express');
 
-const { ramClient, coreClient, deleteOldConversationTurns } = require('./database/supabaseClient');
+const { ramClient, deleteOldConversationTurns } = require('./database/supabaseClient');
 const melody = require('./api/gemini');
 const knowledgeRetrieval = require('./knowledge/knowledgeRetrieval');
 const reflectionJob = require('./reflection/reflectionJob');
@@ -39,7 +39,9 @@ const budgetManager = require('./context/contextBudgetManager');
 const bossCommand = require('./commands/bossCommand');
 const { ensureSingleMention, collapseDuplicateMentions } = require('./utils/mentionGuard');
 const { replyChunked } = require('./utils/replyChunked');
-const { FAST_CMD_REGEX, SUMMARY_CMD, bossLabel, summaryLabel } = require('./commands/commandConfig');
+const { FAST_CMD_REGEX, SUMMARY_CMD, EVENT_CMD, bossLabel, summaryLabel } = require('./commands/commandConfig');
+const eventState = require('./commands/eventState');
+const eventCommand = require('./commands/eventCommand');
 
 const processedMessages = new Set();
 
@@ -235,6 +237,7 @@ client.once(Events.ClientReady, async (readyClient) => {
 
     // 🐉 Keep the "current boss" state fresh (schedule/DB) every 6h
     try { bossCommand.startCron(); } catch (err) { console.warn('⚠️ Boss cron failed to start:', err.message); }
+    try { eventState.start(); } catch (err) { console.warn('⚠️ Event state cron failed to start:', err.message); }
 });
 
 // RAM 5-Hour Wipe
@@ -267,13 +270,7 @@ setInterval(async () => {
 
 client.on('guildMemberRemove', async (member) => {
     try {
-        // 🛡️ FIX: conversation_turns lives in the CORE project (coreClient), not the RAM project.
-        // Using ramClient here meant the table never existed there, so leaving members were never wiped.
-        if (!coreClient) {
-            console.warn('⚠️ Core DB not configured — skipping member data wipe.');
-            return;
-        }
-        const { error } = await coreClient
+        const { error } = await ramClient
             .from('conversation_turns')
             .delete()
             .eq('user_id', member.id);
@@ -323,6 +320,8 @@ client.on(Events.MessageCreate, async (message) => {
         try {
             if (cmd === SUMMARY_CMD) {
                 await handleSummaryCommand(message, argText);
+            } else if (cmd === EVENT_CMD) {
+                await eventCommand.handle({ message, melody, requestQueue });
             } else {
                 await bossCommand.handle({ message, argText, melody, requestQueue });
             }
