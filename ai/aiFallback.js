@@ -19,6 +19,7 @@ const strategyCache = require('../cache/strategyCache');
 
 const GAME_CONTEXT_SOFT_CAP_CHARS = 6000;
 const MAX_RETRIES = 2;
+const SNAG_MESSAGE = 'My strategy engine hit a snag pulling that data together — could you ask again in a moment?';
 
 // 🛡️ SECURITY: Escapes XML tags to prevent prompt injection breakouts
 function sanitize(text) {
@@ -70,7 +71,7 @@ async function _runWithRetries({ prompt, systemInstruction, classification, user
   }
 
   if (!cleanResult) {
-    cleanResult = 'My strategy engine hit a snag pulling that data together — could you ask again in a moment?';
+    cleanResult = SNAG_MESSAGE;
   }
   return cleanResult;
 }
@@ -97,16 +98,28 @@ async function askAI({
     );
 
     if (cacheable && result && result.confidence !== 'low') {
+      const isBoss = Boolean(queryFlags && queryFlags.isBossQuery);
+
+      // 💰 Narration cache: same deterministic question answered before → 0 tokens
+      const cachedNarration = strategyCache.getNarration(deterministic.queryType, deterministic.params || {}, { isBoss });
+      if (cachedNarration) {
+        console.log(`[aiFallback] deterministic path (${deterministic.queryType}) — NARRATION CACHE HIT, 0 tokens.`);
+        return cachedNarration;
+      }
+
       const prompt = strategyCache.buildExplainPrompt(userMessage, result);
       const explained = await _runWithRetries({
         prompt,
-        systemInstruction: strategyCache.EXPLAIN_ONLY_INSTRUCTION,
+        systemInstruction: strategyCache.buildExplainInstruction(queryFlags),
         classification: classification || { intent: intent || 'strategy', category: 'deterministicExplain' },
         userMessage,
         geminiKeys,
         groqKeys,
       });
-      console.log(`[aiFallback] deterministic path (${deterministic.queryType}) — cache ${hit ? 'HIT' : 'MISS→cached'}, short-instruction explain used.`);
+      if (explained && explained !== SNAG_MESSAGE) {
+        strategyCache.setNarration(deterministic.queryType, deterministic.params || {}, explained, { isBoss });
+      }
+      console.log(`[aiFallback] deterministic path (${deterministic.queryType}) — result cache ${hit ? 'HIT' : 'MISS→cached'}, short-instruction explain used.`);
       return explained;
     }
   }
