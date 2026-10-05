@@ -36,6 +36,10 @@ const { compressGameData } = require('./promptBuilder/promptAssembler');
 const { askAI: askGameAI } = require('./ai/aiFallback');
 const requestQueue = require('./utils/requestQueue');
 const budgetManager = require('./context/contextBudgetManager');
+const bossCommand = require('./commands/bossCommand');
+const { ensureSingleMention, collapseDuplicateMentions } = require('./utils/mentionGuard');
+const { replyChunked } = require('./utils/replyChunked');
+const { FAST_CMD_REGEX, SUMMARY_CMD, bossLabel, summaryLabel } = require('./commands/commandConfig');
 
 const processedMessages = new Set();
 
@@ -64,6 +68,7 @@ const supportCooldown = new Set();
 const goldCooldown = new Set();
 const gemCooldown = new Set();
 const adminCooldown = new Set();
+const fastCmdCooldown = new Map(); // userId -> timestamp (shared by !summary / !boss)
 
 // ─────────────────────────────────────────────────────────────
 // 🔍 Helper: Fuzzy & Normalized Member Name Resolver
@@ -133,6 +138,69 @@ function resolveMembersFromText(text, guild, botId) {
     return Array.from(foundMembers.values());
 }
 
+// ─────────────────────────────────────────────────────────────
+// ⚡ FAST-LANE COMMANDS (!summary / !boss) — bypass decisionPipeline entirely
+// ─────────────────────────────────────────────────────────────
+const SUMMARY_CHANNEL_LIMIT = 80;   // rows pulled for a channel summary
+const SUMMARY_USER_LIMIT = 50;      // rows pulled for a single-user summary
+const SUMMARY_MIN_MESSAGES = 3;
+const SUMMARY_MAX_CHARS_PER_MSG = 300;
+const SUMMARY_MAX_TOTAL_CHARS = 12000;
+const FAST_CMD_COOLDOWN_MS = 8000;
+
+async function handleSummaryCommand(message, argText) {
+    const targetMatch = argText.match(/<@!?(\d+)>/);
+    let targetId = targetMatch ? targetMatch[1] : null;
+    if (targetId === client.user.id) targetId = null; // "!summary @Melody" = whole channel
+
+    await message.channel.sendTyping().catch(() => {});
+
+    let query = ramClient
+        .from('chat_ram')
+        .select('player_name, message_content')
+        .eq('channel_id', message.channel.id)
+        .order('created_at', { ascending: false })
+        .limit(targetId ? SUMMARY_USER_LIMIT : SUMMARY_CHANNEL_LIMIT);
+    if (targetId) query = query.eq('player_id', targetId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const resolveMentions = (txt) => txt.replace(/<@!?(\d+)>/g, (_, id) => {
+        const m = message.guild?.members.cache.get(id);
+        return `@${m?.displayName || m?.user?.username || 'user'}`;
+    });
+
+    // newest-first -> chronological, drop empties / old command echoes, cap per-message size
+    let lines = (data || [])
+        .reverse()
+        .filter(r => r.message_content && r.message_content.trim() && !FAST_CMD_REGEX.test(r.message_content.trim()))
+        .map(r => `${r.player_name || 'Unknown'}: ${resolveMentions(r.message_content).replace(/\s+/g, ' ').trim().slice(0, SUMMARY_MAX_CHARS_PER_MSG)}`);
+
+    // hard token ceiling: drop OLDEST lines first
+    let total = lines.reduce((n, l) => n + l.length + 1, 0);
+    while (lines.length > 0 && total > SUMMARY_MAX_TOTAL_CHARS) total -= lines.shift().length + 1;
+
+    if (lines.length < SUMMARY_MIN_MESSAGES) {
+        return message.reply(targetId
+            ? "📭 I don't have enough recent messages from that user in this channel to summarize."
+            : "📭 There's not enough recent chat in this channel to summarize.").catch(() => {});
+    }
+
+    const targetName = targetId
+        ? (message.guild?.members.cache.get(targetId)?.displayName || data?.[0]?.player_name || 'that user')
+        : null;
+
+    const result = await requestQueue.enqueue(() => melody.generateSummary({ messages: lines, targetName }));
+    if (!result?.text) {
+        return message.reply('⚠️ I could not generate a summary right now. Try again in a moment.').catch(() => {});
+    }
+
+    const title = targetName ? `📝 **Summary of ${targetName}** (last ${lines.length} messages)` : `📝 **Chat Summary** (last ${lines.length} messages)`;
+    // No pings from summaries: allowedMentions.parse = []
+    return replyChunked(message, `${title}\n\n${result.text}`);
+}
+
 client.once(Events.ClientReady, async (readyClient) => {
     console.log('----------------------------------------');
     console.log(`🌸 System Online: ${readyClient.user.tag} is awake.`);
@@ -164,6 +232,9 @@ client.once(Events.ClientReady, async (readyClient) => {
         reflectionJob.start();
         console.log('🔄 Reflection Job started for background summarization.');
     }
+
+    // 🐉 Keep the "current boss" state fresh (schedule/DB) every 6h
+    try { bossCommand.startCron(); } catch (err) { console.warn('⚠️ Boss cron failed to start:', err.message); }
 });
 
 // RAM 5-Hour Wipe
@@ -218,15 +289,42 @@ client.on(Events.MessageCreate, async (message) => {
     processedMessages.add(message.id);
     setTimeout(() => processedMessages.delete(message.id), 5000);
 
-    try {
-        await ramClient.from('chat_ram').insert([{
-            player_id: message.author.id,
-            player_name: message.author.username,
-            channel_id: message.channel.id,
-            message_content: message.content
-        }]);
-    } catch (err) {
-        console.error('⚠️ Failed to save to chat_ram:', err.message);
+    // ⚡ Fast-lane commands are never stored in chat_ram (keeps history clean + saves a DB write)
+    const fastCmd = message.content.trim().match(FAST_CMD_REGEX);
+
+    if (!fastCmd) {
+        try {
+            await ramClient.from('chat_ram').insert([{
+                player_id: message.author.id,
+                player_name: message.author.username,
+                channel_id: message.channel.id,
+                message_content: message.content
+            }]);
+        } catch (err) {
+            console.error('⚠️ Failed to save to chat_ram:', err.message);
+        }
+    }
+
+    if (fastCmd) {
+        const last = fastCmdCooldown.get(message.author.id) || 0;
+        if (Date.now() - last < FAST_CMD_COOLDOWN_MS) {
+            return message.reply('⏳ Easy there — give me a few seconds between commands.').catch(() => {});
+        }
+        fastCmdCooldown.set(message.author.id, Date.now());
+
+        const cmd = fastCmd[1].toLowerCase();
+        const argText = (fastCmd[2] || '').trim();
+        try {
+            if (cmd === SUMMARY_CMD) {
+                await handleSummaryCommand(message, argText);
+            } else {
+                await bossCommand.handle({ message, argText, melody, requestQueue });
+            }
+        } catch (err) {
+            console.error(`❌ [${cmd} ERROR]`, err.message);
+            await message.reply(`⚠️ Something went wrong running \`${cmd}\`. Please try again.`).catch(() => {});
+        }
+        return;
     }
 
     const lowerText = message.content.toLowerCase();
@@ -557,8 +655,10 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                          await message.reply(`✅ Announced to everyone in <#${targetChannel.id}>.`);
                     }
                 } else if (targetUsers.length > 0) {
-                    const pings = targetUsers.map(u => `<@${u.id}>`).join(' ');
-                    await targetChannel.send({ content: `${pings} ${rawMessagePayload}`, allowedMentions: { parse: ['users'] } });
+                    // 🏷️ FIX (Double Tagging): the AI draft already receives "MUST USE: <@id>" in its directive,
+                    // so only prepend a tag for users the AI did NOT mention (by <@id> or by name).
+                    const taggedPayload = ensureSingleMention(rawMessagePayload, targetUsers, message.guild);
+                    await targetChannel.send({ content: taggedPayload, allowedMentions: { parse: ['users'] } });
                     if (targetChannel.id !== message.channel.id) {
                          await message.reply(`✅ Message routed to <#${targetChannel.id}>.`);
                     }
@@ -731,7 +831,7 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                 debug = melodyResult.debug;
             }
 
-            let finalReply = aiReply;
+            let finalReply = collapseDuplicateMentions(aiReply);
 
             const isCreator = message.author.id === '1369404203880939650';
             const isAdmin = message.member?.roles.cache.has('1372987132855058504');
