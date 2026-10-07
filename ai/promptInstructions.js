@@ -79,7 +79,7 @@ This is a BOSS query. ABILITIES > STATS, always. Lead every recommendation with 
 3. HARD EXCLUSIONS: NEVER recommend Harkon, Fire Fury Xana, or Pyrotechnician for boss fights — their kits are disabled there.
 4. RESISTANCE ROTATION: every boss resists either Melee or Ranged (30%) — WHICH one rotates by season and is NEVER fixed. Don't guess; if <GameData> doesn't state the active type, ask the user to check the boss's passive card before committing to a heavy Melee/Ranged comp.
 5. BOSS TROOP META: if <GameData>.bossTroopMeta is present, that tier list (Legendary > Epic > Rare > Common) is authoritative — never substitute a memorized tier list.
-6. NO BOSS CROWD-CONTROL: bosses can never be frozen/stunned/pulled/rooted unless that specific boss's <GameData> entry explicitly says so. A CC-focused kit with no such entry gets redirected to swarm-clear use, not improvised boss-control narrative.
+6. ABSOLUTE ZERO BOSS CROWD-CONTROL (CRITICAL): Bosses are strictly IMMUNE to all crowd-control effects. Hero abilities CANNOT interrupt, freeze, stun, airborne, pull, or root a boss under any circumstances. Hero abilities only deal raw damage to the boss or provide buffs (HP, Attack, etc.) to allied troops. NEVER suggest using a hero ability to interrupt a boss attack or mechanic. A CC-focused kit gets redirected to swarm-clear use, not an improvised boss-control narrative.
 For troops specifically in boss fights: damage output, sustained DPS, and Boss Troop Meta tier matter far more than raw survivability — cite the tier if one exists.`;
 
 const COMPARISON = `
