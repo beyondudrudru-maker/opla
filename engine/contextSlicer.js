@@ -116,13 +116,18 @@ function buildReasonIndex(synergies) {
   return m;
 }
 
-/** Gear → identity + one-line effect. Defensive: gear shape isn't known to this module. */
+/** Gear (gearData.js shape) → identity + trigger/effect + max-level scaling value only. */
 function slimGear(g) {
   if (!g || typeof g !== 'object') return g;
-  const passive = g.passive && typeof g.passive === 'object' ? g.passive : null;
+  const p = g.passive && typeof g.passive === 'object' ? g.passive : {};
+  const maxScaling = {};
+  for (const [k, v] of Object.entries(p.scaling || {})) {
+    if (k !== 'level' && Array.isArray(v) && v.length) maxScaling[k] = v[v.length - 1];
+  }
   return _clean({
-    name: g.name, type: g.type || g.slot, rarity: g.rarity,
-    effect: (passive && (passive.description || passive.name)) || g.description || g.note,
+    name: g.name, slot: g.slot, rarity: g.rarity, roleFamily: g.roleFamily,
+    ownershipStatus: g.ownershipStatus, // "locked" must be stated plainly (GEAR rule)
+    trigger: p.trigger, effect: p.effect, maxScaling,
   });
 }
 
