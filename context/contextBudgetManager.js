@@ -95,7 +95,8 @@ const TIERS = {
     useChatSummary: false,
     maxWorkingMemoryTurns: 0,
     rankedMemoryCount: 0,
-    maxPromptChars: 6500, // 🛡️ RESTORED: GameData itself is separately capped
+    maxPromptChars: 6500,
+    maxGameDataChars: 4500, // single owner of the GameData size limit (assembler + aiFallback should read this) // 🛡️ RESTORED: GameData itself is separately capped
     // at 4000 chars inside renderGameContext (GAME_CONTEXT_SOFT_CAP_CHARS),
     // and this tier carries zero working-memory turns, so 18000 was never
     // actually needed — it just masked the same uncapped-item issue.
@@ -126,7 +127,10 @@ const HEAVY_WORD_COUNT_FLOOR = 40;
 const HEAVY_CHAR_FLOOR = 220;
 
 const CASUAL_INTENTS = new Set(['banter', 'social', 'unknown']);
-const HEAVY_INTENTS = new Set(['heavy-task', 'heavy_task', 'question']);
+// Plain `question` (any message containing '?') no longer forces HEAVY (9000 chars + chat summary).
+// Long / explicit-heavy messages still reach HEAVY via HEAVY_SIGNAL_REGEX / word / char floors.
+// Set QUESTION_IS_HEAVY=1 to restore the old behaviour.
+const HEAVY_INTENTS = new Set(['heavy-task', 'heavy_task', ...(process.env.QUESTION_IS_HEAVY === '1' ? ['question'] : [])]);
 const MODERATION_INTENTS = new Set(['moderation', 'conflict']);
 
 function countWords(text) {
