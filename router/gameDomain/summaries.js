@@ -23,6 +23,9 @@ function toTroopSummary(troop) {
     name: troop.name || 'Unknown',
     rarity: troop.rarity || 'N/A',
     primaryRole: (troop.analysis && troop.analysis.primaryRole) || troop.type || troop.faction || 'N/A',
+    // POSITION LOCK (promptInstructions CORE #5): combatLine is the only legal source of positional
+    // role. Without it a bulk list of 4+ troops leaves the model guessing "Tank" = frontline.
+    ...(troop.combatLine ? { combatLine: troop.combatLine } : {}),
     talentName: (troop.talent && troop.talent.name) || (troop.ability && troop.ability.name) || 'N/A'
   };
 }
