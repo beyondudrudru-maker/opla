@@ -18,12 +18,15 @@
 // 🛡️ SECURITY & STABILITY: Escapes XML tags and quotes while preserving newlines.
 function sanitize(text) {
   if (typeof text !== 'string') return '';
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+  // Only < and > can break out of the XML-ish tags. Quotes/apostrophes/& were costing
+  // tokens (&apos; on every contraction) without adding any safety. User text only ever
+  // appears as element content, never inside an attribute value (speakerName is the one
+  // attribute -> escape quotes there separately via sanitizeAttr).
+  return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function sanitizeAttr(text) {
+  return sanitize(text).replace(/"/g, '&quot;');
 }
 
 // 🗜️ STRICT BUDGETING UTILITY: Prevents payload explosion from huge chat logs
@@ -455,7 +458,35 @@ function deepCompress(value) {
 
 const GAME_CONTEXT_SOFT_CAP_CHARS = 4000;
 
-function renderGameContext(gameData, userMessage) {
+// Whole-section dropping instead of mid-JSON substring(): the model never receives broken
+// JSON, and the tail (gear / recommendations) isn't silently lost. Lowest-value sections go first.
+const CORE_KEYS = new Set([
+  'userCorrections', 'recognizedHero', 'recognizedTroop', 'hero1', 'hero2', 'troop1', 'troop2', 'troop',
+  'comparedAtLevel', 'comparisonData', 'mentionedHeroes', 'mentionedTroops', 'bossRecords',
+  'synergyCandidates', 'matchedHeroes', 'matchedTroops', 'matchedBosses', 'formatInstruction', 'task',
+]);
+const DROP_ORDER = [
+  'gameTaxonomy', 'scenarioGuides', 'optimalFormations', 'counterGuides', 'equipmentGuide',
+  'bossTroopMeta', 'categoryData', 'heroRecommendations', 'troopRecommendations', 'synergyLinks',
+  'gearRecommendations', 'heroCollectionBonusSummary', 'strengths', 'weaknesses',
+];
+
+function fitSections(obj, cap) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return JSON.stringify(obj);
+  const work = { ...obj };
+  const dropped = [];
+  const size = () => JSON.stringify(work).length;
+  const tryDrop = (key) => { if (key in work && size() > cap) { delete work[key]; dropped.push(key); } };
+
+  DROP_ORDER.forEach(tryDrop);
+  if (size() > cap) {
+    Object.keys(work).reverse().filter(k => !CORE_KEYS.has(k)).forEach(tryDrop);
+  }
+  if (dropped.length) work._droppedForSize = dropped;
+  return JSON.stringify(work);
+}
+
+function renderGameContext(gameData, userMessage, maxGameDataChars = GAME_CONTEXT_SOFT_CAP_CHARS) {
   if (!gameData) return '';
   if (typeof gameData === 'string') {
     return `<GameData>\n${gameData}\n</GameData>`;
@@ -465,8 +496,9 @@ function renderGameContext(gameData, userMessage) {
   const compressed = deepCompress(compressGameData(targeted || gameData));
   let content = JSON.stringify(compressed);
 
-  if (content.length > GAME_CONTEXT_SOFT_CAP_CHARS) {
-    content = content.substring(0, GAME_CONTEXT_SOFT_CAP_CHARS) + '...[truncated]';
+  if (content.length > maxGameDataChars) {
+    content = fitSections(compressed, maxGameDataChars);
+    console.warn(`[GAMEDATA CAP] ${maxGameDataChars} exceeded -> ${content.length} chars after section drop`);
   }
 
   return `<GameData>\n${content}\n</GameData>`;
@@ -479,7 +511,7 @@ function renderGameContext(gameData, userMessage) {
 // maxPromptChars from contextBudgetManager's per-tier profile instead.
 const MAX_PROMPT_CHARS = 16000;
 
-function assembleLean({ intent, relationship, gameData, userMessage, targetInfo, speakerName, recentChatLog, maxPromptChars = MAX_PROMPT_CHARS }) {
+function assembleLean({ intent, relationship, gameData, userMessage, targetInfo, speakerName, recentChatLog, maxPromptChars = MAX_PROMPT_CHARS, maxGameDataChars }) {
   const currentIntent = String(intent || '').toLowerCase();
   const factualIntents = ['question', 'heavy-task', 'heavy_task'];
 
@@ -487,9 +519,9 @@ function assembleLean({ intent, relationship, gameData, userMessage, targetInfo,
     renderRelationshipFraming(relationship || {}),
     renderTargetBlock(targetInfo), 
     factualIntents.includes(currentIntent) ? '<SystemOverride>Provide a strictly factual, objective response.</SystemOverride>' : '',
-    renderGameContext(gameData, userMessage),
+    renderGameContext(gameData, userMessage, maxGameDataChars),
     recentChatLog ? `<RecentChatLog>\n${sanitize(safeTruncate(recentChatLog, 800, true))}\n</RecentChatLog>` : '', 
-    `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`,
+    `\n<CurrentMessage speaker="${sanitizeAttr(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`,
   ];
 
   const rawLean = blocks.filter(Boolean).join('\n');
@@ -510,10 +542,11 @@ function assemble({
   targetInfo,
   speakerName,
   recentChatLog,
-  maxPromptChars = MAX_PROMPT_CHARS
+  maxPromptChars = MAX_PROMPT_CHARS,
+  maxGameDataChars
 }) {
   if (leanMode) {
-    return assembleLean({ intent, relationship, gameData, userMessage, targetInfo, speakerName, recentChatLog, maxPromptChars });
+    return assembleLean({ intent, relationship, gameData, userMessage, targetInfo, speakerName, recentChatLog, maxPromptChars, maxGameDataChars });
   }
 
   const currentIntent = String(intent || '').toLowerCase();
@@ -526,12 +559,12 @@ function assemble({
     renderRelationshipFraming(relationship),
     renderTargetBlock(targetInfo),
     renderTaskDirective(behaviorDirective),
-    (gameData && gameIntents.includes(currentIntent)) ? renderGameContext(gameData, userMessage) : '',
+    (gameData && gameIntents.includes(currentIntent)) ? renderGameContext(gameData, userMessage, maxGameDataChars) : '',
     rankedMemories ? renderMemoryBlock(rankedMemories) : '',
     workingMemory ? renderWorkingMemory(workingMemory) : '',
     chatSummary ? `<PreviousChatSummary>\n${sanitize(safeTruncate(chatSummary, 800))}\n</PreviousChatSummary>` : '',
     recentChatLog ? `<RecentChatLog>\n${sanitize(safeTruncate(recentChatLog, 800, true))}\n</RecentChatLog>` : '', 
-    `\n<CurrentMessage speaker="${sanitize(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`
+    `\n<CurrentMessage speaker="${sanitizeAttr(speakerName || 'User')}">\n${sanitize(userMessage)}\n</CurrentMessage>`
   ];
 
   const finalPrompt = promptBlocks.filter(Boolean).join('\n');
@@ -551,5 +584,7 @@ module.exports = {
   compressGameData,         
   extractTargetedContext, 
   resolveSynergyLinks,    
-  deepCompress,           
+  deepCompress,
+  renderGameContext,
+  fitSections,
 };
