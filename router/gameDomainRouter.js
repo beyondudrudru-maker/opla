@@ -104,6 +104,7 @@ function _getRosterSnapshot() {
 
 function route(text, recentContext = '', userCorrections = []) {
   let { intent, entities } = classify(text);
+  const originalIntent = intent; // saved ONCE: classify() used to run 3x per message
   entities.rawText = text;
 
   // ── Normalised text variants used throughout ──────────────────────────────
@@ -166,9 +167,10 @@ function route(text, recentContext = '', userCorrections = []) {
   // runs against the ORIGINAL classified intent (before the STRATEGY-forcing
   // above), since that's the signal that tells us whether the user actually
   // sounded like they were asking about the game.
-  const originalIntentWasSocial = ['BANTER', 'SOCIAL', 'UNKNOWN'].includes(
-    (classify(text).intent || '').toUpperCase ? classify(text).intent : ''
-  );
+  // Case-insensitive on purpose: the old check compared the raw classifier value against
+  // UPPERCASE names (the `.toUpperCase ?` guard was always truthy and never uppercased anything),
+  // so it silently never matched if the classifier emits lowercase intents.
+  const originalIntentWasSocial = ['BANTER', 'SOCIAL', 'UNKNOWN'].includes(String(originalIntent || '').toUpperCase());
   const allMatchedNames = [...entities.heroNames, ...entities.troopNames];
   const onlyShortAmbiguousMatches = allMatchedNames.length > 0 && allMatchedNames.every(isShortAmbiguousName);
   const needsClarification = onlyShortAmbiguousMatches
@@ -245,7 +247,7 @@ function route(text, recentContext = '', userCorrections = []) {
 
       if (data) {
         const ability = queryEngine.getTroopAbility(troopQuery, lvl);
-        const embed = buildTroopCard(data, ability, lvl);
+        const embed = buildTroopCard(data, ability, lvl, queryEngine.getTroop(troopQuery));
 
         // 🆕 SMART EMBED + AI CO-EXISTENCE — same rule as the hero card above.
         prebuiltEmbeds.push(embed);
