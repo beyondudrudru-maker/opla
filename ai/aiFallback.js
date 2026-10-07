@@ -22,6 +22,16 @@ const strategyCache = require('../cache/strategyCache');
 // GAME_CONTEXT_SOFT_CAP_CHARS (6000) was declared but never enforced.
 const GAME_DATA_CAP = (budgetManager.TIERS && budgetManager.TIERS.GAME && budgetManager.TIERS.GAME.maxGameDataChars) || 4500;
 const MAX_RETRIES = 2;
+
+// Output-token caps (modelRouter default for gameStrategy is 1536). Reply rules target ~1200 chars
+// (~300-400 tokens); caps keep generous headroom because Gemini counts hidden thinking tokens inside
+// maxOutputTokens — too low a cap can truncate or blank the answer. Tighten only after reading real usage.
+function _maxTokensFor(queryFlags = {}, explain = false) {
+  if (explain) return 768;
+  if (queryFlags.isBossQuery || queryFlags.isSynergyQuery) return 1280;
+  if (queryFlags.isSingleEntity || queryFlags.isComparisonQuery) return 1024;
+  return 1280;
+}
 const SNAG_MESSAGE = 'My strategy engine hit a snag pulling that data together — could you ask again in a moment?';
 
 // 🛡️ SECURITY: Escapes XML tags to prevent prompt injection breakouts
@@ -110,7 +120,7 @@ async function askAI({
       const explained = await _runWithRetries({
         prompt,
         systemInstruction: strategyCache.buildExplainInstruction(queryFlags),
-        classification: classification || { intent: intent || 'strategy', category: 'deterministicExplain' },
+        classification: { ...(classification || { intent: intent || 'strategy', category: 'deterministicExplain' }), maxTokens: (classification && classification.maxTokens) || _maxTokensFor(queryFlags, true) },
         userMessage,
         geminiKeys,
         groqKeys,
@@ -157,7 +167,7 @@ ${gameDataBlock}
   return _runWithRetries({
     prompt,
     systemInstruction,
-    classification: classification || { intent: intent || 'strategy' },
+    classification: { ...(classification || { intent: intent || 'strategy' }), maxTokens: (classification && classification.maxTokens) || _maxTokensFor(queryFlags) },
     userMessage,
     geminiKeys,
     groqKeys,
