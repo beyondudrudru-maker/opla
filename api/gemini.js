@@ -7,7 +7,9 @@ const decisionPipeline = require('../decision/decisionPipeline');
 const modelRouter = require('../router/modelRouter');
 const styleLinter = require('../postProcessor/styleLinter');
 const { stripLeakedReasoning, gatekeeperLint: sharedGatekeeperLint } = require('../postProcessor/leakFilter');
-const { SMART_GEAR_FALLBACK } = require('../data/gearData.js');
+// Game prompts + game pipeline now live in ai/promptInstructions.js and ai/aiFallback.js.
+const { buildBossBreakdownInstruction } = require('../ai/promptInstructions');
+const { askAI } = require('../ai/aiFallback');
 
 // ============================================================
 // CONFIG / CONSTANTS
@@ -88,60 +90,6 @@ Your response IS the final spoken message, delivered directly to the end user in
 Your entire output must be ONLY the final, in-character dialogue the user is meant to read — nothing before it, nothing after it, and no visible trace of how you arrived at it.`;
 
 // ============================================================
-// 🚀 GAME FAST-LANE PROMPT (Smart Strategist Mode)
-// ============================================================
-
-function buildGameFastLaneIdentity() {
-  return `You are a brilliant, precision strategy data engine for "Kingdom Clash". 
-
-[DATA LOCK & ZERO HALLUCINATION]
-1. USE EXACT DATA: Use ONLY names, numbers, tags, and text from <GameData>. Never invent.
-2. NO FAKE EXAMPLES: NEVER invent generic fantasy tropes.
-3. HOW TO GIVE EXAMPLES: Use actual tags/roles. For enemies, use ONLY mechanical terms or exact <GameData> names.
-4. SMART RECOMMENDATIONS: Always select recommendations strictly from the provided recommendation arrays in <GameData>.
-5. RARITY LOCK: Never state or imply a rarity unless that exact rarity string is present in <GameData>.
-6. CONTRADICTION RESOLUTION: If the user's prompt contains a logical contradiction, gently point it out and provide a logical alternative.
-7. INTERNAL ID SCRUBBING: NEVER output raw database IDs, slugs, or internal keys.
-
-[ADVANCED GAME MECHANICS]
-1. TALENT UNLOCKS: explicitly mention talents only unlock when the hero reaches Level 5 (requires 'Books').
-2. FORMATION LIMITS: MAXIMUM of 1 Mythical hero per formation.
-
-[ANALYTICAL DEPTH - CRITICAL REASONING]
-1. THE "WHY" FACTOR: explicitly highlight how an entity benefits from its secondary tags.
-2. CATEGORICAL THINKING: Group your recommendations logically.
-3. GEAR SUGGESTIONS & SMART FALLBACKS: Always include a "Recommended Loadout" section. IF matchedGear is empty, output: "${SMART_GEAR_FALLBACK}".
-
-[BOSS BATTLE LOGIC — STRICT]
-1. ABILITIES > STATS: Lead every boss recommendation with what the ability DOES.
-2. NO UNSOLICITED 1v1s.
-3. ACCESSIBLE ALTERNATIVES: Explicitly name a Free-to-Play alternative for premium heroes.
-4. HARD EXCLUSIONS: NEVER recommend Harkon, Fire Fury Xana, or Pyrotechnician for Boss fights.
-5. RESISTANCE-BASED TROOP DEPLOYMENT: Deploy the OPPOSITE damage type as primary DPS.
-6. BOSS TROOP META: ALWAYS read tier priority from <GameData>.bossTroopMeta.
-7. NO BOSS CROWD-CONTROL: Bosses can NEVER be frozen, stunned, or pulled. 
-
-[SINGLE-ENTITY MASTERY TEMPLATES — MANDATORY]
-CRITICAL: Do NOT output basic stats in your text response. Begin directly with the Talent/Ability Breakdown.
-
-TROOP MASTERY TEMPLATE:
-• Ability Breakdown
-• Scenario Strategy
-• Optimal Synergies
-
-HERO MASTERY TEMPLATE:
-• Talent & Ability Impact
-• Scenario Strategy
-• Optimal Synergies
-
-[TONE & FORMAT]
-- Tone: Professional, highly intelligent, sharply analytical. No fluff. Be confident. (⚔️/🛡️ icons allowed).
-- Formatting: NO Markdown tables. Use bullet points (•). Bold names/key attributes.
-
-${CRITICAL_OUTPUT_RULES}`;
-}
-
-// ============================================================
 // 🛡️ GATEKEEPER & FAILSAFE REGEXES
 // ============================================================
 
@@ -164,40 +112,6 @@ function buildSummarySystemPrompt(language = 'English') {
   return `Summarize this chat objectively.
 Rules: neutral third-person, no persona, no flirting, no opinions. Group by topic. Name who said what when it matters. Max ~10 short bullet points ("•"). Output ONLY the summary. No <think> tags, no preamble.
 [OUTPUT LANGUAGE — MANDATORY] Write the ENTIRE summary in ${lang}, even if the chat log is in a different language.${scriptNote} Translate the meaning; keep usernames, @names, bot command text (like !boss) and game item/hero/boss names unchanged.`;
-}
-
-function buildBossFastLaneIdentity() {
-  return `You are a precision strategy data engine for "Kingdom Clash". Produce a boss breakdown from <BossData> ONLY.
-
-[DATA LOCK]
-- Use ONLY names, numbers, tags and text present in <BossData>. Never invent abilities, weaknesses, troops or numbers.
-- If a section has no supporting data, write exactly: • No data available.
-- NEVER output raw database IDs, slugs or internal keys.
-- Never state a rarity unless that exact rarity string is in <BossData>.
-
-[BOSS RULES]
-- Lead each ability with what it DOES, not its stats.
-- Bosses can NEVER be frozen, stunned or pulled. Never recommend crowd-control on a boss.
-- RESISTANCE ROTATES EACH SEASON and the active type is NOT in the data. NEVER claim which type (Melee/Ranged) is currently active. State the rule instead: check the boss's passive card in-game; if Melee is protected lean Ranged DPS, if Ranged is protected lean Melee/Tank.
-- Recommended heroes/troops, exclusions and the F2P note for premium heroes are inside the "[UNIVERSAL BOSS ROSTER & WARNING]" text in the strategy field. Use them for Recommended Troops and F2P Options.
-- Read troop tier priority from bossTroopMeta if present in <BossData>.
-- Do NOT output battle timings or the season-rules list (3 days, 3 tries etc.); timings are appended separately by the bot.
-- HARD EXCLUSIONS: NEVER recommend Harkon, Fire Fury Xana, or Pyrotechnician.
-- Max 1 Mythical hero per formation.
-
-[OUTPUT FORMAT — EXACT ORDER, NO INTRO, NO OUTRO]
-🎯 **Weaknesses**
-• ...
-⚔️ **Active Abilities**
-• **Name** — what it does
-🛡️ **Passive Abilities**
-• **Name** — what it does
-🪖 **Recommended Troops**
-• **Troop** — why it works vs this boss
-🆓 **F2P Options**
-• Free-to-play alternative for each premium pick (or F2P-friendly picks from the data)
-
-[STYLE] Professional, sharp, no fluff. NO markdown tables. Bullets use "•". Bold names. Output ONLY the breakdown. No <think> tags.`;
 }
 
 function cleanFastLaneOutput(raw) {
@@ -274,10 +188,46 @@ async function generateBossBreakdown({ boss, extraContext = null }) {
   const payload = extraContext ? { ...boss, bossTroopMeta: extraContext } : boss;
   return generateFastLane({
     prompt: `<BossData>\n${JSON.stringify(payload)}\n</BossData>\n\nWrite the boss breakdown now.`,
-    systemInstruction: buildBossFastLaneIdentity(),
+    systemInstruction: buildBossBreakdownInstruction(),
     intent: 'analysis',
     label: 'boss'
   });
+}
+
+// ============================================================
+// 🎮 GAME TURN SAFETY NET — index.js already sends real game queries straight to ai/aiFallback.askAI
+// (hasRealGameSignal branch), so this only fires if a caller ever passes gameData into generateContent.
+// It keeps game data off the persona stack. Prompt rules: ai/promptInstructions.js.
+// Without turn.queryFlags askAI uses the full instruction stack (works, costs more tokens).
+// ============================================================
+async function generateGameTurn(turn, rawUserText, userIntent) {
+  if (!turn.queryFlags) console.warn('[gemini.js] game turn without queryFlags — full instruction stack will be used. Pass route().queryFlags into the turn.');
+  const answer = await askAI({
+    userMessage: rawUserText,
+    intent: userIntent,
+    context: turn.gameData,
+    geminiKeys,
+    groqKeys,
+    classification: turn.classification,
+    queryFlags: turn.queryFlags || {},
+    deterministic: turn.deterministic || null,
+  });
+
+  const { text } = styleLinter.process({
+    channelId: turn.channelId,
+    responseText: answer,
+    emojiBudget: turn.behaviorDirective?.emojiBudget || 'medium'
+  });
+
+  decisionPipeline.finalizeTurn({
+    channelId: turn.channelId,
+    userId: turn.userId,
+    content: rawUserText,
+    responseText: text
+  }).catch(dbError => console.error(dbError));
+
+  console.log(`[PIPELINE TRACE][gemini.js] intent=${userIntent} gameTurn=true -> BYPASS to aiFallback.askAI`);
+  return { text, modelUsed: 'aiFallback' };
 }
 
 // ============================================================
@@ -301,6 +251,7 @@ async function generateContent(turn) {
     const userIntent = turn.classification?.intent || 'social';
     const triggerWord = turn.classification?.triggerWord || 'none';
     const isGameTurn = Boolean(turn.gameData && Object.keys(turn.gameData).length > 0);
+    if (isGameTurn) return generateGameTurn(turn, rawUserText, userIntent);
 
     if (!isSystemDraft && (COMPLEX_TASK_REGEX.test(rawUserText) || rawUserText.length > 100)) {
       currentPrompt = `[DIRECTIVE: Be highly intelligent, factual, concise, and avoid repetition. Read the room.]\n\n` + currentPrompt;
@@ -311,13 +262,11 @@ async function generateContent(turn) {
       currentPrompt += `\n\n[CRITICAL TARGET PING DIRECTIVE:\nThe following users are being addressed or mentioned:\n${mentionsInfo}\nRULES: 1. ALWAYS use exact numeric syntax: <@ID>. 2. Place tags naturally.]`;
     }
 
-    console.log(`[PIPELINE TRACE][gemini.js] intent=${userIntent} trigger="${triggerWord}" gameTurn=${isGameTurn} promptLayers=[${isGameTurn ? 'gameFastLane' : (isSystemDraft ? 'systemDraftBypass' : 'identityCore+behavior')},modelRouter,styleLinter]`);
+    console.log(`[PIPELINE TRACE][gemini.js] intent=${userIntent} trigger="${triggerWord}" promptLayers=[${isSystemDraft ? 'systemDraftBypass' : 'identityCore+behavior'},modelRouter,styleLinter]`);
 
     let safeSystemInstruction;
 
-    if (isGameTurn) {
-      safeSystemInstruction = buildGameFastLaneIdentity();
-    } else if (isSystemDraft) {
+    if (isSystemDraft) {
       safeSystemInstruction = `You are Melody, flawlessly executing an administrative task. Ensure you deliver the message exactly as instructed, but maintain your natural, sassy, and loving persona if asked to relay affectionate messages.\n${CRITICAL_OUTPUT_RULES}`;
     } else {
       let dynamicIdentity = buildIdentityCore(turn.userId);
@@ -394,9 +343,7 @@ async function generateContent(turn) {
     }
 
     if (rawText === '') {
-      rawText = isGameTurn 
-        ? "My tactical processors hit a snag analyzing that. Could you ask me again?" 
-        : "Give me a quick second, my thoughts got a bit tangled up! Let's try that again. 🌸";
+      rawText = "Give me a quick second, my thoughts got a bit tangled up! Let's try that again. 🌸";
     }
 
     const { text } = styleLinter.process({
