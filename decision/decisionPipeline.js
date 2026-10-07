@@ -26,7 +26,6 @@ const promptAssembler = require('../promptBuilder/promptAssembler');
 const targetResolver = require('./targetResolver');
 const budgetManager = require('../context/contextBudgetManager');
 
-const { compressGameData, deepCompress } = require('../promptBuilder/promptAssembler');
 
 const BOT_USER_ID = process.env.BOT_USER_ID;
 const DB_TIMEOUT_MS = 2500;
@@ -73,45 +72,34 @@ async function planTurn({
       });
       budgetManager.traceBudget(budgetProfile, { channelId, userId });
 
-      // 🛡️ FIX: Passed `content` so the memory engine can match keywords!
-      const workingMemoryPromise = withTimeout(
-        memoryEngine.getWorkingMemory(channelId, content), 
-        DB_TIMEOUT_MS, 
-        [], 
-        'getWorkingMemory'
-      );
-
       // Resolve relationship (needed for emotion engine)
       const relationship = await relationshipEngine.resolve({ userId, displayName, roles }).catch(() => ({}));
 
       // --- GAME FAST-LANE ---
+      // Game turns are answered by ai/aiFallback.askAI (called from gemini.js generateContent). The old
+      // lean-prompt assembly here was never read on that path (askAI builds its own prompt), so it is
+      // gone: no compression, no assemble. `prompt` stays a non-empty string only so gemini.js's
+      // empty-input guard passes.
       if (gameTurn) {
-        let optimizedGameData = null;
-        if (gameData) {
-            optimizedGameData = deepCompress(compressGameData(gameData));
-        }
-
-        const prompt = promptAssembler.assemble({
-          intent: classification.intent, // 🛡️ FIX: Passed intent for Dynamic Persona Muting
-          leanMode: true,
-          relationship,
-          gameData: optimizedGameData,
-          userMessage: content,
-          speakerName: displayName,
-          recentChatLog,
-          maxPromptChars: budgetProfile.maxPromptChars
-        });
-
         console.log(`[PIPELINE TRACE] intent=${classification.intent} trigger="${classification.triggerWord}" route=GameFastLane tier=${budgetProfile.tier}`);
-        console.log(`[ARCHITECTURE PATH] intentClassifier ➔ targetResolver ➔ gameFastLane ➔ promptAssembler`);
+        console.log(`[ARCHITECTURE PATH] intentClassifier ➔ targetResolver ➔ gameFastLane ➔ aiFallback.askAI`);
 
-        return { prompt, classification, behaviorDirective: null, emotionalState: null, relationship, channelId, userId };
+        return { prompt: content, classification, behaviorDirective: null, emotionalState: null, relationship, channelId, userId };
       }
 
       // --- FULL SOCIAL/BANTER PATH ---
       // 🚀 UPGRADE: Wraps around ONE authority (budgetProfile) instead of an
       // isCasualChat flag computed separately — the budget manager already
       // folds in word-count + intent to decide whether this turn is casual.
+
+      // Working-memory DB query now starts HERE (only non-game turns use it). GAME tier has
+      // maxWorkingMemoryTurns=0, so the query used to run for nothing on every game message.
+      const workingMemoryPromise = withTimeout(
+        memoryEngine.getWorkingMemory(channelId, content),
+        DB_TIMEOUT_MS,
+        [],
+        'getWorkingMemory'
+      );
 
       // 🚀 UPGRADE: Run Emotion calculation and Long-Term Memory fetch in PARALLEL
       const emotionalStatePromise = emotionEngine.updateState({
