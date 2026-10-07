@@ -32,7 +32,6 @@ const { getGoldGuide, rawGoldData, getGemGuide, rawGemData } = require('./data/g
 
 const decisionPipeline = require('./decision/decisionPipeline');
 const gameDomainRouter = require('./router/gameDomainRouter');
-const { compressGameData } = require('./promptBuilder/promptAssembler');
 const { askAI: askGameAI } = require('./ai/aiFallback');
 const requestQueue = require('./utils/requestQueue');
 const budgetManager = require('./context/contextBudgetManager');
@@ -908,16 +907,8 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     aiPromptContent = `[SYSTEM EVENT STATUS: Today is ${currentDay} in India. Current event: ${activeEvent}.]\n\n${cleanText}`;
                 }
 
-                if (gameResult.context) {
-                    const compressedContext = typeof gameResult.context === 'object'
-                        ? compressGameData(gameResult.context)
-                        : gameResult.context;
-                    const contextStr = typeof compressedContext === 'object'
-                        ? JSON.stringify(compressedContext)
-                        : compressedContext;
-
-                    aiPromptContent = `[SYSTEM INSTRUCTION: You MUST use the following exact game data to answer the user's question.]\n\n[GAME DATA]:\n${contextStr}\n\n[USER QUESTION]: ${aiPromptContent}`;
-                }
+                // (removed) `[GAME DATA]` injection: unreachable here — any turn with gameResult.context is
+                // already routed to askGameAI above via hasRealGameSignal.
 
                 const directMentions = message.mentions.users
                     .filter(u => u.id !== client.user.id)
@@ -938,7 +929,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                         everyone: message.mentions.everyone,
                         users: directMentions
                     },
-                    gameData: gameResult.context,
                     recentChatLog: sanitizedChatLog
                 });
 
@@ -952,7 +942,6 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                     rawMessage: cleanText,
                     classification: turnData.classification,
                     behaviorDirective: turnData.behaviorDirective,
-                    gameData: gameResult.context,
                     isGroupContext: Boolean(message.guild),
                     mentionedUsers: directMentions, 
                     knowledgeContext,
