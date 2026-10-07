@@ -13,24 +13,23 @@
 
 const modelRouter = require('../router/modelRouter.js');
 const { stripLeakedReasoning, gatekeeperLint } = require('../postProcessor/leakFilter');
-const { compressGameData, deepCompress } = require('../promptBuilder/promptAssembler');
+const { compressGameData, deepCompress, fitSections } = require('../promptBuilder/promptAssembler');
+const budgetManager = require('../context/contextBudgetManager');
 const { buildInstruction } = require('./promptInstructions');
 const strategyCache = require('../cache/strategyCache');
 
-const GAME_CONTEXT_SOFT_CAP_CHARS = 6000;
+// Single owner of the size limit: contextBudgetManager GAME tier (4500 default). The old local
+// GAME_CONTEXT_SOFT_CAP_CHARS (6000) was declared but never enforced.
+const GAME_DATA_CAP = (budgetManager.TIERS && budgetManager.TIERS.GAME && budgetManager.TIERS.GAME.maxGameDataChars) || 4500;
 const MAX_RETRIES = 2;
 const SNAG_MESSAGE = 'My strategy engine hit a snag pulling that data together — could you ask again in a moment?';
 
 // 🛡️ SECURITY: Escapes XML tags to prevent prompt injection breakouts
 function sanitize(text) {
   if (typeof text !== 'string') return '';
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+  return text.replace(/</g, '&lt;').replace(/>/g, '&gt;'); // only < > can break out of the tags
 }
+
 
 /**
  * Shared retry/gatekeeper loop — used by both the deterministic-explain path
@@ -128,6 +127,11 @@ async function askAI({
   // 🛡️ Safe fix applied here: removed the missing budget constraint function so it doesn't crash!
   const compressedContext = context ? deepCompress(compressGameData(context)) : null;
   let gameDataBlock = compressedContext ? JSON.stringify(compressedContext) : 'No exact data found in database.';
+  if (compressedContext && gameDataBlock.length > GAME_DATA_CAP) {
+    // Whole low-priority sections are dropped; the JSON is never cut mid-string.
+    gameDataBlock = fitSections(compressedContext, GAME_DATA_CAP);
+    console.warn(`[aiFallback] GameData over cap (${GAME_DATA_CAP}) -> ${gameDataBlock.length} chars after section drop`);
+  }
 
   const rawContextChars = context ? JSON.stringify(context, null, 2).length : 0;
   console.log(`[aiFallback] GameData size — raw(pretty): ${rawContextChars} chars (~${Math.round(rawContextChars / 4)} tok) -> compressed: ${gameDataBlock.length} chars (~${Math.round(gameDataBlock.length / 4)} tok)`);
@@ -135,15 +139,20 @@ async function askAI({
   const systemInstruction = buildInstruction(queryFlags);
 
   // 🛡️ SECURITY FIX: userMessage and intent are now strictly sanitized
+  // ORDER MATTERS: data first, question LAST. The 413 recovery keeps the END of the prompt, so the
+  // question used to be the first thing cut off.
   const prompt = `
-<UserQuestion>${sanitize(userMessage) || 'Provide a strategic breakdown.'}</UserQuestion>
 <UserIntent>${sanitize(intent) || 'strategy'}</UserIntent>
 
 <GameData>
 ${gameDataBlock}
 </GameData>
 
-[INSTRUCTION: Analyze <GameData>. Format using vertical bullet points. EVERY stat on a new line. Bold highlights. Provide a comprehensive, highly logical breakdown. NO MARKDOWN TABLES.]`;
+[INSTRUCTION: Analyze <GameData> and answer the question below, following the system rules.]
+
+<UserQuestion>${sanitize(userMessage) || 'Provide a strategic breakdown.'}</UserQuestion>`;
+
+  console.log(`[aiFallback] sizes — system:${String(systemInstruction || "").length} data:${gameDataBlock.length} question:${(userMessage || '').length} total prompt:${prompt.length} chars`);
 
   return _runWithRetries({
     prompt,
