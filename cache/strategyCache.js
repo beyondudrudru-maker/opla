@@ -147,8 +147,7 @@ function setNarration(queryType, params, text, { isBoss = false } = {}) {
 function _escapeXml(text, max = 500) {
   return String(text || '')
     .slice(0, max)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 const EXPLAIN_ONLY_INSTRUCTION = `You are Melody, strategist for "Kingdom Clash".
