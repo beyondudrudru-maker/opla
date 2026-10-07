@@ -425,35 +425,25 @@ function analyzeTroopProgression(name) {
 // 3.5 ENTITY COMPARISON ENGINE (Fixes "X vs Y" queries)
 // ---------------------------------------------------------------
 
-function compareEntities(nameA, nameB) {
+function compareEntities(nameA, nameB, level = 10) {
   if (!queryEngine.findEntityByName) return { error: `queryEngine.findEntityByName is not available. Please ensure gameQueryEngine.js is updated.` };
-  
-const entityA = queryEngine.findEntityByName(nameA);
+
+  const entityA = queryEngine.findEntityByName(nameA);
   const entityB = queryEngine.findEntityByName(nameB);
 
   if (!entityA) return { error: `Entity "${nameA}" not found in gameKnowledge.js database.` };
   if (!entityB) return { error: `Entity "${nameB}" not found in gameKnowledge.js database.` };
 
-  return {
-    entityA: {
-      type: entityA.type,
-      name: entityA.data.name,
-      faction: entityA.data.faction || (entityA.data.categories ? entityA.data.categories.join(', ') : 'Unknown'),
-      rarity: entityA.data.rarity,
-      stats: entityA.type === 'hero' ? entityA.data.stats : { hp: entityA.data.levels.hp[0], damage: entityA.data.levels.damage[0], defense: entityA.data.levels.defense[0] },
-      talent: entityA.data.talent || null,
-      ability: entityA.data.ability || null
-    },
-    entityB: {
-      type: entityB.type,
-      name: entityB.data.name,
-      faction: entityB.data.faction || (entityB.data.categories ? entityB.data.categories.join(', ') : 'Unknown'),
-      rarity: entityB.data.rarity,
-      stats: entityB.type === 'hero' ? entityB.data.stats : { hp: entityB.data.levels.hp[0], damage: entityB.data.levels.damage[0], defense: entityB.data.levels.defense[0] },
-      talent: entityB.data.talent || null,
-      ability: entityB.data.ability || null
-    }
-  };
+  // Both sides are read at the SAME explicit level (default 10) and the level is
+  // returned in the payload, so the reply can state it. (Was: troops at level 1,
+  // heroes at min/max range, level never stated.)
+  const slicer = require('./contextSlicer.js');
+  const slim = (e) => ({
+    type: e.type,
+    ...(e.type === 'hero' ? slicer.sliceHero(e.data, { level }) : slicer.sliceTroop(e.data, { level })),
+  });
+
+  return { level, entityA: slim(entityA), entityB: slim(entityB) };
 }
 
 // ---------------------------------------------------------------
@@ -464,7 +454,7 @@ const entityA = queryEngine.findEntityByName(nameA);
 // classifier read "against"/"beat" as a PvP counter-query instead of a PvE
 // boss question. Mirrors the same detection layer used in gameDomainRouter.js
 // so both the router and this engine agree on what counts as a boss query.
-const BOSS_KEYWORDS = ['dagon', 'kraken', 'kalidor', 'balthazar', 'ashira'];
+const { BOSS_KEYWORDS } = require('../router/gameDomain/constants.js'); // single source of truth
 
 function _detectBossKeywords(text) {
   if (!text || typeof text !== 'string') return [];
