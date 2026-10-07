@@ -29,6 +29,14 @@
 const { HEURISTIC_FALLBACKS, GAME_TAGS, INTENT_PATTERNS } = require('./constants.js');
 const { toHeroSummary, toTroopSummary } = require('./summaries.js');
 const { buildEntityEmbed } = require('./embedBuilders.js');
+const slicer = require('../../engine/contextSlicer.js');
+let _reasonIdx = null;
+function _reasons() {
+  if (_reasonIdx) return _reasonIdx;
+  try { _reasonIdx = slicer.buildReasonIndex(require('../../data/synergies.js')); }
+  catch (e) { console.warn('[enrichment] synergies.js not loadable — partner reasons omitted:', e.message); _reasonIdx = new Map(); }
+  return _reasonIdx;
+}
 
 function enrichStrategyContext({
   text,
@@ -66,9 +74,14 @@ function enrichStrategyContext({
       .map(d => d.data);
 
     if (resolvedHeroes.length > 0) {
+      // SLICED: one level (default 10), no 10-level arrays. If strategyContextBuilder already
+      // attached recognizedHero for this single hero, only {id,name} is kept (collection-bonus needs id).
+      const _lvl = entities.levels && entities.levels[0];
       strategyData.context.mentionedHeroes = resolvedHeroes.length > 3
         ? resolvedHeroes.map(toHeroSummary)
-        : resolvedHeroes;
+        : (resolvedHeroes.length === 1 && strategyData.context.recognizedHero)
+          ? resolvedHeroes.map(h => ({ id: h.id, name: h.name }))
+          : resolvedHeroes.map(h => slicer.sliceHero(h, { level: _lvl || slicer.DEFAULT_LEVEL }));
       if (resolvedHeroes.length > 3) {
         strategyData.context.mentionedHeroesTruncated = true; // signal to the AI these are summaries, not full records
       }
@@ -85,7 +98,7 @@ function enrichStrategyContext({
     if (resolvedTroops.length > 0) {
       strategyData.context.mentionedTroops = resolvedTroops.length > 3
         ? resolvedTroops.map(toTroopSummary)
-        : resolvedTroops;
+        : resolvedTroops.map(t => slicer.sliceTroop(t, { level: (entities.levels && entities.levels[0]) || slicer.DEFAULT_LEVEL }));
       if (resolvedTroops.length > 3) {
         strategyData.context.mentionedTroopsTruncated = true;
       }
@@ -173,12 +186,7 @@ function enrichStrategyContext({
         synergyCandidates.push({
           targetType:        ctx.entityType,
           targetName:        ctx.entity.name,
-          target:             ctx.entity,
-          recommendedHeroes: ctx.recommendedHeroes,
-          recommendedTroops: ctx.recommendedTroops,
-          synergyCategories: ctx.synergyCategories,
-          optimalGear:       ctx.optimalGear,
-          unresolvedRecommendations: ctx.unresolvedRecommendations
+          ...slicer.sliceSynergy(ctx, { level: (entities.levels && entities.levels[0]) || slicer.DEFAULT_LEVEL, reasons: _reasons() })
         });
 
         // 🚀 Attach a real embed card for every entity actually named in a
@@ -292,16 +300,15 @@ function enrichStrategyContext({
         strategyData.context.detectedBoss    = matchedBossKeywords.join(', ');
         // Inject the raw boss record so the AI has ability/strategy data directly
         if (matchedBossRecords.length > 0) {
-          strategyData.context.bossRecords = matchedBossRecords;
+          strategyData.context.bossRecords = matchedBossRecords.map(slicer.sliceBoss);
           // 🎯 RESISTANCE-BASED DEPLOYMENT: surface any resistance field explicitly
           // (e.g. "Ranged-Resistant" / "Melee-Resistant") so the AI can adapt troop
           // recommendations to this specific boss instead of a generic loadout.
           const resistanceNotes = matchedBossRecords
             .filter(b => b.resistance || b.resistances)
             .map(b => ({ boss: b.name, resistance: b.resistance || b.resistances }));
-          if (resistanceNotes.length > 0) {
-            strategyData.context.bossResistance = resistanceNotes;
-          }
+          // bossResistance removed: sliced bossRecords already carry `resistance` (was sent twice).
+          void resistanceNotes;
         }
         // Always attach the Boss Troop Meta tier list so recommendations stay
         // anchored to the approved priority order (Legendary > Epic > Rare > Common).

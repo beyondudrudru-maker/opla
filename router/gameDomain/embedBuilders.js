@@ -13,9 +13,29 @@
 const { EmbedBuilder } = require('discord.js');
 const { formatStat } = require('./statFormatter.js');
 
+const FIELD_MAX = 1024; // Discord embed field value limit
+
+/** Monospace table, right-aligned, widths computed from the data (stays narrow on mobile). */
+function _table(headers, rows) {
+  const w = headers.map((h, i) => Math.max(String(h).length, ...rows.map(r => String(r[i]).length)));
+  const line = r => r.map((c, i) => String(c).padStart(w[i])).join(' ');
+  return '```\n' + [line(headers), ...rows.map(line)].join('\n') + '\n```';
+}
+const _n = v => (typeof v === 'number' ? v.toLocaleString('en-US') : String(v ?? '-'));
+const _clip = (s, n = FIELD_MAX) => (String(s).length <= n ? String(s) : String(s).slice(0, n - 1) + '…');
+
+/** Lv1–10 HP/Def/Atk table for a hero. Returns null if no per-level data exists. */
+function _heroLevelTable(hero) {
+  const sl = hero.statLevels;
+  if (!sl || !Array.isArray(sl.hp)) return null;
+  const rows = sl.hp.map((hp, i) => [i + 1, _n(hp), _n(sl.defense?.[i]), _n(sl.attack?.[i])]);
+  return _table(['Lv', 'HP', 'Def', 'Atk'], rows);
+}
+
 /**
  * buildHeroCard(hero)
- * Full stat card for a single resolved hero record.
+ * Stat card for a single resolved hero: ALL 10 levels in one table (this card is the single
+ * place stats are shown, so the AI reply does not repeat them).
  */
 function buildHeroCard(hero) {
   const embed = new EmbedBuilder()
@@ -23,13 +43,23 @@ function buildHeroCard(hero) {
     .setTitle(`🦸‍♂️ ${hero.name}`)
     .addFields(
       { name: 'Faction',     value: hero.faction || 'N/A',                                  inline: true },
-      { name: 'Rarity',      value: hero.rarity  || 'N/A',                                  inline: true },
+      { name: 'Rarity',      value: hero.rarity  || 'N/A',                                  inline: true }
+    );
+  const table = _heroLevelTable(hero);
+  if (table) {
+    embed.addFields({ name: '📈 Levels 1–10', value: _clip(table) });
+  } else {
+    embed.addFields(
       { name: '❤️ HP',       value: formatStat(hero.stats?.hp),      inline: true },
       { name: '🛡️ Defense', value: formatStat(hero.stats?.defense), inline: true },
       { name: '⚔️ Attack',  value: formatStat(hero.stats?.attack),  inline: true }
     );
+  }
   if (hero.talent) {
-    embed.addFields({ name: `🌟 Talent: ${hero.talent.name}`, value: hero.talent.description });
+    const eff = hero.talent.effects
+      ? '\n' + Object.entries(hero.talent.effects).map(([k, v]) => `• **${k}:** ${v} (Lv1→Lv10)`).join('\n')
+      : '';
+    embed.addFields({ name: `🌟 Talent: ${hero.talent.name}`, value: _clip(hero.talent.description + eff) });
   }
   if (hero.ability && hero.ability.description) {
     embed.addFields({ name: `✨ Ability: ${hero.ability.name || 'Skill'}`, value: hero.ability.description });
@@ -42,26 +72,39 @@ function buildHeroCard(hero) {
  * data: result of queryEngine.getTroopLevel(troopQuery, lvl)
  * ability: result of queryEngine.getTroopAbility(troopQuery, lvl) (optional)
  */
-function buildTroopCard(data, ability, lvl) {
+function buildTroopCard(data, ability, lvl, fullTroop) {
   const embed = new EmbedBuilder()
     .setColor('#2b2d31')
-    .setTitle(`📜 ${data.troopName} (Lv. ${data.level})`)
-    .addFields(
+    .setTitle(`📜 ${data.troopName} (Lv. ${data.level})`);
+
+  const L = fullTroop && fullTroop.levels;
+  if (L && Array.isArray(L.hp)) {
+    // All 10 levels; '>' marks the level the user asked about.
+    const rows = L.hp.map((hp, i) => [
+      (i + 1 === Number(lvl) ? '>' : ' ') + (i + 1), _n(L.units?.[i]), _n(hp), _n(L.damage?.[i]), _n(L.defense?.[i]),
+    ]);
+    embed.addFields({ name: '📈 Levels 1–10', value: _clip(_table(['Lv', 'Un', 'HP', 'Dmg', 'Def'], rows)) });
+  } else {
+    embed.addFields(
       { name: '❤️ HP',      value: data.hp?.toLocaleString()      || 'N/A', inline: true },
       { name: '⚔️ Damage', value: data.damage?.toLocaleString()   || 'N/A', inline: true },
       { name: '🛡️ Defense',value: String(data.defense             || 'N/A'), inline: true },
       { name: '👥 Units',   value: String(data.units              || 1),    inline: true }
     );
+  }
 
   if (ability && ability.name) {
-    let abText = ability.description;
-    if (ability.statsAtLevel) {
-      abText += `\n\n**Stats at Lv. ${lvl}:**\n` +
-        Object.entries(ability.statsAtLevel)
-          .map(([k, v]) => `• **${k}:** ${v}`)
-          .join('\n');
+    embed.addFields({ name: `✨ Ability: ${ability.name}`, value: _clip(ability.description) });
+    const ls = fullTroop && fullTroop.ability && fullTroop.ability.levelStats;
+    if (ls && Object.keys(ls).length) {
+      const keys = Object.keys(ls);
+      const lines = Array.from({ length: 10 }, (_, i) =>
+        `${i + 1 === Number(lvl) ? '▶ ' : ''}L${i + 1}: ` + keys.map(k => (Array.isArray(ls[k]) ? ls[k][i] : ls[k])).join(' · '));
+      embed.addFields({ name: `📊 Ability scaling (${keys.join(' · ')})`, value: _clip(lines.join('\n')) });
+    } else if (ability.statsAtLevel) {
+      const txt = Object.entries(ability.statsAtLevel).map(([k, v]) => `• **${k}:** ${v}`).join('\n');
+      embed.addFields({ name: `📊 Stats at Lv. ${lvl}`, value: _clip(txt) });
     }
-    embed.addFields({ name: `✨ Ability: ${ability.name}`, value: abText });
   }
   return embed;
 }
