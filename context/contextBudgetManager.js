@@ -96,10 +96,9 @@ const TIERS = {
     maxWorkingMemoryTurns: 0,
     rankedMemoryCount: 0,
     maxPromptChars: 6500,
-    maxGameDataChars: 4500, // single owner of the GameData size limit (assembler + aiFallback should read this) // 🛡️ RESTORED: GameData itself is separately capped
-    // at 4000 chars inside renderGameContext (GAME_CONTEXT_SOFT_CAP_CHARS),
-    // and this tier carries zero working-memory turns, so 18000 was never
-    // actually needed — it just masked the same uncapped-item issue.
+    // Single owner of the GameData size limit (aiFallback + promptAssembler.renderGameContext read it).
+    // Over the cap, promptAssembler.fitSections drops whole low-priority sections instead of cutting JSON.
+    maxGameDataChars: 4500,
   },
 
   // Moderation / conflict messages: keep it fast and cheap, no memory needed
