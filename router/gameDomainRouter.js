@@ -351,4 +351,35 @@ function route(text, recentContext = '', userCorrections = []) {
   return { resolved: false, intent, entities, context: null, needsClarification, queryFlags, deterministic };
 }
 
-module.exports = { route };
+// ─────────────────────────────────────────────────────────────────────────────
+// mentionsKnownEntity(text) — cheap pre-gate for index.js.
+// A message that names a real hero/troop/boss ("anavin kya karti hai?") is a
+// game question even without the words "hero"/"troop". Whole-word match on the
+// full name AND on its first word (>=4 chars, so "Imp"/"Ox" don't fire on chat).
+// ─────────────────────────────────────────────────────────────────────────────
+let _nameRe = { re: null, expiresAt: 0 };
+function _nm(x) { return String((x && (x.name || (x.data && x.data.name))) || '').trim(); }
+function mentionsKnownEntity(text) {
+  try {
+    const now = Date.now();
+    if (!_nameRe.re || now >= _nameRe.expiresAt) {
+      const { heroes, troops } = _getRosterSnapshot();
+      const toks = new Set();
+      for (const x of [...heroes, ...troops]) {
+        const n = _nm(x).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!n) continue;
+        if (n.length >= 4) toks.add(n);
+        const first = n.split(' ')[0];
+        if (first.length >= 4) toks.add(first);
+      }
+      const esc = [...toks].map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      _nameRe = { re: esc.length ? new RegExp('\\b(?:' + esc.join('|') + ')\\b', 'i') : null, expiresAt: now + ROSTER_CACHE_TTL_MS };
+    }
+    const t = String(text || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ');
+    if (_nameRe.re && _nameRe.re.test(t)) return true;
+    const nt = t, ns = t.replace(/ /g, '');
+    return scrapeBossKeywords(nt, ns).length > 0;
+  } catch (_) { return false; }
+}
+
+module.exports = { route, mentionsKnownEntity };
