@@ -41,7 +41,8 @@ const stats = { hits: 0, misses: 0, narrationHits: 0, errors: 0 };
 // Query types where the order of the two entities does not change the answer.
 // Remove a type from this set if its narration/ranking depends on A-vs-B order.
 const SYMMETRIC_TYPES = new Set(['compareEntities']);
-const PAIR_KEY_RE = /^(a|b|entity_?[ab12]|first|second|left|right|name[12]|hero[12]|troop[12])$/i;
+// nameA/nameB are the keys queryFlags actually sends; the old pattern only knew name1/name2, so A-vs-B and B-vs-A never shared an entry.
+const PAIR_KEY_RE = /^(a|b|entity_?[ab12]|first|second|left|right|name_?[ab12]|hero_?[ab12]|troop_?[ab12])$/i;
 
 const CACHEABLE_TYPES = new Set([
   'compareEntities',
