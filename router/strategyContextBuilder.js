@@ -19,6 +19,10 @@
 
 const strategyEngine = require('../engine/gameStrategyEngine.js');
 const queryEngine = require('../engine/gameQueryEngine.js');
+const slicer = require('../engine/contextSlicer.js');
+
+// One short note instead of three ~70-word copies; the full rules live in promptInstructions COMPARISON.
+const COMPARE_NOTE = "Explain the tactical difference (what abilities DO, roles/positions, PvP/Arena vs Boss, synergies) before a situational verdict. Never pick a winner from raw stats alone. State comparedAtLevel once. Use only the numbers provided.";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pillar 4 helpers — User Correction Ledger
@@ -104,14 +108,15 @@ function build(intent, entities, userCorrections = []) {
 
   // 🚀 1. Hero Comparison (2 Heroes strictly when explicitly comparing)
   if (!result && isActuallyComparing && heroNames && heroNames.length >= 2) {
-    const cmp = strategyEngine.compareEntities(heroNames[0], heroNames[1]);
+    const cmp = strategyEngine.compareEntities(heroNames[0], heroNames[1], (levels && levels[0]) || 10);
     if (cmp.error) {
       result = { context: null, sufficient: false, error: cmp.error };
     } else {
       result = {
         sufficient: true,
         context: {
-          formatInstruction: "Do NOT output a simple mathematical stat comparison (e.g. 'HP: X > Y') or declare a winner by raw stats alone. Explain the tactical difference: core identity/abilities and what they DO, PvP/Arena performance, Boss Encounter value, and optimal synergies/gear with mechanical reasoning, before reaching a situational verdict. Base all facts STRICTLY on the provided data without hallucinating stats.",
+          formatInstruction: COMPARE_NOTE,
+          comparedAtLevel: cmp.level,
           hero1: cmp.entityA,
           hero2: cmp.entityB
         }
@@ -130,29 +135,29 @@ function build(intent, entities, userCorrections = []) {
         context: {
           task: "Provide exact stats and strategic usage for this database-verified hero.",
           formatInstruction: "Do not invent abilities or stats. Use ONLY the provided database record.",
-          recognizedHero: h1.data
+          recognizedHero: slicer.sliceHero(h1.data, { level: (levels && levels[0]) || slicer.DEFAULT_LEVEL })
         }
       };
     }
   }
 
-  // 🚀 3. Troop Comparison (2 Troops with Level Scaling strictly when comparing)
+  // 🚀 3. Troop Comparison — both sides sliced (combatLine = the only positional source), ONE level unless the user gave two
   if (!result && isActuallyComparing && troopNames && troopNames.length >= 2) {
     const lvl1 = (levels && levels[0]) ? levels[0] : 10;
     const lvl2 = (levels && levels[1]) ? levels[1] : lvl1;
+    const a = queryEngine.findEntityByName(troopNames[0]);
+    const b = queryEngine.findEntityByName(troopNames[1]);
 
-    const t1 = queryEngine.getTroopLevel(troopNames[0], lvl1);
-    const t2 = queryEngine.getTroopLevel(troopNames[1], lvl2);
-
-    if (!t1 || !t2) {
+    if (!a || !b || a.type !== 'troop' || b.type !== 'troop') {
       result = { context: null, sufficient: false, error: "One or both troops could not be found in the database." };
     } else {
       result = {
         sufficient: true,
         context: {
-          formatInstruction: "Do NOT declare a winner based ONLY on raw stats (HP/Damage/Defense) and do NOT output a bare mathematical comparison. Explain what each troop's ability actually does and its battlefield role, how each performs in PvP/Arena vs Boss Encounters, and note any hero/gear synergies from the provided data, before giving a situational verdict. Base all facts ONLY on these exact database stats without hallucinating numbers.",
-          troop1: t1,
-          troop2: t2
+          formatInstruction: COMPARE_NOTE,
+          comparedAtLevel: lvl1 === lvl2 ? lvl1 : `${a.data.name} at level ${lvl1}, ${b.data.name} at level ${lvl2}`,
+          troop1: slicer.sliceTroop(a.data, { level: lvl1 }),
+          troop2: slicer.sliceTroop(b.data, { level: lvl2 })
         }
       };
     }
@@ -162,12 +167,12 @@ function build(intent, entities, userCorrections = []) {
   if (!result && isActuallyComparing && rawText) {
     const match = rawText.match(/(.+?)\s+(?:vs|versus)\s+(.+)/i);
     if (match) {
-      const cmp = strategyEngine.compareEntities(match[1].trim(), match[2].trim());
+      const cmp = strategyEngine.compareEntities(match[1].trim(), match[2].trim(), (levels && levels[0]) || 10);
       if (!cmp.error) {
         result = {
           sufficient: true,
           context: {
-            formatInstruction: "Do NOT output a bare stat comparison or declare a winner by raw numbers alone. Explain the tactical difference — abilities, roles, PvP/Arena vs Boss Encounter performance, and synergies — using the provided deterministic stats. Do not guess or hallucinate any numbers.",
+            formatInstruction: COMPARE_NOTE,
             comparisonData: cmp
           }
         };
@@ -176,25 +181,20 @@ function build(intent, entities, userCorrections = []) {
   }
 
   // 🚀 5. Single Troop Level Analysis
+  // The raw `tags` are NOT sent: they can contradict combatLine (e.g. Phoenix is Aerial but tagged Frontline/Backline-DPS),
+  // and POSITION LOCK needs combatLine, which the old payload did not carry at all.
   if (!result && troopName && (!levels || levels.length <= 1)) {
     const level = (levels && levels[0]) ? levels[0] : 10;
     const analysis = strategyEngine.analyzeTroopAtLevel(troopName, level);
     if (analysis.error) {
       result = { context: null, sufficient: false, error: analysis.error };
     } else {
+      const raw = (queryEngine.findEntityByName(troopName) || {}).data || analysis.troop;
+      const { strengths: _s, weaknesses: _w, ...troopSlice } = slicer.sliceTroop(raw, { level });
       result = {
         sufficient: true,
         context: {
-          troop: {
-            name: analysis.troop.name,
-            level: analysis.level,
-            hp: analysis.stats.hp,
-            damage: analysis.stats.damage,
-            defense: analysis.stats.defense,
-            units: analysis.stats.units,
-            ability: analysis.ability,
-            tags: analysis.troop.tags
-          },
+          troop: troopSlice,
           role: analysis.role,
           strengths: analysis.strengths,
           weaknesses: analysis.weaknesses
@@ -211,12 +211,21 @@ function build(intent, entities, userCorrections = []) {
       : { sufficient: true, context: { troopName, ...cmp } };
   }
 
-  // 🚀 7. Best Heroes for a Troop
+  // 🚀 7. Best Heroes for a Troop (troop slice carries combatLine + ability: the pairing logic needs both)
   if (!result && troopName && !heroName && (!heroNames || heroNames.length === 0)) {
     const found = strategyEngine.findBestHeroesForTroop(troopName);
-    result = found.error
-      ? { context: null, sufficient: false, error: found.error }
-      : { sufficient: true, context: { troop: { name: found.troopName }, compatibleHeroes: found.candidates.slice(0, 5) } };
+    if (found.error) {
+      result = { context: null, sufficient: false, error: found.error };
+    } else {
+      const rawT = (queryEngine.findEntityByName(troopName) || {}).data;
+      result = {
+        sufficient: true,
+        context: {
+          troop: rawT ? slicer.sliceTroop(rawT, { level: 10 }) : { name: found.troopName },
+          compatibleHeroes: found.candidates.slice(0, 5)
+        }
+      };
+    }
   }
 
   // 🚀 8. Category Strategy
