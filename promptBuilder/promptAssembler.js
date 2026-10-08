@@ -464,11 +464,13 @@ const CORE_KEYS = new Set([
   'userCorrections', 'recognizedHero', 'recognizedTroop', 'hero1', 'hero2', 'troop1', 'troop2', 'troop',
   'comparedAtLevel', 'comparisonData', 'mentionedHeroes', 'mentionedTroops', 'bossRecords',
   'synergyCandidates', 'matchedHeroes', 'matchedTroops', 'matchedBosses', 'formatInstruction', 'task',
+  'compatibleHeroes', 'heuristicFallback', 'unresolvedQuery', 'unresolvedSynergyQuery', 'detectedBoss',
 ]);
 const DROP_ORDER = [
   'gameTaxonomy', 'scenarioGuides', 'optimalFormations', 'counterGuides', 'equipmentGuide',
-  'bossTroopMeta', 'categoryData', 'heroRecommendations', 'troopRecommendations', 'synergyLinks',
+  'categoryData', 'heroRecommendations', 'troopRecommendations', 'synergyLinks',
   'gearRecommendations', 'heroCollectionBonusSummary', 'strengths', 'weaknesses',
+  'bossTroopMeta', // LAST: BOSS rule #5 calls it authoritative — only dropped if nothing else is left to cut
 ];
 
 function fitSections(obj, cap) {
