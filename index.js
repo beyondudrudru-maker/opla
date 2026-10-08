@@ -822,9 +822,10 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                 'clash', 'kingdom clash', 'pvp', 'arena', 'tier list'
             ];
             
+            // A real hero/troop/boss NAME is a game signal on its own ("anavin kya karti hai?").
             const hasStrictGameIntent = strictGameKeywords.some(keyword => 
                 new RegExp(`\\b${keyword}\\b`, 'i').test(cleanText)
-            );
+            ) || gameDomainRouter.mentionsKnownEntity(cleanText);
 
             try {
                 if (hasStrictGameIntent) {
@@ -865,7 +866,7 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                         gameResult.queryFlags.isSynergyQuery ||
                         gameResult.queryFlags.isComparisonQuery ||
                         gameResult.queryFlags.needsGear ||
-                        (gameResult.queryFlags.isSingleEntity && (gameResult.intent !== 'UNKNOWN' || hasGameKeyword))
+                        (gameResult.queryFlags.isSingleEntity && (gameResult.intent !== 'UNKNOWN' || hasGameKeyword || gameResult.queryFlags.hasValidatedEntity))
                     ))
                 )
             );
