@@ -980,7 +980,7 @@ function answerStrategyQuery(query) {
     }
 
     case 'compareEntities': {
-      const res = compareEntities(params.nameA, params.nameB);
+      const res = compareEntities(params.nameA, params.nameB, params.level || 10);
       if (res.error) {
         return { queryType: 'compareEntities', data: null, calculations: null, candidates: [], ranking: [], recommendation: null, confidence: 'low', missingInformation: [res.error] };
       }

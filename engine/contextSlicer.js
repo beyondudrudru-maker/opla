@@ -86,6 +86,10 @@ function sliceTroop(t, { level = DEFAULT_LEVEL } = {}) {
  *  - troop: combatLine (the ONLY legal source of positional role), one stat
  *  - reason: the one-line "why" from synergies.js troopHeroSynergy (when known)
  */
+// Raw numbers on every partner made the model print "Name - 91,500 HP, 1,630 damage" for each pick (stat-block repeat).
+// Partners keep role / position / talent / reason; set PARTNER_STATS=1 to bring the numbers back.
+const PARTNER_STATS = process.env.PARTNER_STATS === '1';
+
 function slimPartner(rec, type, { level = DEFAULT_LEVEL, reason } = {}) {
   if (!rec) return rec;
   if (type === 'hero') {
@@ -94,7 +98,7 @@ function slimPartner(rec, type, { level = DEFAULT_LEVEL, reason } = {}) {
       name: rec.name, rarity: rec.rarity,
       role: rec.analysis && rec.analysis.primaryRole,
       talent: rec.talent && _clean({ name: rec.talent.name, description: rec.talent.description }),
-      hp: _at(sl.hp, level), attack: _at(sl.attack, level),
+      ...(PARTNER_STATS ? { hp: _at(sl.hp, level), attack: _at(sl.attack, level) } : {}),
       reason,
     });
   }
@@ -102,7 +106,7 @@ function slimPartner(rec, type, { level = DEFAULT_LEVEL, reason } = {}) {
   return _clean({
     name: rec.name, rarity: rec.rarity, combatLine: rec.combatLine,
     role: rec.analysis && rec.analysis.primaryRole,
-    hp: _at(L.hp, level), damage: _at(L.damage, level),
+    ...(PARTNER_STATS ? { hp: _at(L.hp, level), damage: _at(L.damage, level) } : {}),
     reason,
   });
 }
@@ -147,8 +151,31 @@ function sliceBoss(b) {
   });
 }
 
+/**
+ * Hero-to-hero partners from synergies.heroSynergyIndex (hero records have no recommendedHeroes,
+ * so "best 2nd hero?" had NO data source). Returns names grouped by the buff they provide:
+ *   { partners: { buffsMageHP: ['Sigurd','Ophelia'], ... }, targetCovers: ['buffsMageAttack', ...] }
+ * Only categories relevant to the target's faction (buffs<Faction>*) plus the general troop/boss/
+ * utility categories are kept; empty categories and the target itself are dropped.
+ */
+function buildBuffPartners(index, target, heroesById) {
+  if (!index || !target) return null;
+  const faction = String(target.faction || '').replace(/s$/i, ''); // 'Mages' -> 'Mage'
+  // buff/boss/heal/shield only — CC, debuffers, summoners etc. were ~500 chars of low-value noise for "2nd hero" questions
+  const relevant = (k) => /^buffs(Troop|Tank)/.test(k) || /^(bossDamage|healing|shielding)$/.test(k)
+    || (faction && new RegExp('^buffs' + faction, 'i').test(k));
+  const partners = {}, targetCovers = [];
+  for (const [cat, ids] of Object.entries(index)) {
+    if (!relevant(cat) || !Array.isArray(ids)) continue;
+    if (ids.includes(target.id)) targetCovers.push(cat);
+    const names = ids.filter(id => id !== target.id).map(id => heroesById && heroesById[id] && heroesById[id].name).filter(Boolean);
+    if (names.length) partners[cat] = names;
+  }
+  return Object.keys(partners).length ? _clean({ partners, targetCovers }) : null;
+}
+
 /** Synergy context (output of queryEngine.getSynergyContext) → slim candidate. */
-function sliceSynergy(ctx, { level = DEFAULT_LEVEL, includeTarget = false, reasons = null } = {}) {
+function sliceSynergy(ctx, { level = DEFAULT_LEVEL, includeTarget = false, reasons = null, buffPartners = null } = {}) {
   const isHero = ctx.entityType === 'hero';
   return _clean({
     targetType: ctx.entityType,
@@ -160,10 +187,11 @@ function sliceSynergy(ctx, { level = DEFAULT_LEVEL, includeTarget = false, reaso
       slimPartner(h, 'hero', { level, reason: reasons && reasons.get(`${ctx.entity.id}|${h.id}`) })),
     recommendedTroops: (ctx.recommendedTroops || []).map(t =>
       slimPartner(t, 'troop', { level, reason: reasons && reasons.get(`${t.id}|${ctx.entity.id}`) })),
+    buffPartners: buffPartners || undefined,
     synergyCategories: ctx.synergyCategories,
     optimalGear: (ctx.optimalGear || []).slice(0, 3).map(slimGear),
     unresolvedRecommendations: ctx.unresolvedRecommendations,
   });
 }
 
-module.exports = { buildReasonIndex, sliceHero, sliceTroop, slimPartner, slimGear, sliceBoss, sliceSynergy, DEFAULT_LEVEL };
+module.exports = { buildBuffPartners, buildReasonIndex, sliceHero, sliceTroop, slimPartner, slimGear, sliceBoss, sliceSynergy, DEFAULT_LEVEL };
