@@ -62,7 +62,7 @@ function buildHeroCard(hero) {
     embed.addFields({ name: `🌟 Talent: ${hero.talent.name}`, value: _clip(hero.talent.description + eff) });
   }
   if (hero.ability && hero.ability.description) {
-    embed.addFields({ name: `✨ Ability: ${hero.ability.name || 'Skill'}`, value: hero.ability.description });
+    embed.addFields({ name: `✨ Ability: ${hero.ability.name || 'Skill'}`, value: _clip(hero.ability.description) });
   }
   return embed;
 }
@@ -123,8 +123,8 @@ function buildComparisonCards(h1, h2) {
       { name: '🛡️ Defense',      value: formatStat(h1.stats?.defense), inline: true },
       { name: '⚔️ Attack',       value: formatStat(h1.stats?.attack),  inline: true }
     );
-  if (h1.talent)  embed1.addFields({ name: `🌟 Talent: ${h1.talent.name}`,  value: h1.talent.description });
-  if (h1.ability) embed1.addFields({ name: `✨ Ability: ${h1.ability.name}`, value: h1.ability.description });
+  if (h1.talent)  embed1.addFields({ name: `🌟 Talent: ${h1.talent.name}`,  value: _clip(h1.talent.description) });
+  if (h1.ability) embed1.addFields({ name: `✨ Ability: ${h1.ability.name}`, value: _clip(h1.ability.description) });
 
   const embed2 = new EmbedBuilder()
     .setColor('#E74C3C')
@@ -135,8 +135,8 @@ function buildComparisonCards(h1, h2) {
       { name: '🛡️ Defense',      value: formatStat(h2.stats?.defense), inline: true },
       { name: '⚔️ Attack',       value: formatStat(h2.stats?.attack),  inline: true }
     );
-  if (h2.talent)  embed2.addFields({ name: `🌟 Talent: ${h2.talent.name}`,  value: h2.talent.description });
-  if (h2.ability) embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: h2.ability.description });
+  if (h2.talent)  embed2.addFields({ name: `🌟 Talent: ${h2.talent.name}`,  value: _clip(h2.talent.description) });
+  if (h2.ability) embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: _clip(h2.ability.description) });
 
   return [embed1, embed2];
 }
@@ -165,7 +165,7 @@ function buildEntityEmbed(entity, type) {
     );
 
     if (troop.ability && troop.ability.description) {
-      embed.addFields({ name: `✨ Ability: ${troop.ability.name || 'Skill'}`, value: troop.ability.description });
+      embed.addFields({ name: `✨ Ability: ${troop.ability.name || 'Skill'}`, value: _clip(troop.ability.description) });
     }
     return embed;
   }

@@ -53,12 +53,16 @@ function buildQueryFlags({ text, entities, isSynergyQuery, isBossQuery, isCounte
   // both names resolved — gameStrategyEngine.compareEntities() needs both
   // exact names to do the CPU-only lookup. aiFallback/strategyCache decide
   // whether to actually use it; this just flags the possibility.
-  const deterministic = isComparisonQuery
+  // The user's level is part of the request (and of the cache key): "A vs B at level 5" must not be served the level-10 answer.
+  // Two DIFFERENT levels (one per side) can't be expressed by compareEntities(level) -> the full pipeline handles that.
+  const _lv = Array.isArray(entities.levels) ? entities.levels : [];
+  const deterministic = isComparisonQuery && !(_lv[1] && _lv[1] !== _lv[0])
     ? {
         queryType: 'compareEntities',
         params: {
           nameA: entities.heroNames[0] || entities.troopNames[0],
           nameB: entities.heroNames[1] || entities.troopNames[1],
+          ...(_lv[0] ? { level: _lv[0] } : {}),
         },
       }
     : null;

@@ -30,12 +30,22 @@ const { HEURISTIC_FALLBACKS, GAME_TAGS, INTENT_PATTERNS } = require('./constants
 const { toHeroSummary, toTroopSummary } = require('./summaries.js');
 const { buildEntityEmbed } = require('./embedBuilders.js');
 const slicer = require('../../engine/contextSlicer.js');
-let _reasonIdx = null;
+// Collection-bonus numbers are only injected when the user asks (was: on every hero mention).
+const COLLECTION_ASK = /\bcollection\b|\bcollect\s*bonus\b/i;
+let _reasonIdx = null, _heroIndex = null, _heroesById = null;
 function _reasons() {
   if (_reasonIdx) return _reasonIdx;
-  try { _reasonIdx = slicer.buildReasonIndex(require('../../data/synergies.js')); }
-  catch (e) { console.warn('[enrichment] synergies.js not loadable — partner reasons omitted:', e.message); _reasonIdx = new Map(); }
+  try {
+    const syn = require('../../data/synergies.js');
+    _reasonIdx = slicer.buildReasonIndex(syn);
+    _heroIndex = syn.heroSynergyIndex || null;
+    _heroesById = Object.fromEntries(require('../../data/heroes.js').map(h => [h.id, h]));
+  } catch (e) { console.warn('[enrichment] synergies/heroes not loadable — partner reasons + buffPartners omitted:', e.message); _reasonIdx = new Map(); }
   return _reasonIdx;
+}
+function _buffPartners(ctx) {
+  _reasons();
+  return ctx.entityType === 'hero' ? slicer.buildBuffPartners(_heroIndex, ctx.entity, _heroesById) : null;
 }
 
 function enrichStrategyContext({
@@ -67,7 +77,13 @@ function enrichStrategyContext({
   // 🆕 CONTEXT WINDOW PROTECTION: full JSON objects only when <= 3 entities
   // are mentioned; beyond that, every entity in the list is compacted into a
   // lightweight Summary Object (name, rarity, primaryRole, talentName).
-  if (entities.heroNames.length > 0) {
+  // The builder already attached these entities (recognizedHero / hero1-2 / troop / troop1-2 / comparisonData).
+  // Re-adding them as mentioned* sent every compared entity twice.
+  const _c = strategyData.context;
+  const heroesAlreadyInContext = Boolean(_c.recognizedHero || _c.hero1 || _c.hero2 || _c.comparisonData);
+  const troopsAlreadyInContext = Boolean(_c.troop || _c.troop1 || _c.troop2 || _c.comparisonData);
+
+  if (entities.heroNames.length > 0 && !heroesAlreadyInContext) {
     const resolvedHeroes = entities.heroNames
       .map(name => queryEngine.findEntityByName(name))
       .filter(d => d && d.data)
@@ -89,7 +105,7 @@ function enrichStrategyContext({
     }
   }
 
-  if (entities.troopNames.length > 0) {
+  if (entities.troopNames.length > 0 && !troopsAlreadyInContext) {
     const resolvedTroops = entities.troopNames
       .map(name => queryEngine.findEntityByName(name))
       .filter(d => d && d.data)
@@ -186,7 +202,7 @@ function enrichStrategyContext({
         synergyCandidates.push({
           targetType:        ctx.entityType,
           targetName:        ctx.entity.name,
-          ...slicer.sliceSynergy(ctx, { level: (entities.levels && entities.levels[0]) || slicer.DEFAULT_LEVEL, reasons: _reasons() })
+          ...slicer.sliceSynergy(ctx, { level: (entities.levels && entities.levels[0]) || slicer.DEFAULT_LEVEL, reasons: _reasons(), buffPartners: _buffPartners(ctx) })
         });
 
         // 🚀 Attach a real embed card for every entity actually named in a
@@ -404,20 +420,15 @@ function enrichStrategyContext({
     }
   }
 
-  // ── 🆕 HERO COLLECTION BONUS AUTO-INJECTION ───────────────────────────────
-  // When the context now has mentionedHeroes, compute their collection bonuses
-  // automatically and inject into context so the AI can quote exact numbers.
-  // NOTE: only runs against full (non-summarized) records — collection bonus
-  // math needs the real hero `id`, which the Context Window Protection summary
-  // objects intentionally omit.
-  if (
-    strategyData.context.mentionedHeroes &&
-    strategyData.context.mentionedHeroes.length > 0 &&
-    !strategyData.context.mentionedHeroesTruncated
-  ) {
-    const heroIds = strategyData.context.mentionedHeroes
-      .map(h => h.id)
-      .filter(Boolean);
+  // ── 🆕 HERO COLLECTION BONUS (only when asked) ────────────────────────────
+  // Hero ids come from whichever place the hero already lives in the context (needs the real id).
+  if (COLLECTION_ASK.test(text) && !strategyData.context.mentionedHeroesTruncated) {
+    const c = strategyData.context;
+    const pool = [
+      ...(c.mentionedHeroes || []), c.recognizedHero, c.hero1, c.hero2,
+      c.comparisonData && c.comparisonData.entityA, c.comparisonData && c.comparisonData.entityB
+    ];
+    const heroIds = [...new Set(pool.filter(h => h && h.type !== 'troop').map(h => h.id).filter(Boolean))];
 
     if (heroIds.length > 0) {
       const collectionResult = queryEngine.calculateHeroCollectionBonus(heroIds);
