@@ -32,6 +32,20 @@ function _maxTokensFor(queryFlags = {}, explain = false) {
   if (queryFlags.isSingleEntity || queryFlags.isComparisonQuery) return 1024;
   return 1280;
 }
+// Field names the model sometimes echoes from <GameData> ("her combatLine is Backline", "listed in recommendedTroops").
+// Prompt rule 9 forbids it, but models still slip, so this is enforced in code (zero tokens).
+const FIELD_NAME_WORDS = [
+  [/\bcombatLine\b/gi, 'position'], [/\brecommendedTroops\b/gi, 'recommended troops'],
+  [/\brecommendedHeroes\b/gi, 'recommended heroes'], [/\bbuffPartners\b/gi, 'partner heroes'],
+  [/\btargetCovers\b/gi, 'already covers'], [/\bbossTroopMeta\b/gi, 'boss troop priority'],
+  [/\boptimalFormations\b/gi, 'formations'], [/\bheroSynergyIndex\b/gi, 'synergy list'],
+  [/\bcomparedAtLevel\b/gi, 'compared level'],
+];
+function _scrubFieldNames(text) {
+  let t = String(text || '');
+  for (const [re, plain] of FIELD_NAME_WORDS) t = t.replace(re, plain);
+  return t;
+}
 const SNAG_MESSAGE = 'My strategy engine hit a snag pulling that data together — could you ask again in a moment?';
 
 // 🛡️ SECURITY: Escapes XML tags to prevent prompt injection breakouts
@@ -82,7 +96,7 @@ async function _runWithRetries({ prompt, systemInstruction, classification, user
   if (!cleanResult) {
     cleanResult = SNAG_MESSAGE;
   }
-  return cleanResult;
+  return _scrubFieldNames(cleanResult);
 }
 
 /**
@@ -174,4 +188,4 @@ ${gameDataBlock}
   });
 }
 
-module.exports = { askAI, buildInstruction };
+module.exports = { askAI, buildInstruction, _scrubFieldNames };
