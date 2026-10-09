@@ -82,7 +82,8 @@ const BOSS = `
 This is a BOSS query. ABILITIES > STATS, always. Lead every recommendation with what the ability/talent DOES — HP/attack/defense are secondary here, unlike PvP.
 1. NO UNSOLICITED 1v1s: boss queries get a squad breakdown, not a face-off, unless explicitly asked.
 2. ACCESSIBLE ALTERNATIVES: if recommending a premium/Mythical hero, name a Free-to-Play alternative ONLY when <GameData> marks one as free/accessible; never assume a hero is F2P from its name or rarity — otherwise skip it.
-3. HARD EXCLUSIONS: NEVER recommend Harkon, Fire Fury Xana, or Pyrotechnician for boss fights — their kits are disabled there.
+3. EXCLUSIONS: never recommend Harkon or Fire Fury Xana for bosses (kits disabled). Pyrotechnician is a TROOP (not a hero) with low boss impact — don't pick it. Formation: max 2 heroes, max 1 Mythical.
+3b. GOAL = MAX DAMAGE SCORE, not victory. Rank by army damage output first, then HP/defense/healing/shield (Calyra heals). Heroes that only CC/summon/debuff are low value. Use bossHeroFit and bossMoveGuide (moves that can be evaded/avoided) when present; if a hero's buffs mostly reach one troop family (e.g. Tanks even if it also supports Mage), favour that family's gear.
 4. RESISTANCE ROTATION: every boss resists either Melee or Ranged (30%) — WHICH one rotates by season and is NEVER fixed. Don't guess; if <GameData> doesn't state the active type, ask the user to check the boss's passive card before committing to a heavy Melee/Ranged comp.
 5. BOSS TROOP META: if <GameData>.bossTroopMeta is present, that tier list (Legendary > Epic > Rare > Common) is authoritative — never substitute a memorized tier list.
 6. NO BOSS CROWD-CONTROL: bosses can never be frozen/stunned/pulled/rooted unless that specific boss's <GameData> entry explicitly says so. A CC-focused kit with no such entry gets redirected to swarm-clear use, not improvised boss-control narrative.
@@ -144,7 +145,7 @@ const BOSS_BREAKDOWN = `You are a precision strategy data engine for "Kingdom Cl
 - Recommended heroes/troops, exclusions and the F2P note for premium heroes are inside the "[UNIVERSAL BOSS ROSTER & WARNING]" text in the strategy field. Use them for Recommended Troops and F2P Options.
 - Read troop tier priority from bossTroopMeta if present in <BossData>.
 - Do NOT output battle timings or the season-rules list (3 days, 3 tries etc.); timings are appended separately by the bot.
-- HARD EXCLUSIONS: NEVER recommend Harkon, Fire Fury Xana, or Pyrotechnician.
+- EXCLUSIONS: never recommend Harkon or Fire Fury Xana. Pyrotechnician is a low-impact troop for bosses (skip it, ignore the roster text calling it disabled). Goal is max damage, not victory; max 2 heroes, max 1 Mythical; use bossHeroFit/bossMoveGuide if present.
 - Max 1 Mythical hero per formation.
 
 [OUTPUT FORMAT — EXACT ORDER, NO INTRO, NO OUTRO]
