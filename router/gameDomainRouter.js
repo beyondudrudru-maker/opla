@@ -74,12 +74,48 @@ const {
 
 let _gearData = null;
 try { _gearData = require('../data/gearData.js'); } catch (_) { _gearData = null; }
+function _heroReachesTroop(hero, troop) {
+  const tags = new Set([...(troop.categories || []), ...(troop.synergyCategories || []), ...(troop.tags || [])].map(x => String(x).toLowerCase()));
+  const hit = (t) => Array.isArray(t) && t.some(x => {
+    const k = String(x).toLowerCase().trim();
+    return k === 'all allies' || k === 'all' || tags.has(k) || tags.has(k + 's') || tags.has(k.replace(/s$/, ''));
+  });
+  return hit(hero.talent && hero.talent.targets) || hit(hero.ability && hero.ability.targets);
+}
+// Hero with no gear of its own: look at the troops its buffs actually reach and gear for the dominant troop family.
+function _reachGearRec(hero) {
+  try {
+    const troops = (queryEngine.findTroops && queryEngine.findTroops()) || [];
+    const reached = troops.filter(t => _heroReachesTroop(hero, t));
+    if (reached.length < 2) return null;
+    const tally = new Map();
+    for (const t of reached) {
+      const r = _gearData.recommendGearForTroop(t);
+      const items = r && Array.isArray(r.matchedGear) ? r.matchedGear : [];
+      if (!items.length) continue;
+      const key = items.map(g => g.name).sort().join('|');
+      const cur = tally.get(key) || { n: 0, rec: r };
+      cur.n++; tally.set(key, cur);
+    }
+    let best = null;
+    for (const v of tally.values()) if (!best || v.n > best.n) best = v;
+    if (!best || best.n / reached.length < 0.5) return null;
+    const pct = Math.round(100 * best.n / reached.length);
+    return { rec: best.rec, note: `${hero.name}'s buffs reach mostly troops that use this gear (${pct}% of ${reached.length} reachable troops), so it is picked to favour them.` };
+  } catch (_) { return null; }
+}
 function _gearEmbedFor(data, type, rawTroop) {
   try {
     if (!_gearData || !data) return null;
     const fn = type === 'hero' ? _gearData.recommendGearForHero : _gearData.recommendGearForTroop;
     if (typeof fn !== 'function') return null;
-    return buildGearEmbed(data.name, fn(type === 'hero' ? data : (rawTroop || data)) || null);
+    const rec = fn(type === 'hero' ? data : (rawTroop || data)) || null;
+    const has = rec && Array.isArray(rec.matchedGear) && rec.matchedGear.length;
+    if (type === 'hero' && !has && typeof _gearData.recommendGearForTroop === 'function') {
+      const rr = _reachGearRec(data);
+      if (rr) return buildGearEmbed(data.name, rr.rec, rr.note);
+    }
+    return buildGearEmbed(data.name, rec);
   } catch (_) { return null; }
 }
 const { enrichStrategyContext } = require('./gameDomain/enrichment.js');
