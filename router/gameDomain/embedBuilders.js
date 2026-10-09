@@ -205,7 +205,7 @@ function buildEconomyEmbed(intent, economyRatios, text) {
  * Deterministic gear card (0 AI tokens): up to 2 weapons + 2 armour from gearData's
  * recommendation for this entity; falls back to its fallbackNote when nothing matches.
  */
-function buildGearEmbed(name, rec) {
+function buildGearEmbed(name, rec, note) {
   if (!rec) return null;
   const items = Array.isArray(rec.matchedGear) ? rec.matchedGear : [];
   const slotOf = g => String((g && (g.slot || g.type || g.category)) || '');
@@ -221,6 +221,7 @@ function buildGearEmbed(name, rec) {
     return `• **${g.name}**${lock}${eff ? ' — ' + _clip(eff, 110) : ''}${mx}`;
   };
   const e = new EmbedBuilder().setColor(0x95a5a6).setTitle(`🛡️ Suggested gear — ${name}`);
+  if (note) e.setFooter({ text: _clip(note, 200) });
   if (!picked.length) {
     e.setDescription('No dedicated gear is listed for this role yet — pick gear that fits your formation and frontline.');
     return e;
