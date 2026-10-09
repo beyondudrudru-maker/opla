@@ -98,7 +98,7 @@ const TIERS = {
     maxPromptChars: 6500,
     // Single owner of the GameData size limit (aiFallback + promptAssembler.renderGameContext read it).
     // Over the cap, promptAssembler.fitSections drops whole low-priority sections instead of cutting JSON.
-    maxGameDataChars: 4500,
+    maxGameDataChars: 8000,
   },
 
   // Moderation / conflict messages: keep it fast and cheap, no memory needed
