@@ -22,7 +22,7 @@ const queryEngine = require('../engine/gameQueryEngine.js');
 const slicer = require('../engine/contextSlicer.js');
 
 // One short note instead of three ~70-word copies; the full rules live in promptInstructions COMPARISON.
-const MULTI_NOTE = "The user named several units. Judge the lineup as a team: each unit's job, how they interact (talent targets, tags, positions), gaps, then a verdict. Every unit in mentionedHeroes/mentionedTroops IS in the database - never say one is missing. Use only the data provided.";
+const MULTI_NOTE = "The user named several units. Judge the lineup as a team: each unit's job, how they interact (talent targets, tags, positions), gaps, then a verdict. Every unit in mentionedHeroes/mentionedTroops IS in the database - never say one is missing. Use only the data provided. heroTroopReach states exactly whether each hero's talent/ability reaches each troop: if both flags are false, that hero gives that troop NO buff - say so plainly instead of inventing one. formationCheck: if it lists violations (max 2 heroes, max 1 Mythical), state them first and say which hero to drop.";
 const COMPARE_NOTE = "Explain the tactical difference (what abilities DO, roles/positions, PvP/Arena vs Boss, synergies) before a situational verdict. Never pick a winner from raw stats alone. State comparedAtLevel once. Use only the numbers provided.";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,6 +71,18 @@ function _detectEntityTypeOverride(correctionStrings) {
   return null;
 }
 
+
+// Which of a hero's effects actually reach a troop? Decided from the data (talent/ability targets vs the troop's
+// own tags), so the model never has to guess ("Calyra heals the Lava Golem because it is a Mage" etc.).
+function _heroReaches(hero, troop) {
+  const tags = new Set([...(troop.categories || []), ...(troop.synergyCategories || []), ...(troop.tags || [])].map(x => String(x).toLowerCase()));
+  const hit = (targets) => Array.isArray(targets) && targets.some(x => {
+    const k = String(x).toLowerCase().trim();
+    return k === 'all allies' || k === 'all' || tags.has(k) || tags.has(k + 's') || tags.has(k.replace(/s$/, ''));
+  });
+  return { talent: hit(hero.talent && hero.talent.targets), ability: hit(hero.ability && hero.ability.targets) };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main builder
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,17 +123,29 @@ function build(intent, entities, userCorrections = []) {
   // (Previously only the first troop reached the model, so "Immortal + Lava Golem" lost Lava Golem.)
   if (!result && !isActuallyComparing && ((heroNames || []).length + (troopNames || []).length) >= 3) {
     const lvl = (levels && levels[0]) || slicer.DEFAULT_LEVEL;
-    const mentionedHeroes = [], mentionedTroops = [], unresolved = [];
+    const mentionedHeroes = [], mentionedTroops = [], unresolved = [], rawH = [], rawT = [];
     for (const n of heroNames || []) {
       const f = queryEngine.findEntityByName(n);
-      if (f && f.type === 'hero') mentionedHeroes.push(slicer.sliceHero(f.data, { level: lvl })); else unresolved.push(n);
+      if (f && f.type === 'hero') { rawH.push(f.data); mentionedHeroes.push(slicer.sliceHero(f.data, { level: lvl })); } else unresolved.push(n);
     }
     for (const n of troopNames || []) {
       const f = queryEngine.findEntityByName(n);
-      if (f && f.type === 'troop') mentionedTroops.push(slicer.sliceTroop(f.data, { level: lvl })); else unresolved.push(n);
+      if (f && f.type === 'troop') { rawT.push(f.data); mentionedTroops.push(slicer.sliceTroop(f.data, { level: lvl })); } else unresolved.push(n);
     }
+    // hero x troop reach table (deterministic) — the model must use this instead of guessing who buffs whom
+    const pairs = [];
+    for (const h of rawH) for (const t of rawT) {
+      const r = _heroReaches(h, t);
+      pairs.push({ hero: h.name, troop: t.name, talentReaches: r.talent, abilityReaches: r.ability });
+    }
+    const MYTH = ['xana','harkon','brutallus','calyra','atreya','remus'];
+    const mythN = rawH.filter(h => MYTH.some(m => String(h.name || '').toLowerCase().includes(m))).length;
+    const violations = [];
+    if (rawH.length > 2) violations.push(`${rawH.length} heroes named; a formation allows max 2 heroes`);
+    if (mythN > 1) violations.push(`${mythN} Mythical heroes named; only 1 Mythical per formation`);
+    const formationCheck = { heroCount: rawH.length, mythicalCount: mythN, ...(violations.length ? { violations } : { legal: true }) };
     if (mentionedHeroes.length + mentionedTroops.length >= 2) {
-      result = { sufficient: true, context: { formatInstruction: MULTI_NOTE, lineup: true, mentionedHeroes, mentionedTroops, ...(unresolved.length ? { unresolved } : {}) } };
+      result = { sufficient: true, context: { formatInstruction: MULTI_NOTE, lineup: true, formationCheck, mentionedHeroes, mentionedTroops, ...(pairs.length ? { heroTroopReach: pairs } : {}), ...(unresolved.length ? { unresolved } : {}) } };
     }
   }
 
