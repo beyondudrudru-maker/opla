@@ -299,25 +299,24 @@ const heroes = [
     "tags": [
       "Dreads",
       "All Allies",
-      "Boss-Damage"
+      "PvP-Mitigation"
     ],
     "type": "Support",
     "analysis": {
       "primaryRole": "Support",
       "secondaryRoles": [
-        "Boss-Damage",
         "AoE-Damage"
       ],
       "strengths": [
         "Reduces burst damage taken by allies",
-        "Snowballing fire damage vs bosses"
+        "Delayed-damage shield works in PvP/Arena only"
       ],
       "weaknesses": [
         "Damage-mitigation shield disabled in boss battles",
         "Average HP pool"
       ]
     },
-    "supportFocus": "All Troops (+ Boss Damage)",
+    "supportFocus": "All Troops (+ Damage Mitigation, PvP/Arena only)",
     "recommendedTroops": [
       "Steel Revenant",
       "Axe Throwers",

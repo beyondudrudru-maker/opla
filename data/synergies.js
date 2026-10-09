@@ -410,7 +410,6 @@ const synergies = {
       "DURAND_01"
     ],
     "bossDamage": [
-      "HARKON_01",
       "REMUS_01"
     ],
     "healing": [
@@ -795,7 +794,6 @@ const synergies = {
         "DURAND_01"
       ],
       "Boss-Damage": [
-        "HARKON_01",
         "REMUS_01"
       ],
       "HP-Buff": [
