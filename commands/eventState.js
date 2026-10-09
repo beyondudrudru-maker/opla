@@ -23,11 +23,9 @@ const istDay = () => new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: '
 async function resolve() {
     const day = istDay();
     const { event, kind } = DAY_EVENT[day];
-    let boss = null;
-    if (kind === 'boss') {
-        if (!bossCommand.getCurrentBoss()) await bossCommand.refreshCurrentBoss().catch(() => {});
-        boss = bossCommand.getCurrentBoss();
-    }
+    // Always re-read the boss (rotation / fresh manual set / DB) so a stale value can't survive a season change.
+    await bossCommand.refreshCurrentBoss().catch(() => {});
+    const boss = bossCommand.getCurrentBoss();
     global.activeEvent = event;
     global.activeBoss = boss ? { id: boss.id, name: boss.name, tier: boss.tier } : null;
     return { day, event, kind, boss };

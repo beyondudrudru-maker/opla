@@ -189,7 +189,7 @@ async function loadStateFromDb() {
 
 async function saveStateToDb(value) {
     try {
-        await ramClient.from('bot_state').upsert({ key: STATE_KEY, value, updated_at: new Date().toISOString() });
+        await ramClient.from('bot_state').upsert({ key: STATE_KEY, value: { ...value, at: Date.now() }, updated_at: new Date().toISOString() });
     } catch (err) {
         console.warn('⚠️ [BOSS] Could not persist current boss (bot_state table missing?):', err.message);
     }
@@ -206,9 +206,48 @@ function scheduledBossId(list, now = Date.now()) {
     return r.status === 'ok' ? r.boss.id : null;
 }
 
+// Optional automatic rotation (so the DB value never goes stale after a season changes).
+//   env BOSS_ROTATION="kalidor,balthazar,ashira,dagon"   (boss names/ids in in-game order)
+//   env BOSS_ROTATION_ANCHOR="2026-10-05"                (IST date the FIRST boss in the list started)
+//   env BOSS_SEASON_DAYS=7                               (days one boss stays; default 7)
+// Or export bossRotation = { order:[...], anchor:'YYYY-MM-DD', seasonDays:7 } from data/bosses.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+function rotationBossId(list, now = Date.now()) {
+    const cfg = loadFromData(['bossRotation', 'BOSS_ROTATION']);
+    const order = (process.env.BOSS_ROTATION ? process.env.BOSS_ROTATION.split(',') : cfg?.order || []).map(x => x.trim()).filter(Boolean);
+    const anchor = process.env.BOSS_ROTATION_ANCHOR || cfg?.anchor;
+    const seasonDays = Number(process.env.BOSS_SEASON_DAYS || cfg?.seasonDays || 7);
+    if (!order.length || !anchor || !(seasonDays > 0)) return null;
+    const a = Date.parse(`${anchor}T00:00:00+05:30`);
+    if (Number.isNaN(a) || now < a) return null;
+    const idx = Math.floor((now + IST_OFFSET_MS - (a + IST_OFFSET_MS)) / (seasonDays * 86400000)) % order.length;
+    const r = resolveBoss(order[idx], list);
+    return r.status === 'ok' ? r.boss.id : null;
+}
+
 async function refreshCurrentBoss() {
     const list = loadBossList();
     if (list.length === 0) return console.warn('⚠️ [BOSS CRON] No boss data found by adapter.');
+
+    // A fresh manual `set` (within one season) always wins over rotation/DB.
+    const saved0 = await loadStateFromDb();
+    const seasonMs = Number(process.env.BOSS_SEASON_DAYS || 7) * 86400000;
+    if (saved0 && saved0.source === 'manual' && saved0.at && Date.now() - saved0.at < seasonMs && list.some(b => b.id === saved0.id)) {
+        if (state.id !== saved0.id) {
+            state = { id: saved0.id, source: 'manual', updatedAt: Date.now() };
+            console.log(`🐉 [BOSS CRON] Current boss -> ${saved0.id} (manual, fresh)`);
+        }
+        return;
+    }
+    const rId = rotationBossId(list);
+    if (rId && !scheduledBossId(list)) {
+        if (state.id !== rId) {
+            state = { id: rId, source: 'rotation', updatedAt: Date.now() };
+            await saveStateToDb({ id: rId, source: 'rotation' });
+            console.log(`🐉 [BOSS CRON] Current boss -> ${rId} (rotation)`);
+        }
+        return;
+    }
 
     const sId = scheduledBossId(list);
     if (sId) {
@@ -219,22 +258,27 @@ async function refreshCurrentBoss() {
         }
         return;
     }
-    const saved = await loadStateFromDb();
+    const saved = saved0;
     if (saved && saved.id !== state.id && list.some(b => b.id === saved.id)) {
         state = { id: saved.id, source: saved.source || 'db', updatedAt: Date.now() };
         console.log(`🐉 [BOSS CRON] Current boss -> ${saved.id} (db)`);
     }
 }
 
+function _publishActiveBoss() {
+    try { const b = getCurrentBoss(); if (b) global.activeBoss = { id: b.id, name: b.name, tier: b.tier }; } catch (_) {}
+}
 function startCron() {
-    refreshCurrentBoss().catch(e => console.warn('⚠️ [BOSS CRON]', e.message));
-    setInterval(() => refreshCurrentBoss().catch(e => console.warn('⚠️ [BOSS CRON]', e.message)), CRON_INTERVAL_MS);
+    const tick = () => refreshCurrentBoss().then(_publishActiveBoss).catch(e => console.warn('⚠️ [BOSS CRON]', e.message));
+    tick();
+    setInterval(tick, CRON_INTERVAL_MS);
     console.log('🐉 Boss state cron started (6h).');
 }
 
 async function setCurrentBoss(id, source = 'manual') {
     state = { id, source, updatedAt: Date.now() };
     await saveStateToDb({ id, source });
+    try { const b = loadBossList().find(x => x.id === id); if (b) global.activeBoss = { id: b.id, name: b.name, tier: b.tier }; } catch (_) {}
 }
 
 // ─────────────────────────────────────────────────────────────
