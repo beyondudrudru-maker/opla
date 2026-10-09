@@ -40,7 +40,12 @@ function buildQueryFlags({ text, entities, isSynergyQuery, isBossQuery, isCounte
     hasValidatedEntity = Boolean(queryEngine.findEntityByName(soleName));
   }
 
+  const isMultiEntity = totalEntities >= 3 && !isComparisonQuery;
+  const isListQuery = /\b(list|all|saare|sabhi|kon\s*kon|kaun\s*kaun)\b/i.test(text);
+
   const queryFlags = {
+    isMultiEntity,
+    isListQuery,
     isBossQuery,
     isSynergyQuery,
     isComparisonQuery,

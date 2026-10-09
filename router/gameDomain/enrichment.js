@@ -80,8 +80,8 @@ function enrichStrategyContext({
   // The builder already attached these entities (recognizedHero / hero1-2 / troop / troop1-2 / comparisonData).
   // Re-adding them as mentioned* sent every compared entity twice.
   const _c = strategyData.context;
-  const heroesAlreadyInContext = Boolean(_c.recognizedHero || _c.hero1 || _c.hero2 || _c.comparisonData);
-  const troopsAlreadyInContext = Boolean(_c.troop || _c.troop1 || _c.troop2 || _c.comparisonData);
+  const heroesAlreadyInContext = Boolean(_c.recognizedHero || _c.hero1 || _c.hero2 || _c.comparisonData || _c.lineup);
+  const troopsAlreadyInContext = Boolean(_c.troop || _c.troop1 || _c.troop2 || _c.comparisonData || _c.lineup);
 
   if (entities.heroNames.length > 0 && !heroesAlreadyInContext) {
     const resolvedHeroes = entities.heroNames
