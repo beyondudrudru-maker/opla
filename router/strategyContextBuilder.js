@@ -22,6 +22,7 @@ const queryEngine = require('../engine/gameQueryEngine.js');
 const slicer = require('../engine/contextSlicer.js');
 
 // One short note instead of three ~70-word copies; the full rules live in promptInstructions COMPARISON.
+const MULTI_NOTE = "The user named several units. Judge the lineup as a team: each unit's job, how they interact (talent targets, tags, positions), gaps, then a verdict. Every unit in mentionedHeroes/mentionedTroops IS in the database - never say one is missing. Use only the data provided.";
 const COMPARE_NOTE = "Explain the tactical difference (what abilities DO, roles/positions, PvP/Arena vs Boss, synergies) before a situational verdict. Never pick a winner from raw stats alone. State comparedAtLevel once. Use only the numbers provided.";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,6 +106,24 @@ function build(intent, entities, userCorrections = []) {
   const isActuallyComparing = isComparison === true;
 
   let result = null;
+
+  // 🧩 0. Lineup / multi-unit question (3+ named units, not a 1v1): attach EVERY named hero AND troop.
+  // (Previously only the first troop reached the model, so "Immortal + Lava Golem" lost Lava Golem.)
+  if (!result && !isActuallyComparing && ((heroNames || []).length + (troopNames || []).length) >= 3) {
+    const lvl = (levels && levels[0]) || slicer.DEFAULT_LEVEL;
+    const mentionedHeroes = [], mentionedTroops = [], unresolved = [];
+    for (const n of heroNames || []) {
+      const f = queryEngine.findEntityByName(n);
+      if (f && f.type === 'hero') mentionedHeroes.push(slicer.sliceHero(f.data, { level: lvl })); else unresolved.push(n);
+    }
+    for (const n of troopNames || []) {
+      const f = queryEngine.findEntityByName(n);
+      if (f && f.type === 'troop') mentionedTroops.push(slicer.sliceTroop(f.data, { level: lvl })); else unresolved.push(n);
+    }
+    if (mentionedHeroes.length + mentionedTroops.length >= 2) {
+      result = { sufficient: true, context: { formatInstruction: MULTI_NOTE, lineup: true, mentionedHeroes, mentionedTroops, ...(unresolved.length ? { unresolved } : {}) } };
+    }
+  }
 
   // 🚀 1. Hero Comparison (2 Heroes strictly when explicitly comparing)
   if (!result && isActuallyComparing && heroNames && heroNames.length >= 2) {
