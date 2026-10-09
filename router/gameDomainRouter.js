@@ -196,7 +196,12 @@ function route(text, recentContext = '', userCorrections = []) {
   // misrouted into the PvP counter branch.
   const matchedBossKeywords = scrapeBossKeywords(normalizedText, textNoSpace);
   // generic "boss ke against best hero" (no boss named) is still a boss question
-  const isBossQuery = matchedBossKeywords.length > 0 || /\bboss(es)?\b/i.test(text);
+  const isGenericBossWord = /\bboss(es)?\b/i.test(text);
+  // "boss ke against best hero" with no boss named -> use today's active boss (set by eventState/bossCommand)
+  if (matchedBossKeywords.length === 0 && isGenericBossWord && global.activeBoss && global.activeBoss.name) {
+    matchedBossKeywords.push(String(global.activeBoss.name).toLowerCase());
+  }
+  const isBossQuery = matchedBossKeywords.length > 0 || isGenericBossWord;
 
   // ── 🛡️ SCUNTHORPE-PROOF ENTITY SCRAPER ───────────────────────────────────
   scrapeEntities(text, normalizedText, textNoSpace, entities, allKnownHeroes, allKnownTroops);
@@ -411,6 +416,29 @@ function route(text, recentContext = '', userCorrections = []) {
   if (enrichmentEmbeds.length > 0) {
     prebuiltEmbeds = prebuiltEmbeds.concat(enrichmentEmbeds);
   }
+
+  // ── 🎖️ RARITY ROSTER: "best legendary hero for boss" needs the actual heroes of that rarity ──
+  try {
+    const rm = text.match(/\b(mythical|legendary|epic|rare|common)\b/i);
+    if (rm && /\b(hero|heroes|best|top|konsa|kaun|which|sabse)\b/i.test(text) && (!entities.heroNames || entities.heroNames.length === 0)) {
+      const rar = rm[1].toLowerCase();
+      const bossDisabled = h => /xana|harkon/i.test(h.name || '') || /does not work in boss/i.test(JSON.stringify((h.talent && h.talent.description) || ''));
+      const list = allKnownHeroes
+        .filter(h => String(h.rarity || '').toLowerCase() === rar)
+        .filter(h => !(isBossQuery && bossDisabled(h)))
+        .map(h => ({
+          name: h.name, faction: h.faction,
+          talent: h.talent ? { name: h.talent.name, targets: h.talent.targets, effects: h.talent.effects } : undefined,
+          ability: h.ability ? { name: h.ability.name, effects: h.ability.effects, targets: h.ability.targets } : undefined,
+        }));
+      if (list.length) {
+        if (!strategyData.context) strategyData.context = {};
+        strategyData.context.rarityHeroes = { rarity: rar, count: list.length, heroes: list };
+        strategyData.context.rankingNote = `Heroes of ${rar} rarity are listed in rarityHeroes (${list.length}). Rank the best 3-5 for the user's goal using ONLY their talent/ability data${isBossQuery ? ' (boss goal = max damage score: army damage first, then HP/defense/healing; boss-disabled heroes already removed)' : ''}. For each: what it buffs and which troop families it reaches. Max 2 heroes per battle, max 1 Mythical.`;
+        strategyData.sufficient = true;
+      }
+    }
+  } catch (_) { /* never block the answer */ }
 
   // ── 🆕 QUERY FLAGS — drives aiFallback's per-query-type instruction split ──
   const { queryFlags, deterministic } = buildQueryFlags({
