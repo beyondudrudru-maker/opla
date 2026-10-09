@@ -465,7 +465,7 @@ const CORE_KEYS = new Set([
   'comparedAtLevel', 'comparisonData', 'mentionedHeroes', 'mentionedTroops', 'bossRecords',
   'synergyCandidates', 'matchedHeroes', 'matchedTroops', 'matchedBosses', 'formatInstruction', 'task',
   'compatibleHeroes', 'heuristicFallback', 'unresolvedQuery', 'unresolvedSynergyQuery', 'detectedBoss',
-  'heroTroopReach', 'lineup', 'unresolved', 'bossHeroFit', 'bossMoveGuide', 'formationCheck',
+  'heroTroopReach', 'lineup', 'unresolved', 'bossHeroFit', 'bossMoveGuide', 'formationCheck', 'rarityHeroes', 'rankingNote',
 ]);
 const DROP_ORDER = [
   'gameTaxonomy', 'scenarioGuides', 'optimalFormations', 'counterGuides', 'equipmentGuide',
