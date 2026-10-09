@@ -27,10 +27,23 @@ const MAX_RETRIES = 2;
 // (~300-400 tokens); caps keep generous headroom because Gemini counts hidden thinking tokens inside
 // maxOutputTokens — too low a cap can truncate or blank the answer. Tighten only after reading real usage.
 function _maxTokensFor(queryFlags = {}, explain = false) {
-  if (explain) return 768;
-  if (queryFlags.isBossQuery || queryFlags.isSynergyQuery) return 1280;
-  if (queryFlags.isSingleEntity || queryFlags.isComparisonQuery) return 1024;
-  return 1280;
+  // Reasoning models (gpt-oss) spend part of max_tokens on hidden reasoning, so a tight cap CUTS the visible
+  // answer mid-sentence. Generous caps cost nothing unless the model actually writes that much.
+  if (explain) return 1536;
+  if (queryFlags.isBossQuery || queryFlags.isSynergyQuery || queryFlags.isMultiEntity || queryFlags.isListQuery) return 3072;
+  return 2560;
+}
+// If the model is still cut off, never show a dangling "• **" / half sentence: drop the incomplete tail line.
+function _trimIncomplete(text) {
+  let t = String(text || '').replace(/\s+$/, '');
+  t = t.replace(/(?:\n|^)\s*(?:[•\-*]|\d+\.)?\s*\**\s*$/, '').replace(/\s+$/, '');
+  const lines = t.split('\n');
+  const last = (lines[lines.length - 1] || '').trim();
+  if (lines.length > 1 && last.length > 0 && !/[.!?)"'”’\]*~`:🙂-🧿]$/u.test(last) && !/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]$/u.test(last)) {
+    lines.pop();
+    t = lines.join('\n').replace(/\s+$/, '');
+  }
+  return t;
 }
 // Field names the model sometimes echoes from <GameData> ("her combatLine is Backline", "listed in recommendedTroops").
 // Prompt rule 9 forbids it, but models still slip, so this is enforced in code (zero tokens).
@@ -96,7 +109,7 @@ async function _runWithRetries({ prompt, systemInstruction, classification, user
   if (!cleanResult) {
     cleanResult = SNAG_MESSAGE;
   }
-  return _scrubFieldNames(cleanResult);
+  return _trimIncomplete(_scrubFieldNames(cleanResult));
 }
 
 /**
@@ -188,4 +201,4 @@ ${gameDataBlock}
   });
 }
 
-module.exports = { askAI, buildInstruction, _scrubFieldNames };
+module.exports = { askAI, buildInstruction, _scrubFieldNames, _trimIncomplete };
