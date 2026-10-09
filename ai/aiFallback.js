@@ -72,7 +72,22 @@ function sanitize(text) {
  * Shared retry/gatekeeper loop — used by both the deterministic-explain path
  * and the full-reasoning path so retry/error behavior stays identical.
  */
-async function _runWithRetries({ prompt, systemInstruction, classification, userMessage, geminiKeys, groqKeys }) {
+// Boss-disabled heroes (talent/ability do nothing in boss battles) must never be recommended for bosses.
+const _BOSS_BANNED = ['Fire Fury Xana', 'Harkon'];
+const _NEG = /(not|never|n't|avoid|disabled|exclude|nahi|nhi|mat\s|skip|no impact|useless|bekar|kaam nahi|doesn)/i;
+function _bossViolations(text) {
+  const out = [];
+  for (const n of _BOSS_BANNED) {
+    const re = new RegExp('\\b' + n + '\\b', 'gi'); let m;
+    while ((m = re.exec(text))) {
+      const win = text.slice(Math.max(0, m.index - 80), m.index + n.length + 80);
+      if (!_NEG.test(win)) { out.push(n); break; }
+    }
+  }
+  return out;
+}
+
+async function _runWithRetries({ prompt, systemInstruction, classification, userMessage, geminiKeys, groqKeys, isBoss = false }) {
   let currentPrompt = prompt;
   let cleanResult = '';
 
@@ -96,6 +111,12 @@ async function _runWithRetries({ prompt, systemInstruction, classification, user
     const scrubbed = stripLeakedReasoning(result);
 
     if (scrubbed !== '' && gatekeeperLint(scrubbed).ok) {
+      const bad = isBoss ? _bossViolations(scrubbed) : [];
+      if (bad.length && attempt < MAX_RETRIES) {
+        console.warn(`[RETRY] boss answer recommended boss-disabled hero(es): ${bad.join(', ')}. Retrying once.`);
+        currentPrompt += `\n\n[SYSTEM WARNING: ${bad.join(', ')} do NOTHING in boss battles (talent/ability disabled). Do not recommend them for bosses. Rewrite the full answer.]`;
+        continue;
+      }
       cleanResult = scrubbed;
       break;
     } else if (attempt < MAX_RETRIES) {
@@ -198,6 +219,7 @@ ${gameDataBlock}
     userMessage,
     geminiKeys,
     groqKeys,
+    isBoss: Boolean(queryFlags && queryFlags.isBossQuery),
   });
 }
 
