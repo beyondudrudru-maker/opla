@@ -99,7 +99,7 @@ function _reachGearRec(hero) {
     }
     let best = null;
     for (const v of tally.values()) if (!best || v.n > best.n) best = v;
-    if (!best || best.n / reached.length < 0.5) return null;
+    if (!best || best.n / reached.length <= 0.5) return null;
     const pct = Math.round(100 * best.n / reached.length);
     return { rec: best.rec, note: `${hero.name}'s buffs reach mostly troops that use this gear (${pct}% of ${reached.length} reachable troops), so it is picked to favour them.` };
   } catch (_) { return null; }
@@ -150,7 +150,22 @@ function _getRosterSnapshot() {
 // Main router
 // ─────────────────────────────────────────────────────────────────────────────
 
+function _correctTypos(text) {
+  try {
+    mentionsKnownEntity('x'); // make sure token cache is warm
+    const toks = (_nameRe.toks || []).filter(k => !k.includes(' '));
+    const known = new Set(_nameRe.toks || []);
+    return String(text).replace(/[A-Za-z]{6,}/g, w => {
+      const lw = w.toLowerCase();
+      if (known.has(lw)) return w;
+      for (const k of toks) if (k.length >= 5 && Math.abs(k.length - lw.length) <= 1 && _lev1(lw, k)) return k;
+      return w;
+    });
+  } catch (_) { return text; }
+}
+
 function route(text, recentContext = '', userCorrections = []) {
+  text = _correctTypos(text);
   let { intent, entities } = classify(text);
   const originalIntent = intent; // saved ONCE: classify() used to run 3x per message
   entities.rawText = text;
@@ -180,10 +195,29 @@ function route(text, recentContext = '', userCorrections = []) {
   // phrasing like "how do I beat dagon" or "against balthazar" is never
   // misrouted into the PvP counter branch.
   const matchedBossKeywords = scrapeBossKeywords(normalizedText, textNoSpace);
-  const isBossQuery = matchedBossKeywords.length > 0;
+  // generic "boss ke against best hero" (no boss named) is still a boss question
+  const isBossQuery = matchedBossKeywords.length > 0 || /\bboss(es)?\b/i.test(text);
 
   // ── 🛡️ SCUNTHORPE-PROOF ENTITY SCRAPER ───────────────────────────────────
   scrapeEntities(text, normalizedText, textNoSpace, entities, allKnownHeroes, allKnownTroops);
+
+  // Drop partial-name false hits: "bone dragon" must not also summon "Dragon Rider"
+  // (its first word "dragon" is already explained by the longer matched name "Bone Dragon").
+  {
+    const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const padded = ' ' + normalizedText.replace(/\s+/g, ' ') + ' ';
+    const all = [...new Set([...(entities.heroNames || []), ...(entities.troopNames || [])])].map(norm);
+    const fullHit = n => padded.includes(' ' + n + ' ');
+    const covered = n => {
+      const first = n.split(' ')[0];
+      return all.some(o => o !== n && fullHit(o) && o.split(' ').includes(first) && !fullHit(n));
+    };
+    const keep = n => { const x = norm(n); return fullHit(x) || !covered(x); };
+    entities.heroNames  = (entities.heroNames  || []).filter(keep);
+    entities.troopNames = (entities.troopNames || []).filter(keep);
+    if (entities.heroName  && !keep(entities.heroName))  entities.heroName  = entities.heroNames[0]  || undefined;
+    if (entities.troopName && !keep(entities.troopName)) entities.troopName = entities.troopNames[0] || undefined;
+  }
 
   // ── Intent signal detection ───────────────────────────────────────────────
 
@@ -388,6 +422,16 @@ function route(text, recentContext = '', userCorrections = []) {
     queryEngine
   });
   if (gearInCard) queryFlags.gearInCard = true;
+
+  // never send the same card twice (same title+description)
+  {
+    const seen = new Set();
+    prebuiltEmbeds = prebuiltEmbeds.filter(e => {
+      const d = (e && e.data) || e || {};
+      const k = (d.title || '') + '|' + String(d.description || '').slice(0, 80) + '|' + ((d.fields && d.fields[0] && d.fields[0].value) || '').slice(0, 40);
+      if (seen.has(k)) return false; seen.add(k); return true;
+    });
+  }
 
   if (strategyData.sufficient || prebuiltEmbeds.length > 0) {
     return {
