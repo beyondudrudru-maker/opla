@@ -331,6 +331,12 @@ function enrichStrategyContext({
         if (strategiesData.bossTroopMeta) {
           strategyData.context.bossTroopMeta = strategiesData.bossTroopMeta;
         }
+        if (strategiesData.bossHeroFit) strategyData.context.bossHeroFit = strategiesData.bossHeroFit;
+        if (strategiesData.bossMoveGuide) {
+          const mg = {};
+          matchedBossKeywords.forEach(k => { const key = Object.keys(strategiesData.bossMoveGuide).find(n => n.toLowerCase() === String(k).toLowerCase() || String(k).toLowerCase().includes(n.toLowerCase())); if (key) mg[key] = strategiesData.bossMoveGuide[key]; });
+          if (Object.keys(mg).length) strategyData.context.bossMoveGuide = mg;
+        }
         enrichmentAdded        = true;
         strategyData.sufficient = true;   // guaranteed — never falls through to "no data found"
       } else {
@@ -339,6 +345,7 @@ function enrichStrategyContext({
         // Inject general boss-fighting heuristic instead of an empty context.
         strategyData.context.detectedBoss     = matchedBossKeywords.join(', ');
         strategyData.context.heuristicFallback = HEURISTIC_FALLBACKS.boss;
+        if (strategiesData.bossHeroFit) strategyData.context.bossHeroFit = strategiesData.bossHeroFit;
         if (strategiesData.bossTroopMeta) {
           strategyData.context.bossTroopMeta = strategiesData.bossTroopMeta;
         }
