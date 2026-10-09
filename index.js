@@ -838,7 +838,10 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
             if (gameResult.resolved === true) {
                 const replyPayload = { allowedMentions: { repliedUser: false } };
                 if (gameResult.reply) replyPayload.content = gameResult.reply;
-                if (gameResult.embeds) replyPayload.embeds = gameResult.embeds;
+                if (gameResult.embeds) {
+                    const _seen = new Set();
+                    replyPayload.embeds = gameResult.embeds.filter(e => { const d = (e && e.data) || {}; const k = (d.title || '') + '|' + String(d.description || '').slice(0, 40); if (_seen.has(k)) return false; _seen.add(k); return true; });
+                }
 
                 try {
                     const memLog = gameResult.reply ? gameResult.reply : `[Sent Embedded Card(s)]`;
@@ -978,7 +981,7 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
             };
             
             if (gameResult.embeds && gameResult.embeds.length > 0) {
-                replyPayload.embeds = gameResult.embeds;
+                { const _seen2 = new Set(); replyPayload.embeds = gameResult.embeds.filter(e => { const d = (e && e.data) || {}; const k = (d.title || '') + '|' + String(d.description || '').slice(0, 40); if (_seen2.has(k)) return false; _seen2.add(k); return true; }); }
             }
                     
             if (finalReply.length > 1950) {
@@ -1015,7 +1018,7 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
     } 
 
     if (!supportCooldown.has(message.channel.id) && sharedHistory.length >= 2) {
-        const triggers = ['boss', 'tough', 'hard', 'score', 'stuck', 'impossible'];
+        const triggers = ['too tough', 'too hard', 'so hard', 'stuck', 'impossible', 'cant beat', "can't beat", 'unable to beat'];
         const isDifficultyConvo = sharedHistory.slice(0, 2).every(m => 
             triggers.some(t => m.message_content.toLowerCase().includes(t))
         );
