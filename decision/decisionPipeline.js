@@ -58,7 +58,9 @@ async function planTurn({
       // 1. Fast Synchronous Operations
       const classification = intentClassifier.classify({ content });
       const targetInfo = targetResolver.resolve({ mentions, botUserId: BOT_USER_ID });
-      const gameTurn = isGameTurn({ gameData, intent: classification.intent });
+      // A game turn = the caller passed gameData (gemini.generateContent makes the same check). The intent-only branch of
+      // isGameTurn() skipped persona/memory/chat-log here, but such a turn is still answered by the persona path -> raw prompt.
+      const gameTurn = isGameTurn({ gameData });
 
       // 🧠 BUDGET DECISION: single source of truth for how much history/memory
       // this specific turn deserves. Now that real classification is available
