@@ -1155,4 +1155,35 @@ const synergies = {
   ]
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXTENSION (2026-10) — "All Allies" heroes were missing from most troopHeroSynergy rows
+// (only faction-locked buffers were listed, e.g. Bonebreaker -> Dragon Rider only), so the bot
+// could not answer "who else works with <troop>?" for Human/Undead/Tank troops.
+// Every hero whose talent OR ability targets "All Allies" (heroes.js) now also covers every troop.
+// Reasons only restate effect names that exist in that hero's own talent/ability data.
+// Appended AFTER the faction-specific entries, so existing ordering/priority is unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+const _ALL_ALLIES_HEROES = [
+  { heroId: "ANAVIN_01",  why: "Ability (Rise of the Phoenix) buffs All Allies' attack and defense" },
+  { heroId: "LIREAL_01",  why: "Talent + ability target All Allies (damage scaling with unit count, attack buff, damage reduction)" },
+  { heroId: "REMUS_01",   why: "Talent + ability target All Allies (increased damage dealt, damage-absorbing shield)" },
+  { heroId: "TRISTAN_01", why: "Ability targets All Allies (HP bonus and damage bonus)" },
+  { heroId: "CALYRA_01",  why: "Talent + ability target All Allies (full restoration from damage taken, HP regeneration)" },
+  { heroId: "ATREYA_01",  why: "Talent targets All Allies (chance of double damage, increased damage dealt)" },
+  { heroId: "DURAND_01",  why: "Talent targets All Allies (damage reduction, shorter debuff duration)" },
+  { heroId: "BUMI_01",    why: "Talent targets All Allies (evasion-type buff, see his talent text)" },
+  { heroId: "HARKON_01",  why: "Talent targets All Allies (delayed damage); PvP/Arena only — disabled in Boss fights" },
+];
+const _troopLabel = (id) => String(id).replace(/^tr-/, "").split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+for (const row of synergies.troopHeroSynergy) {
+  const have = new Set(row.heroSynergies.map(h => h.heroId));
+  for (const h of _ALL_ALLIES_HEROES) {
+    if (have.has(h.heroId)) continue;
+    row.heroSynergies.push({ heroId: h.heroId, reason: `${h.why}; ${_troopLabel(row.troopId)} is covered like any unit in the army.` });
+  }
+}
+// Quick lookup used by answers about "everyone-buffers"
+synergies.heroSynergyIndex.buffsAllAllies = _ALL_ALLIES_HEROES.map(h => h.heroId);
+
 module.exports = synergies;

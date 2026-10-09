@@ -24,9 +24,11 @@ const strategies = {
     },
     common: ["Archers", "Bone Sphere Thrower"],
     hardExclusions: {
-      heroes: ["Harkon", "Fire Fury Xana", "Pyrotechnician"],
-      reason: "These heroes' talents/abilities do not function or are explicitly disabled during Boss battles. Never recommend them for Boss fights."
-    }
+      heroes: ["Harkon", "Fire Fury Xana"],
+      reason: "These heroes' talents/abilities do not function or are explicitly disabled during Boss battles (Harkon's own talent text says it does not work in boss battles). Never recommend them for Boss fights."
+    },
+    lowImpactTroops: ["Pyrotechnician"],
+    lowImpactNote: "Pyrotechnician is a TROOP (Human, Backline AoE). It is not disabled in boss fights, but it adds little boss impact — do not recommend it for boss squads; also do not call it a hero or say it is disabled."
   },
 
   // 1. OPTIMAL FORMATIONS
@@ -61,7 +63,12 @@ const strategies = {
     {
       id: "form-boss-burst",
       name: "Elite Boss Burst Squad",
-      heroes: ["REMUS_01", "TRISTAN_01", "LIREAL_01", "CALYRA_01"],
+      heroes: ["REMUS_01", "LIREAL_01"],
+      heroOptions: [
+        { heroes: ["REMUS_01", "LIREAL_01"], focus: "max boss damage + damage reduction" },
+        { heroes: ["CALYRA_01", "LIREAL_01"], focus: "healing/sustain for long, high-damage runs" },
+        { heroes: ["REMUS_01", "TRISTAN_01"], focus: "boss damage + HP/damage blessing" }
+      ],
       f2pAlternative: {
         replaces: "REMUS_01",
         note: "Remus is a Mythical (premium/spin-wheel) hero. For F2P-accessible players, pair Tristan, Lireal, or Calyra with a more accessible boss-damage hero instead of Remus, and lean on the Legendary/Epic troop tiers (Bone Breaker, Axe Thrower, Headless, Alchemist) to make up the damage gap."
@@ -73,7 +80,7 @@ const strategies = {
       recommendedTroops: ["tr-imp", "tr-alchemist", "tr-bonebreaker", "tr-headless", "tr-storm-mistresses", "tr-assassins", "tr-axe-throwers"],
       troopDeploymentNote: "Adapt troop composition to the specific boss's CURRENTLY ACTIVE resistance for this season (it rotates — never assume): deploy Melee troops (Bone Breaker, Headless, Gravedigger) if the boss is Ranged-Resistant this season, and Ranged troops (Axe Thrower, Archer, Bone Sphere Thrower) if it is Melee-Resistant this season.",
       synergyRating: "S",
-      reasoning: "For maximum boss damage, stick strictly to the approved roster. Remus provides massive boss-specific damage buffs, and abilities/persistent effects matter far more than raw stats here. Pair him with sustain/utility heroes like Tristan, Lireal, or Calyra. WARNING: Never use Harkon, Fire Fury Xana, or Pyrotechnician in this formation — their talents/abilities do not function in boss battles."
+      reasoning: "For maximum boss damage, stick strictly to the approved roster. Remus provides massive boss-specific damage buffs, and abilities/persistent effects matter far more than raw stats here. A battle allows only 2 heroes and only ONE Mythical: pair Remus with a non-Mythical partner (Lireal or Tristan). Calyra is also Mythical, so she replaces Remus (healing build) instead of joining him. WARNING: Never use Harkon or Fire Fury Xana (talents do not function in boss battles); Pyrotechnician adds little boss impact."
     },
     {
       id: "form-swarm-lockdown",
@@ -87,11 +94,15 @@ const strategies = {
     {
       id: "form-trickster-rush",
       name: "Trickster Fear Rush",
-      heroes: ["BRUTALLUS_01", "ATREYA_01"],
+      heroes: ["BRUTALLUS_01", "TRISTAN_01"],
+      heroOptions: [
+        { heroes: ["BRUTALLUS_01", "TRISTAN_01"], focus: "fear-based burst + HP/damage blessing" },
+        { heroes: ["ATREYA_01", "TRISTAN_01"], focus: "double-damage chance burst + HP/damage blessing" }
+      ],
       troopArchetype: "Trickster",
       recommendedTroops: ["tr-assassins", "tr-storm-mistresses", "tr-night-hunter", "tr-gravedigger", "tr-axe-throwers"],
       synergyRating: "A",
-      reasoning: "Brutallus's Easy Prey makes feared enemies take 45-100% more damage, and Atreya's Smashing Light gives All-Allies a chance to deal double damage on top of a flat damage boost. Feared targets are already taking increased damage before the double-damage proc is even applied, so fast Trickster/Melee-DPS troops can burst down priority targets in one or two hits — ideal for rush-down comps that need to end fights quickly."
+      reasoning: "Brutallus's Easy Prey makes feared enemies take 45-100% more damage, so fast Trickster/Melee-DPS troops can burst priority targets in one or two hits. Atreya (Smashing Light: chance of double damage plus a flat damage boost) is the alternative burst hero — but Brutallus and Atreya are BOTH Mythical and only one Mythical hero is allowed per battle, so use one of them with a non-Mythical partner such as Tristan (HP and damage blessing)."
     },
     // 🆕 MERGED FROM synergies.js's `formations` array (2026-08-23). That array was
     // never read by gameDomainRouter.js — only this optimalFormations array is — so
@@ -101,7 +112,7 @@ const strategies = {
     // default (not sourced from synergies.js) — adjust per-formation if you have an
     // actual tier in mind.
     {
-      id: "formation-human-tank-wall",
+      id: "formation-human-tank-wall", isHeroPool: true, poolNote: "Hero list is a pool to choose FROM: a real battle uses max 2 heroes and max 1 Mythical.",
       name: "Human Tank Wall",
       heroes: ["DRAGON_RIDER_01", "DURAND_01", "TRISTAN_01"],
       troopArchetype: "Human",
@@ -111,7 +122,7 @@ const strategies = {
       reasoning: "Bonebreaker and Monk both carry combatLine \"Frontline\" and synergyCategories including \"Human\"/\"Tank\", matching Dragon Rider's supportFocus of \"Human Troops\" (attack buff) and Durand/Tristan's \"All Troops\" buffs — the frontline absorbs hits while Axe Throwers and Pyrotechnician deal Backline-DPS damage behind it."
     },
     {
-      id: "formation-mage-backline-bombardment",
+      id: "formation-mage-backline-bombardment", isHeroPool: true, poolNote: "Hero list is a pool to choose FROM: a real battle uses max 2 heroes and max 1 Mythical.",
       name: "Mage Backline Bombardment",
       heroes: ["ANAVIN_01", "EDELINA_01", "KEYRA_01", "ZAHEER_01", "SIGURD_01", "OPHELIA_01", "LIREAL_01"],
       troopArchetype: "Mages",
@@ -120,7 +131,7 @@ const strategies = {
       reasoning: "Magic Archer and Shaman both resolve to combatLine \"Backline\" with synergyCategories tagging \"Mages\"/\"Backline-DPS\". Every listed hero except Lirael has supportFocus \"Mage Troops\", so their attack/HP/defense buffs stack directly onto this backline, while Lava Golem (Frontline) tanks hits so the casters stay alive to output damage. Lirael's supportFocus is \"All Troops\" (Song of Courage hits All Allies), but her troop-count-scaling passive and attack/damage-reduction ability still buff this same lineup, adding army-wide burst windows on top of the faction-locked stacking."
     },
     {
-      id: "formation-undead-endless-swarm",
+      id: "formation-undead-endless-swarm", isHeroPool: true, poolNote: "Hero list is a pool to choose FROM: a real battle uses max 2 heroes and max 1 Mythical.",
       name: "Undead Endless Swarm",
       heroes: ["DRAKE_01", "BONE_DRAGON_01", "MORGRANE_01", "MORGANA_01"],
       troopArchetype: "Undead",
@@ -130,7 +141,7 @@ const strategies = {
       reasoning: "Immortal, Headless, and Steel Revenant all share combatLine \"Frontline\" and the \"Undead\"/\"Tank\" synergyCategories. Drake and Bone Dragon both carry supportFocus \"Undead Troops\" (attack buff), directly scaling this wall, while Morgrane and Morgana add Enemy Control and Ally Summons (per their supportFocus extras) to keep Necromancer's skeleton-summon backline continuously reinforced."
     },
     {
-      id: "formation-aerial-strike-force",
+      id: "formation-aerial-strike-force", isHeroPool: true, poolNote: "Hero list is a pool to choose FROM: a real battle uses max 2 heroes and max 1 Mythical.",
       name: "Aerial Strike Force",
       heroes: ["ANAVIN_01", "DRAKE_01", "REMUS_01"],
       troopArchetype: "Mixed",
@@ -140,6 +151,7 @@ const strategies = {
     },
     {
       id: "formation-faction-agnostic-support-core",
+      isHeroPool: true, // a pool to choose FROM (max 2 heroes, max 1 Mythical per battle), not a legal lineup by itself
       name: "Faction-Agnostic Support Core",
       heroes: ["CALYRA_01", "ATREYA_01", "REMUS_01", "TRISTAN_01", "HARKON_01", "BUMI_01", "DURAND_01"],
       troopArchetype: "Mixed",
@@ -163,7 +175,7 @@ const strategies = {
         common: ["Archers", "Bone Sphere Thrower"]
       },
       troopDeploymentNote: "Adapt troop choice to the boss's CURRENTLY ACTIVE resistance for this season (it rotates between Melee and Ranged — never assume which one is active): Melee troops if it's Ranged-Resistant this season, Ranged troops if it's Melee-Resistant this season.",
-      notes: "For maximum efficiency against bosses, stick strictly to the approved roster above. Heroes like Remus provide massive boss-damage buffs, while Calyra and Tristan provide the necessary sustain. Abilities and persistent effects matter far more than raw stats for boss fights. WARNING: Do not use Harkon, Fire Fury Xana, or Pyrotechnician — their talents/abilities are disabled or non-functional during boss fights."
+      notes: "For maximum efficiency against bosses, stick strictly to the approved roster above. Heroes like Remus provide massive boss-damage buffs, while Calyra and Tristan provide the necessary sustain. Abilities and persistent effects matter far more than raw stats for boss fights. WARNING: Do not use Harkon or Fire Fury Xana — their talents/abilities are disabled during boss fights. Pyrotechnician (a troop) is not disabled but adds little boss impact."
     },
     {
       scenario: "Kraken Boss / Dagon: Max Score Timings",
@@ -321,6 +333,148 @@ const strategies = {
         "Mass Footprint: Magic Archers (6x Lv8), Immortals (6x Lv9), Cursed Catapults (6x), Undead Mages (4x), Alchemists (5x)."
       ]
     }
+  ]
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXTENSION (2026-10) — extra formations / scenarios / counters so common questions have curated,
+// data-grounded answers instead of the model improvising. Every hero id / troop id below exists in
+// heroes.js / troops.js; every claim restates a field from those files, gearData.js or this file.
+// FORMATION RULES (from game rules already used in the prompts): max 2 heroes per formation
+// (maxHeroesPerFormation) and at most 1 Mythical hero per formation.
+// ─────────────────────────────────────────────────────────────────────────────
+strategies.formationRules = {
+  maxHeroesPerFormation: 2,
+  maxMythicalPerFormation: 1,
+  mythicalHeroes: ["XANA_01", "HARKON_01", "BRUTALLUS_01", "CALYRA_01", "ATREYA_01", "REMUS_01"],
+  note: "Mythical heroes are the premium tier (see f2pAlternative notes). Never build a formation with two Mythical heroes."
+};
+
+strategies.optimalFormations.push(
+  {
+    id: "form-boss-no-mythical",
+    name: "Boss Squad Without Mythical Heroes",
+    heroes: ["LIREAL_01", "TRISTAN_01"],
+    troopArchetype: "Mixed DPS",
+    recommendedTroops: ["tr-bonebreaker", "tr-axe-throwers", "tr-headless", "tr-stone-golem", "tr-alchemist", "tr-storm-mistresses", "tr-lava-golem", "tr-imp"],
+    synergyRating: "A",
+    recommendedGear: "Bonebreaker, Headless, Stone Golem and Lava Golem are Tank gear-family: Devourment Set (Hammer + Armor of Devourment).",
+    reasoning: "Lirael (Legendary) and Tristan (Epic) are both non-Mythical and both sit in the troop-attack buffer list, so they raise the whole army's damage; Tristan adds an HP bonus and Lirael adds damage reduction, covering sustain without a Mythical healer. Troops follow the Boss Troop Meta tiers (Legendary Bone Breaker/Axe Thrower/Headless/Stone Golem, Epic Alchemist/Storm Mistress/Lava Golem, Rare Imp). Boss resistance rotates each season — deploy Melee or Ranged troops to match the active type."
+  },
+  {
+    id: "form-human-trickster-burst",
+    name: "Human Trickster Burst",
+    heroes: ["DRAGON_RIDER_01", "ATREYA_01"],
+    troopArchetype: "Human",
+    recommendedTroops: ["tr-assassins", "tr-axe-throwers", "tr-bonebreaker", "tr-pyrotechnician"],
+    synergyRating: "A",
+    recommendedGear: "Assassins and Axe Throwers are Trickster gear-family (Mirage Set — marked locked in gearData.js, confirm ownership); Bonebreaker is Tank gear-family (Devourment Set).",
+    reasoning: "Dragon Rider's talent raises damage for Human troops, and all four troops carry the Human tag. Atreya's talent targets All Allies with a chance of double damage plus a flat damage boost, so the two buffs stack instead of overlapping. Assassins (Midline) and Axe Throwers/Pyrotechnician (Backline) give fast burst; Bonebreaker holds the front. Only one Mythical hero (Atreya), so the formation is legal."
+  },
+  {
+    id: "form-debuff-attrition",
+    name: "Debuff Attrition",
+    heroes: ["MORGRANE_01", "OPHELIA_01"],
+    troopArchetype: "Mixed",
+    recommendedTroops: ["tr-steel-revenant", "tr-headless", "tr-night-hunter", "tr-necromancer", "tr-magic-archer"],
+    synergyRating: "B",
+    reasoning: "Morgrane and Ophelia are both listed as debuffers and both carry a 'decreased damage dealt' effect on enemies, so enemy output drops while your frontline holds. Steel Revenant (Damage-Reflect), Headless and Night Hunter (Crowd-Control) keep the fight slow and favorable. Morgrane's Undead faction and Ophelia's Mage faction mean each only buffs part of the army — pick troops from the faction you want boosted."
+  }
+);
+
+// Gear notes for existing formations (roleFamily from synergies.troopsByGearRoleFamily)
+for (const f of strategies.optimalFormations) {
+  if (f.recommendedGear) continue;
+  if (f.id === "form-mage-nuke") f.recommendedGear = "Phoenix, Lava Golem and Stone Golem are Tank gear-family, so they can equip the Devourment Set. No Mage backline gear (Shaman, Magic Archer, Storm Mistresses) is captured yet — choose by formation.";
+  if (f.id === "form-trickster-rush") f.recommendedGear = "Assassins, Storm Mistresses, Night Hunter, Gravedigger and Axe Throwers are Trickster gear-family: Mirage Set (Mirage Glaive + Mirage Garment — marked locked in gearData.js, confirm ownership).";
+  if (f.id === "form-unkillable-wall") f.recommendedGear = "Tank troops (Immortal, Stone Golem, Bonebreaker, Headless, Monk, Steel Revenant) are Tank gear-family: Devourment Set.";
+}
+
+strategies.scenarioGuides.push(
+  {
+    scenario: "Boss Fights Without Mythical Heroes",
+    recommendedHeroes: ["Lireal", "Tristan", "Anavin", "Drake", "Bone Dragon", "Dragon Rider"],
+    primaryTroopType: "High single-target DPS",
+    notes: "Mythical heroes (Remus, Calyra, Atreya, Harkon, Brutallus, Xana) are premium. Without them: Lirael + Tristan (see form-boss-no-mythical) for army-wide attack/HP/damage-reduction, then fill troops from the Boss Troop Meta tiers. Never use Harkon or Fire Fury Xana in boss fights (talents disabled). Boss resistance rotates each season — match Melee/Ranged troops to the active type."
+  },
+  {
+    scenario: "Which Heroes Work In Boss Fights",
+    recommendedHeroes: ["Remus", "Lireal", "Calyra", "Tristan", "Anavin", "Drake", "Bone Dragon", "Dragon Rider"],
+    notes: "Hard exclusions for Boss battles: Harkon, Fire Fury Xana (disabled). Pyrotechnician is a low-impact troop for bosses (not disabled). Everything else follows its normal talent/ability text. If asked 'can I use <excluded unit> on a boss?', answer NO first, then offer an alternative."
+  },
+  {
+    scenario: "Low-Rarity / Early Account Build",
+    recommendedHeroes: ["TRISTAN_01", "DRAGON_RIDER_01", "DRAKE_01", "BONE_DRAGON_01"],
+    primaryTroopType: "Faction-locked (Human or Undead)",
+    notes: "Epic Tristan (army-wide buffs) plus a Legendary faction buffer. Pick ONE faction and stack its troops: Human (Dragon Rider + Bonebreaker, Monk, Axe Throwers, Assassins, Alchemist) or Undead (Drake/Bone Dragon + Immortal, Headless, Imp, Night Hunter, Gravedigger). Faction buffs are wasted on off-faction troops."
+  }
+);
+
+strategies.counterGuides.push(
+  {
+    targetOpponent: "Trickster / Midline rush lineups",
+    targetArchetype: "Fast burst (Assassins, Storm Mistresses, Night Hunter, Gravedigger)",
+    recommendedHeroes: ["BUMI_01", "ZAHEER_01", "DURAND_01"],
+    recommendedTroops: ["tr-headless", "tr-night-hunter", "tr-immortal", "tr-lava-golem"],
+    tacticalAdvice: "Rush comps need to reach your backline quickly: stall them with crowd-control (Bumi, Zaheer, Durand are all crowd-control heroes; Headless and Night Hunter carry the Crowd-Control tag) and punish clumped attackers with AoE-tagged troops (Immortal, Lava Golem). Keep a Frontline wall so the Midline cannot slip past."
+  },
+  {
+    targetOpponent: "Mage backline lineups (Anavin / Keyra / Zaheer stacks)",
+    targetArchetype: "Backline casters with stacked Mage buffs",
+    recommendedHeroes: ["BRUTALLUS_01", "ATREYA_01", "REMUS_01"],
+    recommendedTroops: ["tr-assassins", "tr-storm-mistresses", "tr-steel-revenant"],
+    tacticalAdvice: "Casters are Backline and sit behind a Frontline tank (e.g. Lava Golem). Send a heavy Frontline (Steel Revenant) to absorb volleys and route Midline infiltrators (Assassins, Storm Mistresses) at the casters; burst heroes (Brutallus, Atreya) shorten the window in which the buffs pay off. Only one Mythical hero per formation."
+  },
+  {
+    targetOpponent: "Undead lineups (Drake / Bone Dragon stacks)",
+    targetArchetype: "Undead faction wall",
+    recommendedHeroes: ["BUMI_01", "ZAHEER_01", "OPHELIA_01"],
+    recommendedTroops: ["tr-alchemist", "tr-lava-golem", "tr-pyrotechnician", "tr-storm-mistresses"],
+    tacticalAdvice: "Their buffs only apply to Undead-tagged troops, so focus the Undead frontline with AoE troops (Alchemist, Lava Golem, Pyrotechnician), lock groups down with Bumi/Zaheer, and let Ophelia's decreased-damage debuff cut their output."
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOSS REASONING DATA (2026-10). Boss seasons rank TOTAL DAMAGE, not just a win, so heroes are judged on
+// how much they raise army damage / HP / defense / healing. Everything restates heroes.js / bosses.js text.
+// ─────────────────────────────────────────────────────────────────────────────
+strategies.bossHeroFit = {
+  goal: "Boss seasons rank total damage dealt (not just victory): first raise army damage, then keep the damage dealers alive with HP, defense, healing or shields.",
+  battleRules: "Max 2 heroes per battle and at most 1 Mythical. Boss crowd-control (sleep/pull/stun/fear) is NOT confirmed to work on bosses — never count it as value.",
+  damage: [
+    "Remus (Mythical): talent boosts allies' regular attacks vs tanks AND bosses 30%-85% — the only boss-specific damage buff",
+    "Atreya (Mythical): all allies get a 20%-30% chance of double damage plus 60%-200% increased damage",
+    "Lirael: damage grows with unit count; ability raises attack 2%-20% AND cuts damage taken 10%-55%",
+    "Tristan (Epic): ability blesses allies with +HP (400-1,750) and +basic attack damage (40-175)",
+    "Anavin: talent raises Mage attack 2%-25%; ability buffs ALL allies' attack and defense",
+    "Faction stackers: Drake / Bone Dragon (Undead), Dragon Rider (Human), Keyra (Mage attack, scales with HP), Sigurd / Ophelia (Mage HP)"
+  ],
+  sustain: [
+    "Calyra (Mythical): talent fully restores squad health over time (keeps working after her death); ability heals all allies 5%-10%/s — the healer for long runs",
+    "Remus shield absorbs 1,250-10,250 damage; Lirael cuts damage 10%-55%; Durand cuts Tank damage 5%-32.5%"
+  ],
+  lowBossValue: "Bumi, Zaheer, Morgana, Xana, Morgrane, Malium, Baron Benua: kits are crowd-control / summons / debuffs / evasion vs shooters — use their stat buffs only if a faction build demands it. Harkon and Fire Fury Xana are disabled in boss fights.",
+  pickRule: "Choose the 2 legal heroes (max 1 Mythical) that add the most army damage + survival for the troops actually deployed; if the user owns a healer (Calyra), healing is a valid pick for long fights."
+};
+
+strategies.bossMoveGuide = {
+  KALIDOR: [
+    "Explosive Spear (6000 AoE, 15s): needs high-HP frontline, healing, shield or damage reduction",
+    "Crushing Hammer (3200, knockback, -30% speed 4s): absorb with Tanks",
+    "Quicksand (12s zones: units ALWAYS miss normal attacks and take 1000/s): don't rely on basic attacks while units stand in it; ability damage and healing matter more"
+  ],
+  BALTHAZAR: [
+    "Fire Breath (6000), Fury from the Deep (15000, pulls troops in), Shattering Strikes (7200): huge battlefield-wide AoE every 30-34s — healers, shields (Remus), damage reduction (Lirael, Durand for Tanks) keep damage dealers alive"
+  ],
+  ASHIRA: [
+    "Chitin Carapace: 20% of basic attack damage is reflected back — bring healing/shield-bearers (Calyra, Remus) for the frontline",
+    "Acid Barrage (4000 + 1500/s pools) and Battle/Explosive Spider summons (30 spiders 900 dmg 8000 HP; 40 explosive 550): AoE-tagged troops clear the swarms while healing covers the pools"
+  ],
+  DAGON: [
+    "Tentacle Smash (18000, 3 hits): high-HP troops required",
+    "Hungry Jaws (swallows 15 units): fire the ship's cannon in time to return them — a manual play, not a hero effect",
+    "Gift From the Depths (8000 AoE barrel)"
   ]
 };
 
