@@ -48,7 +48,7 @@ const heroes = [
       "effects": {
         "Increased Damage Dealt": "2% — 25%"
       },
-      "byLevel": {
+      "levelStats": {
         "Increased Damage Dealt %": [2, 4, 6, 8, 10, 12, 15, 18, 21, 25]
       },
       "targets": [
@@ -67,7 +67,7 @@ const heroes = [
         "Damage Reduction": "5% — 8%",
         "Duration": "5s — 8s"
       },
-      "byLevel": {
+      "levelStats": {
         "Attack Radius m": [9, 9, 9, 12, 12, 12, 15, 15, 15, 18],
         "Buff Radius m": [12, 12, 12, 15, 15, 15, 18, 18, 18, 21],
         "Damage per Sec": [125, 150, 175, 200, 225, 250, 275, 300, 325, 350],
@@ -1424,7 +1424,8 @@ const heroes = [
         "Increased damage dealt": "4% - 40%",
         "Bonus HP": "4% - 40%"
       },
-      "targets": []
+      "note": "Buff reaches ONLY summoned skeletons (from Cursed Catapult, Necromancer or her own Mysterious Tombstone) - NOT Undead troops in general (Bonebreaker etc.) and not any boss-meta troop.",
+      "targets": ["Summoned Skeletons"]
     },
     "ability": {
       "name": "Mysterious Tombstone",
@@ -1438,8 +1439,7 @@ const heroes = [
     },
     "tags": [
       "Undead",
-      "Attack-Buff",
-      "HP-Buff",
+      "Skeleton-Buff",
       "Crowd-Control",
       "Summoner"
     ],
@@ -1453,14 +1453,15 @@ const heroes = [
       "strengths": [
         "Converts enemy kills into allied skeletons",
         "Taunt disables enemy abilities",
-        "Buffs summoned skeletons attack and HP"
+        "Buffs summoned skeletons attack and HP (skeletons only)"
       ],
       "weaknesses": [
         "Below-average HP and defense",
-        "Relies on sustained combat to snowball"
+        "Relies on sustained combat to snowball",
+        "Her buff reaches only summoned skeletons, which have very low HP and die early; their summoners (Necromancer, Cursed Catapult) also die early - poor fit for boss damage-score battles"
       ]
     },
-    "supportFocus": "Self (Summons Allies) (+ Crowd-Control, Ally Summons)",
+    "supportFocus": "Self (Summons Allies) (+ Crowd-Control; buffs summoned skeletons only)",
     "recommendedTroops": [
       "Immortal",
       "Cursed Catapult",

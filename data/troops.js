@@ -3134,13 +3134,13 @@ const troops = [
           1,
           1,
           1,
-          1,
           2,
           2,
           2,
           3,
           3,
-          3
+          3,
+          4
         ],
         "hp": [
           600,
@@ -3204,4 +3204,4 @@ const troops = [
   }
 ];
 
-module.exports = troops;
+module.exports = troops;

@@ -412,6 +412,13 @@ const synergies = {
     "bossDamage": [
       "REMUS_01"
     ],
+    "bossDisabled": [
+      "HARKON_01",
+      "XANA_01"
+    ],
+    "bossLowValue": [
+      "MORGANA_01"
+    ],
     "healing": [
       "CALYRA_01"
     ],
@@ -785,7 +792,6 @@ const synergies = {
         "DRAKE_01",
         "KEYRA_01",
         "BONE_DRAGON_01",
-        "MORGANA_01",
         "DRAGON_RIDER_01",
         "LIREAL_01"
       ],
@@ -796,11 +802,13 @@ const synergies = {
       "Boss-Damage": [
         "REMUS_01"
       ],
+      "Skeleton-Buff": [
+        "MORGANA_01"
+      ],
       "HP-Buff": [
         "CALYRA_01",
         "TRISTAN_01",
         "SIGURD_01",
-        "MORGANA_01",
         "OPHELIA_01"
       ],
       "Healing": [
@@ -1184,4 +1192,4 @@ for (const row of synergies.troopHeroSynergy) {
 // Quick lookup used by answers about "everyone-buffers"
 synergies.heroSynergyIndex.buffsAllAllies = _ALL_ALLIES_HEROES.map(h => h.heroId);
 
-module.exports = synergies;
+module.exports = synergies;

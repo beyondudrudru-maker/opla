@@ -27,7 +27,7 @@ const strategies = {
       heroes: ["Harkon", "Fire Fury Xana"],
       reason: "These heroes' talents/abilities do not function or are explicitly disabled during Boss battles (Harkon's own talent text says it does not work in boss battles). Never recommend them for Boss fights."
     },
-    lowImpactTroops: ["Pyrotechnician"],
+    lowImpactTroops: ["Pyrotechnician", "Cursed Catapult", "Necromancer"],
     lowImpactNote: "Pyrotechnician is a TROOP (Human, Backline AoE). It is not disabled in boss fights, but it adds little boss impact — do not recommend it for boss squads; also do not call it a hero or say it is disabled."
   },
 
@@ -458,9 +458,11 @@ strategies.bossTroopMeta.traits = {
   "Axe Thrower": "Every 3rd hit it grows and hits harder (scales over the fight), high ranged damage per unit.",
   "Lava Golem": "Strong damage per unit and sheds armor below half HP for more attack; its death blast is AoE but the individual-unit damage is what matters on a boss.",
   "Imp": "Highest per-unit damage of all troops in the data and cheap (Rare) — preferred boss damage dealer.",
+  "Cursed Catapult": "Single unit with the lowest HP of the roster (9,000 at Lv10), AoE-only splash and skeleton shots: dies early, low boss value — like Immortal.",
+  "Necromancer": "Summoner with no direct damage; its skeletons (Lv10: 4,700 HP, 770 dmg) and the Necromancer die early — poor for a damage-score boss.",
   "Immortal": "AoE tank: great in Arena/PvP against surrounded crowds, but a boss is a single target so the AoE gives little — low boss value."
 };
-strategies.bossTroopMeta.aoeLowBoss = ["Immortal", "Pyrotechnician"];
+strategies.bossTroopMeta.aoeLowBoss = ["Immortal", "Pyrotechnician", "Cursed Catapult"];
 
 strategies.bossHeroFit = {
   goal: "Boss seasons rank total damage dealt (not just victory): first raise army damage, then keep the damage dealers alive with HP, defense, healing or shields.",
@@ -477,7 +479,7 @@ strategies.bossHeroFit = {
     "Calyra (Mythical): talent fully restores squad health over time (keeps working after her death); ability heals all allies 5%-10%/s — the healer for long runs",
     "Remus shield absorbs 1,250-10,250 damage; Lirael cuts damage 10%-55%; Durand cuts Tank damage 5%-32.5%"
   ],
-  lowBossValue: "Bumi, Zaheer, Morgana, Xana, Morgrane, Malium, Baron Benua: kits are crowd-control / summons / debuffs / evasion vs shooters — use their stat buffs only if a faction build demands it. Harkon and Fire Fury Xana are disabled in boss fights.",
+  lowBossValue: "Bumi, Zaheer, Morgana (buffs summoned skeletons ONLY, which die early), Xana, Morgrane, Malium, Baron Benua: kits are crowd-control / summons / debuffs / evasion vs shooters — use their stat buffs only if a faction build demands it. Harkon and Fire Fury Xana are disabled in boss fights.",
   pickRule: "Choose the 2 legal heroes (max 1 Mythical) that add the most army damage + survival for the troops actually deployed; if the user owns a healer (Calyra), healing is a valid pick for long fights."
 };
 
