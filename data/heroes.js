@@ -48,6 +48,9 @@ const heroes = [
       "effects": {
         "Increased Damage Dealt": "2% — 25%"
       },
+      "byLevel": {
+        "Increased Damage Dealt %": [2, 4, 6, 8, 10, 12, 15, 18, 21, 25]
+      },
       "targets": [
         "Mage"
       ]
@@ -63,6 +66,15 @@ const heroes = [
         "Damage Bonus": "40 — 175",
         "Damage Reduction": "5% — 8%",
         "Duration": "5s — 8s"
+      },
+      "byLevel": {
+        "Attack Radius m": [9, 9, 9, 12, 12, 12, 15, 15, 15, 18],
+        "Buff Radius m": [12, 12, 12, 15, 15, 15, 18, 18, 18, 21],
+        "Damage per Sec": [125, 150, 175, 200, 225, 250, 275, 300, 325, 350],
+        "Cooldown s": [17, 17, 17, 16, 16, 16, 15, 15, 15, 14],
+        "Damage Bonus (allies)": [40, 55, 70, 85, 100, 115, 130, 145, 160, 175],
+        "Damage Reduction %": [5, 5, 5, 6, 6, 6, 7, 7, 7, 8],
+        "Duration s": [5, 6, 6, 6, 6, 7, 7, 7, 8, 8]
       },
       "targets": [
         "All Allies"
