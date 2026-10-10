@@ -92,6 +92,10 @@ function bossStatusOfHero(h) {
   if (excl || /does not work in boss/i.test(JSON.stringify(h.talent || ''))) {
     return { status: 'disabled', note: 'Talent/ability do not work in boss battles — never use for bosses.' };
   }
+  const _tg = [].concat((h.talent && h.talent.targets) || [], (h.ability && h.ability.targets) || []).map(x => String(x).toLowerCase());
+  if (_tg.some(x => /skeleton/.test(x)) && !_tg.some(x => /^all( allies)?$/.test(x))) {
+    return { status: 'low', note: 'Her buff reaches ONLY summoned skeletons (from Cursed Catapult, Necromancer or her own Tombstone), not Undead troops in general. Skeletons and their summoners have low HP and die early, so on a damage-score boss the buff is wasted — do not recommend.' };
+  }
   const d = mentions(hf.damage), s = mentions(hf.sustain), l = mentions(hf.lowBossValue);
   const seg = line => {
     if (/^faction stackers/i.test(line)) {
@@ -116,10 +120,10 @@ function _formationsWith(heroId, wantBoss) {
     if (wantBoss === true && !isBoss) continue;
     if (wantBoss === false && isBoss) continue;
     const pool = f.isHeroPool || (f.heroes || []).length > 2;
+    const others = (f.heroes || []).filter(x => x !== heroId).map(x => (HEROES.find(h => h.id === x) || {}).name || x);
     out.push({
       name: f.name, rating: f.synergyRating, troops: f.troopArchetype,
-      withHeroes: (f.heroes || []).filter(x => x !== heroId).map(x => (HEROES.find(h => h.id === x) || {}).name || x),
-      ...(pool ? { note: 'hero list is a pool — a real battle uses max 2 heroes, max 1 Mythical' } : {}),
+      ...(pool ? { partnerPool: others, note: 'partnerPool = candidates; a battle holds only 2 heroes in total, so pick exactly ONE partner from it (never two Mythicals)' } : { withHeroes: others }),
     });
   }
   return out.slice(0, 3);
@@ -158,6 +162,14 @@ function _squad(t) {
   const u = (L.units || [])[i], d = (L.damage || [])[i];
   return { unitsLv10: u, damagePerUnitLv10: d, squadDamageRaw: (typeof u === 'number' && typeof d === 'number') ? u * d : undefined };
 }
+function _hpInfo(t) {
+  const L = t.levels || {}, i = (L.hp || []).length - 1;
+  const hp = (L.hp || [])[i];
+  if (typeof hp !== 'number') return undefined;
+  const arr = TROOPS.map(x => ({ n: x.name, v: ((x.levels || {}).hp || []).slice(-1)[0] })).filter(x => typeof x.v === 'number').sort((a, b) => b.v - a.v);
+  const k = arr.findIndex(x => x.n === t.name);
+  return { hpPerUnitLv10: hp, hpRank: `#${k + 1} of ${arr.length} troops` + (k >= arr.length - 3 ? ' (one of the lowest — dies early)' : '') };
+}
 function _squadRank(t) {
   const arr = TROOPS.map(x => ({ n: x.name, v: _squad(x).squadDamageRaw })).filter(x => typeof x.v === 'number').sort((a, b) => b.v - a.v);
   const i = arr.findIndex(x => x.n === t.name);
@@ -178,18 +190,18 @@ function heroFacet(h, facet) {
     case 'talent':
       return {
         name: h.name,
-        talent: h.talent && { name: h.talent.name, what: clip(h.talent.description, 260), effectsLv1toLv10: _eff(h.talent.effects), valuesPerLevel: _eff(h.talent.byLevel), buffs: h.talent.targets },
-        ability: h.ability && { name: h.ability.name, what: clip(h.ability.description, 260), effectsLv1toLv10: _eff(h.ability.effects), valuesPerLevel: _eff(h.ability.byLevel), buffs: h.ability.targets },
+        talent: h.talent && { name: h.talent.name, what: clip(h.talent.description, 260), effectsLv1toLv10: _eff(h.talent.effects), valuesPerLevel: _eff(h.talent.levelStats), buffs: h.talent.targets },
+        ability: h.ability && { name: h.ability.name, what: clip(h.ability.description, 260), effectsLv1toLv10: _eff(h.ability.effects), valuesPerLevel: _eff((h.ability.levelStats || h.ability.byLevel)), buffs: h.ability.targets },
       };
     case 'synergy': {
       const reached = TROOPS.filter(t => { const r = reaches(h, t); return r.talent || r.ability; });
       const fam = {};
       reached.forEach(t => { (fam[family(t)] = fam[family(t)] || []).push(t.name); });
-      const buckets = Object.entries(SYN.heroSynergyIndex || {}).filter(([, ids]) => Array.isArray(ids) && ids.includes(h.id)).map(([k]) => k.replace(/^buffs/, 'buffs ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase());
+      const buckets = Object.entries(SYN.heroSynergyIndex || {}).filter(([k]) => !/^boss(Disabled|LowValue)$/.test(k)).filter(([, ids]) => Array.isArray(ids) && ids.includes(h.id)).map(([k]) => k.replace(/^buffs/, 'buffs ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase());
       return {
         name: h.name, buffTypes: buckets, troopsItBuffsByFamily: fam,
         bestFormations: _formationsWith(h.id, false).concat(_formationsWith(h.id, true)).slice(0, 4),
-        rule: 'A battle holds max 2 heroes and max 1 Mythical' + (isMythical(h) ? ` — ${h.name} IS Mythical, so the second hero must be non-Mythical.` : '.'),
+        rule: 'A battle holds 2 heroes in total (a Mythical counts as one of the two) and at most 1 Mythical' + (isMythical(h) ? ` — ${h.name} IS Mythical, so the one other hero must be non-Mythical.` : ' — this hero plus at most one partner.'),
       };
     }
     case 'boss': {
@@ -199,9 +211,9 @@ function heroFacet(h, facet) {
         name: h.name, bossUse: b.status, why: b.note, goal: hf.goal,
         scoringPrinciple: _scoring().principle, syncRule: _scoring().syncRule,
         buffsReachingBossTroops: b.status === 'disabled' ? undefined : _bossSync(h),
-        levelValues: b.status === 'disabled' ? undefined : { talent: _eff(h.talent && h.talent.byLevel), ability: _eff(h.ability && h.ability.byLevel) },
+        levelValues: b.status === 'disabled' ? undefined : { talent: _eff(h.talent && h.talent.levelStats), ability: _eff(h.ability && (h.ability.levelStats || h.ability.byLevel)) },
         bossFormations: _formationsWith(h.id, true),
-        rule: 'Max 2 heroes, max 1 Mythical. Boss CC (stun/sleep/pull) is not confirmed to work.',
+        rule: '2 heroes in total per battle, at most 1 Mythical. Boss CC (stun/sleep/pull) is not confirmed to work.',
       };
     }
     case 'arena': {
@@ -211,7 +223,7 @@ function heroFacet(h, facet) {
         talentBuffs: h.talent && h.talent.targets, abilityBuffs: h.ability && h.ability.targets,
         pvpNote: disabledInBoss ? 'Works in PvP/Arena (its boss-battle effect is disabled).' : undefined,
         arenaFormations: _formationsWith(h.id, false),
-        rule: 'Max 2 heroes, max 1 Mythical.',
+        rule: '2 heroes in total per battle, at most 1 Mythical.',
       };
     }
     case 'troops':
@@ -246,7 +258,7 @@ function troopFacet(t, facet) {
       const row = (SYN.troopHeroSynergy || []).find(r => r.troopId === t.id);
       const syn = row ? row.heroSynergies.map(x => ({ hero: (HEROES.find(h => h.id === x.heroId) || {}).name || x.heroId, why: clip(x.reason, 110) })) : [];
       const bossOK = syn.filter(x => !/harkon|fire fury xana/i.test(x.hero));
-      return { name: t.name, heroesThatBuffIt: bossOK.slice(0, 8), recommendedHeroes: t.recommendedHeroes, rule: 'Max 2 heroes per battle, max 1 Mythical. Harkon/Xana do nothing in boss battles.' };
+      return { name: t.name, heroesThatBuffIt: bossOK.slice(0, 8), recommendedHeroes: t.recommendedHeroes, rule: '2 heroes in total per battle, at most 1 Mythical.' };
     }
     case 'boss': {
       const m = STRAT.bossTroopMeta || {};
@@ -258,10 +270,11 @@ function troopFacet(t, facet) {
       const trait = Object.entries(m.traits || {}).find(([k]) => cn(k) === nm || nm.startsWith(cn(k)) || cn(k).startsWith(nm));
       return {
         name: t.name, rarity: t.rarity, bossTier: tier || 'not in boss meta list',
-        impact: low ? 'LOW boss impact — do not pick for bosses' : aoeLow ? 'LOW boss value — AoE strength is wasted on a single boss target (good in Arena)' : tier ? 'listed in boss meta' : 'neutral',
+        impact: low ? 'LOW boss impact — do not pick for bosses' + (m.lowImpactNote && /pyrotech/i.test(t.name) ? '' : ' (' + (trait ? trait[1] : 'dies early / no sustained damage') + ')') : aoeLow ? 'LOW boss value — AoE strength is wasted on a single boss target (good in Arena)' : tier ? 'listed in boss meta' : 'neutral',
         bossTrait: trait && trait[1],
         scoringPrinciple: _scoring().principle, aoeRule: _scoring().aoeRule,
         damageAtLv10: _squad(t), damageRank: _squadRank(t),
+        survivability: _hpInfo(t),
         damageType: tags.has('ranged') ? 'Ranged' : tags.has('melee') ? 'Melee' : 'unknown',
         resistanceRule: 'Each boss resists either Melee or Ranged by 30% and it rotates per season — field the OPPOSITE type as main damage.',
         priority: 'Legendary > Epic > Rare > Common',
@@ -279,11 +292,11 @@ const FACET_GUIDE = {
   summary: 'Short intro: role, talent, ability, one-line verdict.',
   talent:  'Short intro: role, talent, ability, one-line verdict.',
   ability: 'Explain what the ability does, how it scales Lv1->Lv10, and one-line verdict. Do not repeat the role.',
-  synergy: 'Answer ONLY synergy: which troop families it buffs, the best formations/partner heroes from data and why. Respect max 2 heroes / 1 Mythical. Do NOT restate role/talent/ability.',
+  synergy: 'Answer ONLY synergy: which troop families it buffs, the best formations/partner heroes from data and why. Respect: 2 heroes in total per battle, at most 1 Mythical; for a partnerPool pick ONE partner. Do NOT restate role/talent/ability.',
   boss:    'Answer ONLY boss-battle use. First line = verdict from bossUse (disabled / damage / sustain / low / neutral) with the reason in "why". Then which formations/troops fit and what the player should do. Remember the boss goal is damage score: judge by scoringPrinciple (troops deal the damage; the hero is valuable only through buffsReachingBossTroops + levelValues). For troops use bossTrait, damageAtLv10 and aoeRule. Do NOT restate role/talent/ability.',
-  arena:   'Answer ONLY PvP/Arena/Clan Clash use: how it performs there, the best formations and partners from data. Do NOT restate role/talent/ability.',
+  arena:   'Answer ONLY PvP/Arena/Clan Clash use (NEVER mention boss damage score here): how it performs there, the best formations and partners from data. Do NOT restate role/talent/ability.',
   troops:  'Answer ONLY which troops to field with this hero (recommendedTroops + families it buffs) and why. Do NOT restate role/talent/ability.',
-  heroes:  'Answer ONLY which heroes pair best with this troop and why. Respect max 2 heroes / 1 Mythical.',
+  heroes:  'Answer ONLY which heroes pair best with this troop and why. Respect: 2 heroes in total per battle, at most 1 Mythical.',
 };
 function _identity(type, raw) {
   const A = raw.analysis || {};
@@ -386,5 +399,5 @@ function buttonContext(type, key, facet, lang) {
 }
 
 module.exports = {
-  FACET_VERSION, findEntity, getFacet, facetsFor, makeId, parseId, buttonSpecs, planFirstTurn, buttonContext, langOf,
+  FACET_VERSION, bossStatusOfHero, findEntity, getFacet, facetsFor, makeId, parseId, buttonSpecs, planFirstTurn, buttonContext, langOf,
 };
