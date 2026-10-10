@@ -25,7 +25,7 @@ const TROOPS = _arr(_troopsMod);
 const SYN    = (_synMod && (_synMod.synergies || _synMod)) || {};
 const STRAT  = (_stratMod && (_stratMod.strategies || _stratMod)) || {};
 
-const FACET_VERSION = 1;
+const FACET_VERSION = 3;
 const MYTHICAL = new Set(['XANA', 'HARKON', 'BRUTALLUS', 'CALYRA', 'ATREYA', 'REMUS']);
 
 const HERO_FACETS  = [
@@ -42,6 +42,7 @@ const TROOP_FACETS = [
 ];
 
 const clip = (s, n = 220) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+const cn = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const idKey = x => String(x.id || x.name);
 
@@ -124,6 +125,45 @@ function _formationsWith(heroId, wantBoss) {
   return out.slice(0, 3);
 }
 
+
+// ── boss-score helpers: hero value = what its buffs do for the troops that deal the damage ──
+function _metaTroops() {
+  const m = STRAT.bossTroopMeta || {};
+  const names = [].concat(m.legendary || [], (m.epic && m.epic.tier) || [], (m.rare && m.rare.tier) || [], m.common || []);
+  const low = new Set([].concat(m.lowImpactTroops || [], m.aoeLowBoss || []).map(norm));
+  return TROOPS.filter(t => names.some(n => cn(n) === cn(t.name) || cn(t.name).startsWith(cn(n)) || cn(n).startsWith(cn(t.name))) && !low.has(cn(t.name)));
+}
+function _buffKinds(part) {
+  if (!part) return [];
+  const txt = (Object.keys(part.effects || {}).join(' ') + ' ' + (part.description || '')).toLowerCase();
+  const k = [];
+  if (/damage|attack/.test(txt)) k.push('damage');
+  if (/defense|reduction|\bhp\b|health|shield/.test(txt)) k.push('defense');
+  if (/heal|regenerat/.test(txt)) k.push('healing');
+  return k;
+}
+function _bossSync(h) {
+  const meta = _metaTroops();
+  const part = (p) => {
+    if (!p) return null;
+    const all = (p.targets || []).some(x => /^all( allies)?$/i.test(String(x).trim()));
+    const hit = all ? null : meta.filter(t => (p === h.talent ? reaches(h, t).talent : reaches(h, t).ability)).map(t => t.name);
+    return { buffs: _buffKinds(p), reaches: all ? 'ALL fielded troops' : (hit.length ? hit : 'none of the boss-meta troops') };
+  };
+  return { talent: part(h.talent), ability: part(h.ability) };
+}
+const _scoring = () => (STRAT.bossDamageScoring || {});
+function _squad(t) {
+  const L = t.levels || {}, i = (L.damage || []).length - 1;
+  const u = (L.units || [])[i], d = (L.damage || [])[i];
+  return { unitsLv10: u, damagePerUnitLv10: d, squadDamageRaw: (typeof u === 'number' && typeof d === 'number') ? u * d : undefined };
+}
+function _squadRank(t) {
+  const arr = TROOPS.map(x => ({ n: x.name, v: _squad(x).squadDamageRaw })).filter(x => typeof x.v === 'number').sort((a, b) => b.v - a.v);
+  const i = arr.findIndex(x => x.n === t.name);
+  return i < 0 ? undefined : `#${i + 1} of ${arr.length} troops by (units x damage per unit) at Lv10`;
+}
+
 // ── HERO facets ────────────────────────────────────────────────────────────
 const _eff = o => o && typeof o === 'object' ? o : undefined;
 function heroFacet(h, facet) {
@@ -138,8 +178,8 @@ function heroFacet(h, facet) {
     case 'talent':
       return {
         name: h.name,
-        talent: h.talent && { name: h.talent.name, what: clip(h.talent.description, 260), effectsLv1toLv10: _eff(h.talent.effects), buffs: h.talent.targets },
-        ability: h.ability && { name: h.ability.name, what: clip(h.ability.description, 260), effectsLv1toLv10: _eff(h.ability.effects), buffs: h.ability.targets },
+        talent: h.talent && { name: h.talent.name, what: clip(h.talent.description, 260), effectsLv1toLv10: _eff(h.talent.effects), valuesPerLevel: _eff(h.talent.byLevel), buffs: h.talent.targets },
+        ability: h.ability && { name: h.ability.name, what: clip(h.ability.description, 260), effectsLv1toLv10: _eff(h.ability.effects), valuesPerLevel: _eff(h.ability.byLevel), buffs: h.ability.targets },
       };
     case 'synergy': {
       const reached = TROOPS.filter(t => { const r = reaches(h, t); return r.talent || r.ability; });
@@ -157,6 +197,9 @@ function heroFacet(h, facet) {
       const hf = STRAT.bossHeroFit || {};
       return {
         name: h.name, bossUse: b.status, why: b.note, goal: hf.goal,
+        scoringPrinciple: _scoring().principle, syncRule: _scoring().syncRule,
+        buffsReachingBossTroops: b.status === 'disabled' ? undefined : _bossSync(h),
+        levelValues: b.status === 'disabled' ? undefined : { talent: _eff(h.talent && h.talent.byLevel), ability: _eff(h.ability && h.ability.byLevel) },
         bossFormations: _formationsWith(h.id, true),
         rule: 'Max 2 heroes, max 1 Mythical. Boss CC (stun/sleep/pull) is not confirmed to work.',
       };
@@ -174,7 +217,6 @@ function heroFacet(h, facet) {
     case 'troops':
       return {
         name: h.name, recommendedTroops: h.recommendedTroops,
-        gearFamily: h.realGear && h.realGear.roleFamily,
         troopsItBuffsByFamily: (() => { const f = {}; TROOPS.filter(t => { const r = reaches(h, t); return r.talent || r.ability; }).forEach(t => { (f[family(t)] = f[family(t)] || []).push(t.name); }); return f; })(),
       };
     default: return null;
@@ -208,13 +250,18 @@ function troopFacet(t, facet) {
     }
     case 'boss': {
       const m = STRAT.bossTroopMeta || {};
-      const low = (m.lowImpactTroops || []).some(x => norm(x) === norm(t.name));
-      const nm = norm(t.name);
-      const tier = ['legendary', 'epic', 'rare'].find(k => { const v = m[k]; const list = Array.isArray(v) ? v : (v && v.tier) || []; return list.some(x => norm(x) === nm || nm.startsWith(norm(x)) || norm(x).startsWith(nm)); });
+      const low = (m.lowImpactTroops || []).some(x => cn(x) === cn(t.name));
+      const nm = cn(t.name);
+      const tier = ['legendary', 'epic', 'rare'].find(k => { const v = m[k]; const list = Array.isArray(v) ? v : (v && v.tier) || []; return list.some(x => cn(x) === nm || nm.startsWith(cn(x)) || cn(x).startsWith(nm)); });
       const tags = _tags(t);
+      const aoeLow = (m.aoeLowBoss || []).some(x => cn(x) === nm);
+      const trait = Object.entries(m.traits || {}).find(([k]) => cn(k) === nm || nm.startsWith(cn(k)) || cn(k).startsWith(nm));
       return {
         name: t.name, rarity: t.rarity, bossTier: tier || 'not in boss meta list',
-        impact: low ? 'LOW boss impact — do not pick for bosses' : tier ? 'listed in boss meta' : 'neutral',
+        impact: low ? 'LOW boss impact — do not pick for bosses' : aoeLow ? 'LOW boss value — AoE strength is wasted on a single boss target (good in Arena)' : tier ? 'listed in boss meta' : 'neutral',
+        bossTrait: trait && trait[1],
+        scoringPrinciple: _scoring().principle, aoeRule: _scoring().aoeRule,
+        damageAtLv10: _squad(t), damageRank: _squadRank(t),
         damageType: tags.has('ranged') ? 'Ranged' : tags.has('melee') ? 'Melee' : 'unknown',
         resistanceRule: 'Each boss resists either Melee or Ranged by 30% and it rotates per season — field the OPPOSITE type as main damage.',
         priority: 'Legendary > Epic > Rare > Common',
@@ -225,6 +272,42 @@ function troopFacet(t, facet) {
     default: return null;
   }
 }
+
+
+// ── identity + per-facet answer guides (stops the model guessing what the entity IS) ──
+const FACET_GUIDE = {
+  summary: 'Short intro: role, talent, ability, one-line verdict.',
+  talent:  'Short intro: role, talent, ability, one-line verdict.',
+  ability: 'Explain what the ability does, how it scales Lv1->Lv10, and one-line verdict. Do not repeat the role.',
+  synergy: 'Answer ONLY synergy: which troop families it buffs, the best formations/partner heroes from data and why. Respect max 2 heroes / 1 Mythical. Do NOT restate role/talent/ability.',
+  boss:    'Answer ONLY boss-battle use. First line = verdict from bossUse (disabled / damage / sustain / low / neutral) with the reason in "why". Then which formations/troops fit and what the player should do. Remember the boss goal is damage score: judge by scoringPrinciple (troops deal the damage; the hero is valuable only through buffsReachingBossTroops + levelValues). For troops use bossTrait, damageAtLv10 and aoeRule. Do NOT restate role/talent/ability.',
+  arena:   'Answer ONLY PvP/Arena/Clan Clash use: how it performs there, the best formations and partners from data. Do NOT restate role/talent/ability.',
+  troops:  'Answer ONLY which troops to field with this hero (recommendedTroops + families it buffs) and why. Do NOT restate role/talent/ability.',
+  heroes:  'Answer ONLY which heroes pair best with this troop and why. Respect max 2 heroes / 1 Mythical.',
+};
+function _identity(type, raw) {
+  const A = raw.analysis || {};
+  if (type === 'hero') {
+    return {
+      kind: 'HERO (a player unit, never an enemy boss)', name: raw.name, rarity: raw.rarity, faction: raw.faction, type: raw.type, role: A.primaryRole,
+      talent: raw.talent && `${raw.talent.name}: ${clip(raw.talent.description, 110)}`,
+      ability: raw.ability ? `${raw.ability.name}: ${clip(raw.ability.description, 110)}` : 'none',
+    };
+  }
+  return {
+    kind: 'TROOP (a player unit, never an enemy boss)', name: raw.name, rarity: raw.rarity, type: raw.type, line: raw.combatLine, role: A.primaryRole,
+    ability: raw.ability ? `${raw.ability.name}: ${clip(raw.ability.description, 110)}` : 'none (plain attacker/defender)',
+  };
+}
+function _ctx(type, raw, lang, facets, wanted) {
+  const ctx = { facetMode: true, replyLanguage: lang === 'h' ? 'Roman Hinglish' : 'English', entity: raw.name };
+  const intro = !wanted && (facets.includes('summary'));
+  if (!intro) ctx.identity = _identity(type, raw);
+  facets.forEach(f => { ctx[f === 'summary' ? 'summaryData' : f + 'Data'] = getFacet(type, keyOf(raw), f); });
+  ctx.answerGuide = intro ? FACET_GUIDE.summary : (FACET_GUIDE[wanted] || FACET_GUIDE.summary);
+  return ctx;
+}
+const keyOf = raw => idKey(raw);
 
 // ── public API ─────────────────────────────────────────────────────────────
 const _cache = new Map();
@@ -262,7 +345,7 @@ const FACET_WORDS = [
   [/\b(heroes|hero)\b/i, 'heroes', 'troop'],
 ];
 const OPEN_WORDS = /\b(vs|versus|compare|best|top|list|all|counter|formation|lineup|team|gear|weapon|armou?r|level|lv|stats?)\b/i;
-const HINGLISH = /\b(kya|hai|hain|ka|ki|ke|ko|karo|karna|batao|bata|kaise|kaisa|kaisi|mein|me|nahi|aur|kon|konsa|uski|uska|iski|iska)\b/i;
+const HINGLISH = /\b(kya|hai|hain|ka|ki|ke|ko|karo|karna|karu|karun|batao|bata|btao|kaise|kaisa|kaisi|mein|nahi|nhi|aur|kon|konsa|konse|uski|uska|iski|iska|kare|karti|karta|hota|hoti|chahiye|lagta|accha|acha|bhai)\b/i;
 const langOf = text => (HINGLISH.test(text || '') ? 'h' : 'e');
 
 /**
@@ -290,11 +373,7 @@ function planFirstTurn(gameResult, text) {
     }
     const first = ent.type === 'hero' ? ['summary', 'talent'] : ['summary', 'ability'];
     const facets = wanted ? [wanted] : first;
-    const context = { facetMode: true, entity: ent.raw.name, lang: lang === 'h' ? 'Roman Hinglish' : 'English' };
-    for (const f of facets) context[f] = getFacet(ent.type, ent.key, f);
-    context.formatInstruction = wanted
-      ? `Explain ONLY the "${wanted}" facet of ${ent.raw.name} from the data given.`
-      : `Give a short intro of ${ent.raw.name}: role, talent, ability, one-line verdict.`;
+    const context = _ctx(ent.type, ent.raw, lang, facets, wanted);
     return { type: ent.type, key: ent.key, facets, context, lang, shown: wanted ? [wanted] : [], name: ent.raw.name };
   } catch (_) { return null; }
 }
@@ -302,17 +381,8 @@ function planFirstTurn(gameResult, text) {
 /** Context for a button click. */
 function buttonContext(type, key, facet, lang) {
   const e = byKey(type, key);
-  if (!e) return null;
-  const data = getFacet(type, key, facet);
-  if (!data) return null;
-  return {
-    name: e.raw.name,
-    context: {
-      facetMode: true, entity: e.raw.name, lang: lang === 'h' ? 'Roman Hinglish' : 'English',
-      [facet]: data,
-      formatInstruction: `Explain ONLY the "${facet}" facet of ${e.raw.name} from the data given.`,
-    },
-  };
+  if (!e || !getFacet(type, key, facet)) return null;
+  return { name: e.raw.name, context: _ctx(type, e.raw, lang, [facet], facet) };
 }
 
 module.exports = {
