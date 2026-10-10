@@ -72,6 +72,8 @@ const {
   buildGearEmbed
 } = require('./gameDomain/embedBuilders.js');
 
+let _facetStore = null;
+try { _facetStore = require('../engine/facetStore.js'); } catch (_) { _facetStore = null; }
 let _gearData = null;
 try { _gearData = require('../data/gearData.js'); } catch (_) { _gearData = null; }
 function _heroReachesTroop(hero, troop) {
@@ -461,9 +463,14 @@ function route(text, recentContext = '', userCorrections = []) {
     });
   }
 
+  // 🧩 Modular facet plan (single hero/troop question) — index.js uses it instead of the full context
+  let facetPlan = null;
+  try { facetPlan = _facetStore ? _facetStore.planFirstTurn({ entities, queryFlags }, text) : null; } catch (_) { facetPlan = null; }
+
   if (strategyData.sufficient || prebuiltEmbeds.length > 0) {
     return {
       resolved: false,
+      facetPlan,
       embeds:   prebuiltEmbeds.length > 0 ? prebuiltEmbeds : null,
       intent,
       entities,
@@ -474,7 +481,7 @@ function route(text, recentContext = '', userCorrections = []) {
     };
   }
 
-  return { resolved: false, intent, entities, context: null, needsClarification, queryFlags, deterministic };
+  return { resolved: false, facetPlan, intent, entities, context: null, needsClarification, queryFlags, deterministic };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
