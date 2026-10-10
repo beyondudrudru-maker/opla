@@ -483,6 +483,15 @@ strategies.bossHeroFit = {
   pickRule: "Choose the 2 legal heroes (max 1 Mythical) that add the most army damage + survival for the troops actually deployed; if the user owns a healer (Calyra), healing is a valid pick for long fights."
 };
 
+strategies.bossDamageScoring.ccRule = "Crowd control (stun / sleep / pull / fear) is NOT confirmed to work on bosses, so a hero's CC is worth little there. Boss moves (tornado, hammer, spear...) still deal damage to your units but do not disable a hero's skills (player-observed), so buff heroes keep working during the whole fight.";
+
+// ARENA / PvP / Clan Clash: units fight enemy HEROES and TROOPS, so crowd control and ability-disable matter a lot.
+strategies.arenaScoring = {
+  principle: "In Arena / Clan Clash the enemy is a real lineup (heroes + troops). Buffs (damage / HP / defense / healing) still make your troops stronger, but crowd control matters just as much: stunning, sleeping, pulling, knocking up, taunting or silencing enemy units stops them from attacking or casting, so your troops hit freely.",
+  heroRule: "A hero's job is mainly to support troops (buff first). Crowd-control heroes (e.g. Zaheer, Bumi) help by disturbing enemy troops, and in hero-vs-hero fights their attacks and control skills count. Enemy CC can cancel your hero's ability, so quick, reliable control and survivable buffs are valuable.",
+  troopRule: "Many troops carry their own control or disable (stun, knock-back, taunt, silence). AoE troops (e.g. Immortal) are strong here because enemies bunch up around them — the opposite of a boss, which is a single target.",
+};
+
 strategies.bossMoveGuide = {
   KALIDOR: [
     "Explosive Spear (6000 AoE, 15s): needs high-HP frontline, healing, shield or damage reduction",
