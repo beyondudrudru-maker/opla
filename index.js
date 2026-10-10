@@ -886,16 +886,16 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                 const facetPlan = gameResult.facetPlan || facetStore.planFirstTurn(gameResult, cleanText);
                 const gameContext = facetPlan ? facetPlan.context : gameResult.context;
                 const gameFlags = facetPlan
-                    ? { ...(gameResult.queryFlags || {}), isFacet: true, facetCacheKey: `${facetPlan.type}|${facetPlan.key}|${facetPlan.facets.join('+')}|${facetPlan.lang}` }
+                    ? { ...(gameResult.queryFlags || {}), isFacet: true, ...(facetPlan.compare ? {} : { facetCacheKey: `${facetPlan.type}|${facetPlan.key}|${facetPlan.facets.join('+')}|${facetPlan.lang}` }) }
                     : gameResult.queryFlags;
                 if (facetPlan) {
-                    const specs = facetStore.buttonSpecs(facetPlan.type, facetPlan.key, facetPlan.lang, facetPlan.shown);
+                    const specs = facetPlan.compare ? [] : facetStore.buttonSpecs(facetPlan.type, facetPlan.key, facetPlan.lang, facetPlan.shown);
                     if (specs.length) {
                         facetRows = [new ActionRowBuilder().addComponents(
                             specs.slice(0, 5).map(b => new ButtonBuilder().setCustomId(b.customId).setLabel(b.label).setEmoji(b.emoji).setStyle(ButtonStyle.Secondary))
                         )];
                     }
-                    console.log(`[FACET] first-turn ${facetPlan.type}:${facetPlan.key} facets=${facetPlan.facets.join('+')} ctx=${JSON.stringify(gameContext).length} chars`);
+                    console.log(`[FACET] ${facetPlan.compare ? 'compare' : 'first-turn'} ${facetPlan.type}:${facetPlan.key} facets=${facetPlan.facets.join('+')} ctx=${JSON.stringify(gameContext).length} chars`);
                 }
 
                 aiReply = await requestQueue.enqueue(() => askGameAI({
