@@ -26,7 +26,18 @@ const MAX_RETRIES = 2;
 // Output-token caps (modelRouter default for gameStrategy is 1536). Reply rules target ~1200 chars
 // (~300-400 tokens); caps keep generous headroom because Gemini counts hidden thinking tokens inside
 // maxOutputTokens — too low a cap can truncate or blank the answer. Tighten only after reading real usage.
+// Compact system prompt for facet (modular) answers: ~0.7k chars instead of ~7k.
+const FACET_INSTRUCTION = `You are Melody, a Kingdom Clash clan assistant. Answer ONLY from <GameData> (a small facet of one hero/troop). Never invent talents, abilities, numbers, heroes or troops.
+- Language: match the question's language AND script (Roman Hinglish stays Roman, never Devanagari).
+- Format: short "• **Label** — detail" bullets, 4-8 for a facet, 4-6 for an intro. Finish every bullet. No raw ids/field names, no HP/attack stat dumps (a card already shows them).
+- Intro = role, talent, ability, one-line verdict. Facet = only that facet, with a clear verdict and what the player should do.
+- Rules: a battle holds max 2 heroes and max 1 Mythical. Harkon and Fire Fury Xana do nothing in boss battles. Pyrotechnician is a low-impact troop for bosses. Bosses resist Melee or Ranged by 30% (rotates per season) — field the opposite type. Boss goal = max damage score, not victory.
+- If bossUse is "disabled" or impact is LOW, say so plainly first. If data for something is missing, say you don't have that detail yet.`;
+const _facetCache = new Map(); // key -> { text, at }
+const FACET_TTL_MS = 12 * 60 * 60 * 1000;
+
 function _maxTokensFor(queryFlags = {}, explain = false) {
+  if (queryFlags.isFacet) return 1280;
   // Reasoning models (gpt-oss) spend part of max_tokens on hidden reasoning, so a tight cap CUTS the visible
   // answer mid-sentence. Generous caps cost nothing unless the model actually writes that much.
   if (explain) return 1536;
@@ -181,6 +192,13 @@ async function askAI({
     }
   }
 
+  // ── FACET CACHE: same entity+facet+language answered before → 0 tokens ──
+  const _fk = queryFlags && queryFlags.isFacet && queryFlags.facetCacheKey;
+  if (_fk) {
+    const c = _facetCache.get(_fk);
+    if (c && Date.now() - c.at < FACET_TTL_MS) { console.log(`[aiFallback] FACET CACHE HIT (${_fk}) — 0 tokens.`); return c.text; }
+  }
+
   // ── FULL PIPELINE: open-ended reasoning over GameData ──
   // 🛡️ Safe fix applied here: removed the missing budget constraint function so it doesn't crash!
   const compressedContext = context ? deepCompress(compressGameData(context)) : null;
@@ -194,7 +212,7 @@ async function askAI({
   const rawContextChars = context ? JSON.stringify(context, null, 2).length : 0;
   console.log(`[aiFallback] GameData size — raw(pretty): ${rawContextChars} chars (~${Math.round(rawContextChars / 4)} tok) -> compressed: ${gameDataBlock.length} chars (~${Math.round(gameDataBlock.length / 4)} tok)`);
 
-  const systemInstruction = buildInstruction(queryFlags);
+  const systemInstruction = queryFlags.isFacet ? FACET_INSTRUCTION : buildInstruction(queryFlags);
 
   // 🛡️ SECURITY FIX: userMessage and intent are now strictly sanitized
   // ORDER MATTERS: data first, question LAST. The 413 recovery keeps the END of the prompt, so the
@@ -212,7 +230,7 @@ ${gameDataBlock}
 
   console.log(`[aiFallback] sizes — system:${String(systemInstruction || "").length} data:${gameDataBlock.length} question:${(userMessage || '').length} total prompt:${prompt.length} chars`);
 
-  return _runWithRetries({
+  const _out = await _runWithRetries({
     prompt,
     systemInstruction,
     classification: { ...(classification || { intent: intent || 'strategy' }), maxTokens: (classification && classification.maxTokens) || _maxTokensFor(queryFlags) },
@@ -221,6 +239,8 @@ ${gameDataBlock}
     groqKeys,
     isBoss: Boolean(queryFlags && queryFlags.isBossQuery),
   });
+  if (_fk && _out && _out !== SNAG_MESSAGE) _facetCache.set(_fk, { text: _out, at: Date.now() });
+  return _out;
 }
 
 module.exports = { askAI, buildInstruction, _scrubFieldNames, _trimIncomplete };
