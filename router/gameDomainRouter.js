@@ -467,7 +467,7 @@ function route(text, recentContext = '', userCorrections = []) {
 
   // 🧩 Modular facet plan (single hero/troop question) — index.js uses it instead of the full context
   let facetPlan = null;
-  try { facetPlan = _facetStore ? _facetStore.planFirstTurn({ entities, queryFlags }, text) : null; } catch (_) { facetPlan = null; }
+  try { facetPlan = _facetStore ? (_facetStore.planFirstTurn({ entities, queryFlags }, text) || (_facetStore.planCompare ? _facetStore.planCompare({ entities, queryFlags }, text) : null)) : null; } catch (_) { facetPlan = null; }
 
   if (strategyData.sufficient || prebuiltEmbeds.length > 0) {
     return {
