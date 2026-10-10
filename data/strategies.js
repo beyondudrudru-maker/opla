@@ -439,6 +439,29 @@ strategies.counterGuides.push(
 // BOSS REASONING DATA (2026-10). Boss seasons rank TOTAL DAMAGE, not just a win, so heroes are judged on
 // how much they raise army damage / HP / defense / healing. Everything restates heroes.js / bosses.js text.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Boss SCORE = total damage dealt. Verified on a real KALIDOR battle report (user screenshot, 2 heroes + 49 troops):
+// boss took 20,103,038 damage; heroes dealt only 42,490 (0.2%); troops dealt 20,060,548 (99.8%).
+// So a hero is valuable ONLY through what it does for troops (damage / defense / healing), not its own damage.
+strategies.bossDamageScoring = {
+  principle: "Boss score = total damage. In a real Kalidor report heroes dealt 0.2% of damage and troops 99.8%, so pick heroes by how well their buffs reach and boost the troops you field (damage first, then defense/healing to keep them alive); hero direct damage is irrelevant.",
+  aoeRule: "A boss is ONE big target. AoE (hits many surrounded enemies) gives no extra value on a boss, so AoE-strength is an Arena/PvP virtue, not a boss one. Prefer troops with strong single-unit damage or damage that grows during the fight.",
+  syncRule: "Synchronise: a hero's buff only counts if it reaches the troops you field (e.g. Anavin's talent boosts Mage units only; her ability buffs all allies). Check the reach before recommending a hero.",
+  evidence: {
+    boss: "KALIDOR", bossDamageTaken: 20103038, heroDamage: 42490, troopDamage: 20060548, heroDamageShare: "0.2%",
+    troopHealing: 5169431, bossDamageDealt: 40412636, note: "single report, 2 heroes + 49 troops; use as direction, not as exact numbers"
+  }
+};
+// Per-troop boss traits (from the player's own experience + ability text in troops.js).
+strategies.bossTroopMeta.traits = {
+  "Bonebreaker": "Squad of 9 units from Lv4. Every 3rd hit it grows and hits harder, so it gets stronger as the fight goes on — strong boss damage dealer.",
+  "Axe Thrower": "Every 3rd hit it grows and hits harder (scales over the fight), high ranged damage per unit.",
+  "Lava Golem": "Strong damage per unit and sheds armor below half HP for more attack; its death blast is AoE but the individual-unit damage is what matters on a boss.",
+  "Imp": "Highest per-unit damage of all troops in the data and cheap (Rare) — preferred boss damage dealer.",
+  "Immortal": "AoE tank: great in Arena/PvP against surrounded crowds, but a boss is a single target so the AoE gives little — low boss value."
+};
+strategies.bossTroopMeta.aoeLowBoss = ["Immortal", "Pyrotechnician"];
+
 strategies.bossHeroFit = {
   goal: "Boss seasons rank total damage dealt (not just victory): first raise army damage, then keep the damage dealers alive with HP, defense, healing or shields.",
   battleRules: "Max 2 heroes per battle and at most 1 Mythical. Boss crowd-control (sleep/pull/stun/fear) is NOT confirmed to work on bosses — never count it as value.",
