@@ -41,6 +41,7 @@ const { replyChunked } = require('./utils/replyChunked');
 const { FAST_CMD_REGEX, SUMMARY_CMD, EVENT_CMD, bossLabel, summaryLabel } = require('./commands/commandConfig');
 const { parseSummaryArgs } = require('./commands/summaryArgs');
 const eventState = require('./commands/eventState');
+const facetStore = require('./engine/facetStore');
 const eventCommand = require('./commands/eventCommand');
 
 const processedMessages = new Set();
@@ -876,18 +877,35 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
 
             const roles = message.member ? message.member.roles.cache.map(r => r.name.toLowerCase()) : [];
             let aiReply, modelUsed, debug, pipelineUsed;
+            let facetRows = null; // modular follow-up buttons (facet mode)
 
             if (hasRealGameSignal) {
                 pipelineUsed = 'aiFallback (gameStrategyEngine)';
                 
+                // 🧩 MODULAR FACET MODE: plain single hero/troop question -> only the needed facet(s) + follow-up buttons
+                const facetPlan = facetStore.planFirstTurn(gameResult, cleanText);
+                const gameContext = facetPlan ? facetPlan.context : gameResult.context;
+                const gameFlags = facetPlan
+                    ? { ...(gameResult.queryFlags || {}), isFacet: true, facetCacheKey: `${facetPlan.type}|${facetPlan.key}|${facetPlan.facets.join('+')}|${facetPlan.lang}` }
+                    : gameResult.queryFlags;
+                if (facetPlan) {
+                    const specs = facetStore.buttonSpecs(facetPlan.type, facetPlan.key, facetPlan.lang, facetPlan.shown);
+                    if (specs.length) {
+                        facetRows = [new ActionRowBuilder().addComponents(
+                            specs.slice(0, 5).map(b => new ButtonBuilder().setCustomId(b.customId).setLabel(b.label).setEmoji(b.emoji).setStyle(ButtonStyle.Secondary))
+                        )];
+                    }
+                    console.log(`[FACET] first-turn ${facetPlan.type}:${facetPlan.key} facets=${facetPlan.facets.join('+')} ctx=${JSON.stringify(gameContext).length} chars`);
+                }
+
                 aiReply = await requestQueue.enqueue(() => askGameAI({
                     userMessage: cleanText,
                     intent: gameResult.intent,
-                    context: gameResult.context,
+                    context: gameContext,
                     geminiKeys: melody.geminiKeys,
                     groqKeys: melody.groqKeys,
-                    queryFlags: gameResult.queryFlags,
-                    deterministic: gameResult.deterministic,
+                    queryFlags: gameFlags,
+                    deterministic: facetPlan ? undefined : gameResult.deterministic,
                 }));
                 
                 modelUsed = 'aiFallback';
@@ -987,14 +1005,16 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
             if (finalReply.length > 1950) {
                 const chunks = finalReply.match(/(.|[\r\n]){1,1950}(?=\s|$)/g) || [];
                 for (let i = 0; i < chunks.length; i++) {
+                    const isLast = i === chunks.length - 1;
                     if (i === 0) {
-                        await message.reply({ ...replyPayload, content: chunks[i] });
+                        await message.reply({ ...replyPayload, content: chunks[i], ...(isLast && facetRows ? { components: facetRows } : {}) });
                     } else {
                         await new Promise(resolve => setTimeout(resolve, 600)); 
-                        await message.channel.send({ content: chunks[i], allowedMentions: { parse: mentionOptions.parse } });
+                        await message.channel.send({ content: chunks[i], allowedMentions: { parse: mentionOptions.parse }, ...(isLast && facetRows ? { components: facetRows } : {}) });
                     }
                 }
             } else {
+                if (facetRows) replyPayload.components = facetRows;
                 await message.reply(replyPayload);
             }
 
@@ -1090,6 +1110,40 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
 
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isButton()) return;
+
+    // 🧩 Facet buttons: fct|<lang>|<h/t>|<entityKey>|<facet>
+    if (String(interaction.customId).startsWith('fct|')) {
+        try {
+            const p = facetStore.parseId(interaction.customId);
+            const bc = p && facetStore.buttonContext(p.type, p.key, p.facet, p.lang);
+            if (!bc) return interaction.reply({ content: 'That option is not available any more.', ephemeral: true }).catch(() => {});
+            await interaction.deferReply();
+            const label = (facetStore.facetsFor(p.type).find(f => f.id === p.facet) || {}).label || p.facet;
+            const question = p.lang === 'h' ? `${bc.name} ka ${label} batao` : `Tell me about ${bc.name}'s ${label}`;
+            const text = await requestQueue.enqueue(() => askGameAI({
+                userMessage: question,
+                intent: 'STRATEGY',
+                context: bc.context,
+                geminiKeys: melody.geminiKeys,
+                groqKeys: melody.groqKeys,
+                queryFlags: { isFacet: true, facetCacheKey: `${p.type}|${p.key}|${p.facet}|${p.lang}`, isBossQuery: p.facet === 'boss' },
+            }));
+            const specs = facetStore.buttonSpecs(p.type, p.key, p.lang, [p.facet]);
+            const rows = specs.length ? [new ActionRowBuilder().addComponents(
+                specs.slice(0, 5).map(b => new ButtonBuilder().setCustomId(b.customId).setLabel(b.label).setEmoji(b.emoji).setStyle(ButtonStyle.Secondary))
+            )] : [];
+            const out = String(text || 'I could not answer that right now.');
+            const chunks = out.match(/(.|[\r\n]){1,1900}(?=\s|$)/g) || [out];
+            await interaction.editReply({ content: chunks[0], allowedMentions: { parse: [] }, ...(chunks.length === 1 ? { components: rows } : {}) });
+            for (let i = 1; i < chunks.length; i++) {
+                await interaction.followUp({ content: chunks[i], allowedMentions: { parse: [] }, ...(i === chunks.length - 1 ? { components: rows } : {}) });
+            }
+        } catch (err) {
+            console.warn('⚠️ Facet button failed:', err.message);
+            try { if (interaction.deferred || interaction.replied) await interaction.editReply({ content: 'Something went wrong, try again in a moment.' }); } catch (_) {}
+        }
+        return;
+    }
 
     try {
         if (interaction.customId === 'btn_yes_help') {
