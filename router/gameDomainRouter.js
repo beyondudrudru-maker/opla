@@ -430,13 +430,15 @@ function route(text, recentContext = '', userCorrections = []) {
         .filter(h => !(isBossQuery && bossDisabled(h)))
         .map(h => ({
           name: h.name, faction: h.faction,
+          ...(isBossQuery && _facetStore && _facetStore.bossStatusOfHero ? (() => { try { const b = _facetStore.bossStatusOfHero(h); return { bossUse: b.status, bossWhy: b.status === 'neutral' ? undefined : b.note }; } catch (_) { return {}; } })() : {}),
           talent: h.talent ? { name: h.talent.name, targets: h.talent.targets, effects: h.talent.effects } : undefined,
           ability: h.ability ? { name: h.ability.name, effects: h.ability.effects, targets: h.ability.targets } : undefined,
         }));
       if (list.length) {
         if (!strategyData.context) strategyData.context = {};
+        if (isBossQuery) { const ord = { damage: 0, sustain: 1, neutral: 2, low: 3 }; list.sort((a, b) => (ord[a.bossUse] ?? 2) - (ord[b.bossUse] ?? 2)); }
         strategyData.context.rarityHeroes = { rarity: rar, count: list.length, heroes: list };
-        strategyData.context.rankingNote = `Heroes of ${rar} rarity are listed in rarityHeroes (${list.length}). Rank the best 3-5 for the user's goal using ONLY their talent/ability data${isBossQuery ? ' (boss goal = max damage score: army damage first, then HP/defense/healing; boss-disabled heroes already removed)' : ''}. For each: what it buffs and which troop families it reaches. Max 2 heroes per battle, max 1 Mythical.`;
+        strategyData.context.rankingNote = `Heroes of ${rar} rarity are listed in rarityHeroes (${list.length}). Rank the best 3-5 for the user's goal using ONLY their talent/ability data${isBossQuery ? ' (boss goal = max damage score: army damage first, then HP/defense/healing; boss-disabled heroes already removed)' : ''}. For each: what it buffs and which troop families it reaches. A battle holds 2 heroes in total (a Mythical counts as one) and at most 1 Mythical.${isBossQuery ? ' Heroes with bossUse "low" must NOT be recommended (explain briefly only if asked); prefer bossUse damage/sustain whose buffs reach troops that deal damage and survive. Skeletons/summoners, Cursed Catapult, Necromancer and Immortal are low boss value.' : ''}`;
         strategyData.sufficient = true;
       }
     }
