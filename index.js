@@ -864,7 +864,7 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
 
             const hasRealGameSignal = Boolean(
                 hasStrictGameIntent && (
-                    gameResult.context ||
+                    gameResult.context || gameResult.facetPlan ||
                     (gameResult.queryFlags && (
                         gameResult.queryFlags.isBossQuery ||
                         gameResult.queryFlags.isSynergyQuery ||
@@ -883,7 +883,7 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                 pipelineUsed = 'aiFallback (gameStrategyEngine)';
                 
                 // 🧩 MODULAR FACET MODE: plain single hero/troop question -> only the needed facet(s) + follow-up buttons
-                const facetPlan = facetStore.planFirstTurn(gameResult, cleanText);
+                const facetPlan = gameResult.facetPlan || facetStore.planFirstTurn(gameResult, cleanText);
                 const gameContext = facetPlan ? facetPlan.context : gameResult.context;
                 const gameFlags = facetPlan
                     ? { ...(gameResult.queryFlags || {}), isFacet: true, facetCacheKey: `${facetPlan.type}|${facetPlan.key}|${facetPlan.facets.join('+')}|${facetPlan.lang}` }
