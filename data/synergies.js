@@ -1192,4 +1192,4 @@ for (const row of synergies.troopHeroSynergy) {
 // Quick lookup used by answers about "everyone-buffers"
 synergies.heroSynergyIndex.buffsAllAllies = _ALL_ALLIES_HEROES.map(h => h.heroId);
 
-module.exports = synergies;
+module.exports = synergies;
