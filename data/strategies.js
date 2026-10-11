@@ -489,6 +489,7 @@ strategies.bossDamageScoring.ccRule = "Crowd control (stun / sleep / pull / fear
 strategies.arenaScoring = {
   principle: "In Arena / Clan Clash the enemy is a real lineup (heroes + troops). Buffs (damage / HP / defense / healing) still make your troops stronger, but crowd control matters just as much: stunning, sleeping, pulling, knocking up, taunting or silencing enemy units stops them from attacking or casting, so your troops hit freely.",
   heroRule: "A hero's job is mainly to support troops (buff first). Crowd-control heroes (e.g. Zaheer, Bumi) help by disturbing enemy troops, and in hero-vs-hero fights their attacks and control skills count. Enemy CC can cancel your hero's ability, so quick, reliable control and survivable buffs are valuable.",
+  formationRule: "Player-verified Arena placement: most ranged troops (e.g. Magic Archer) stand in the middle of the formation; tanks that hold and engage the enemy (Lava Golem, Stone Golem) stand in front; very sturdy tanks such as Immortal are kept behind; Assassins and Gravediggers are fine in front (they run to the enemy back line); healers/ranged supporters like Alchemist sit mid to 2nd-last row because Assassins and Gravediggers dive on the back line; Night Hunter needs a careful spot (front 2nd row, middle or 2nd-last row).",
   troopRule: "Many troops carry their own control or disable (stun, knock-back, taunt, silence). AoE troops (e.g. Immortal) are strong here because enemies bunch up around them — the opposite of a boss, which is a single target.",
 };
 
