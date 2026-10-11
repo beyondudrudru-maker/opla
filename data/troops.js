@@ -137,7 +137,17 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon"
+      "Bone Dragon",
+      "Durand",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin",
+      "Malium",
+      "Morgrane",
+      "Morgana"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -316,7 +326,12 @@ const troops = [
       "Zaheer",
       "Sigurd",
       "Ophelia",
-      "Lirael"
+      "Lirael",
+      "Durand",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Tristan"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -469,7 +484,15 @@ const troops = [
       "High-HP"
     ],
     "recommendedHeroes": [
-      "Dragon Rider"
+      "Dragon Rider",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin",
+      "Durand",
+      "Baron Benua"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -652,7 +675,13 @@ const troops = [
       "Zaheer",
       "Sigurd",
       "Ophelia",
-      "Lirael"
+      "Lirael",
+      "Durand",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Tristan",
+      "Bumi"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -812,7 +841,12 @@ const troops = [
       "Zaheer",
       "Sigurd",
       "Ophelia",
-      "Lirael"
+      "Lirael",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Tristan",
+      "Bumi"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -1049,7 +1083,12 @@ const troops = [
       "Zaheer",
       "Sigurd",
       "Ophelia",
-      "Lirael"
+      "Lirael",
+      "Durand",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Tristan"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -1212,7 +1251,15 @@ const troops = [
       "High-HP"
     ],
     "recommendedHeroes": [
-      "Dragon Rider"
+      "Dragon Rider",
+      "Durand",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin",
+      "Baron Benua"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -1357,7 +1404,14 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon"
+      "Bone Dragon",
+      "Durand",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -1483,7 +1537,11 @@ const troops = [
       "Zaheer",
       "Sigurd",
       "Ophelia",
-      "Lirael"
+      "Lirael",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Tristan"
     ],
   "realGear": {
     "roleFamily": "Ranger",
@@ -1619,7 +1677,14 @@ const troops = [
       "High-HP"
     ],
     "recommendedHeroes": [
-      "Dragon Rider"
+      "Dragon Rider",
+      "Durand",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -1752,7 +1817,15 @@ const troops = [
       "Melee"
     ],
     "recommendedHeroes": [
-      "Dragon Rider"
+      "Dragon Rider",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin",
+      "Durand",
+      "Baron Benua"
     ],
   "realGear": {
     "roleFamily": "Trickster",
@@ -1906,7 +1979,12 @@ const troops = [
       "Zaheer",
       "Sigurd",
       "Ophelia",
-      "Lirael"
+      "Lirael",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Tristan",
+      "Bumi"
     ],
   "realGear": {
     "roleFamily": "Trickster",
@@ -2122,7 +2200,16 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon"
+      "Bone Dragon",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin",
+      "Malium",
+      "Morgrane",
+      "Morgana"
     ],
   "realGear": {
     "roleFamily": "Ranger",
@@ -2244,7 +2331,16 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon"
+      "Bone Dragon",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin",
+      "Xana",
+      "Harkon",
+      "Brutallus"
     ],
   "realGear": {
     "roleFamily": "Ranger",
@@ -2410,7 +2506,16 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon"
+      "Bone Dragon",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin",
+      "Malium",
+      "Morgrane",
+      "Morgana"
     ],
   "realGear": {
     "roleFamily": "Trickster",
@@ -2533,7 +2638,13 @@ const troops = [
       "Low-HP"
     ],
     "recommendedHeroes": [
-      "Dragon Rider"
+      "Dragon Rider",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
     ],
   "realGear": {
     "roleFamily": "Ranger",
@@ -2668,7 +2779,13 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon"
+      "Bone Dragon",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
     ],
   "realGear": {
     "roleFamily": "Trickster",
@@ -2834,7 +2951,16 @@ const troops = [
       "Backline-DPS"
     ],
     "recommendedHeroes": [
-      "Dragon Rider"
+      "Dragon Rider",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin",
+      "Xana",
+      "Harkon",
+      "Brutallus"
     ],
   "realGear": {
     "roleFamily": "Trickster",
@@ -2979,7 +3105,17 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon"
+      "Bone Dragon",
+      "Durand",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin",
+      "Xana",
+      "Harkon",
+      "Brutallus"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -3192,7 +3328,13 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon"
+      "Bone Dragon",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -3201,6 +3343,2441 @@ const troops = [
     "armor": null,
     "note": "No confirmed real gear data yet for the Support role family — only Tank (Hammer/Armor of Devourment) and Trickster (Mirage Glaive/Garment) gear has been captured so far."
   }
+  },
+  {
+    "id": "tr-butcher",
+    "name": "Butcher",
+    "rarity": "rare",
+    "categories": [
+      "Human",
+      "Tank"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Medium",
+      "attackSpeed": 1,
+      "attackRange": "2.25 m",
+      "aoeRadius": "-"
+    },
+    "ability": null,
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        1,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "hp": [
+        2000,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "damage": [
+        200,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "defense": [
+        20,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Human",
+      "Tank",
+      "Melee",
+      "Frontline"
+    ],
+    "analysis": {
+      "primaryRole": "Tank",
+      "secondaryRoles": [
+        "Human"
+      ],
+      "strengths": [],
+      "weaknesses": [],
+      "scaling": {
+        "hp": null,
+        "damage": null
+      }
+    },
+    "faction": "Human",
+    "type": "Tank",
+    "combatLine": "Frontline",
+    "synergyCategories": [
+      "Human",
+      "Tank",
+      "Melee",
+      "Frontline"
+    ],
+    "recommendedHeroes": [
+      "Dragon Rider",
+      "Durand",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-undead-mage",
+    "name": "Undead Mage",
+    "rarity": "rare",
+    "categories": [
+      "Undead",
+      "Ranger"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Low",
+      "attackSpeed": 1,
+      "attackRange": "Max.",
+      "aoeRadius": "3 m"
+    },
+    "ability": null,
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        1,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1
+      ],
+      "hp": [
+        1000,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        18900
+      ],
+      "damage": [
+        200,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        2100
+      ],
+      "defense": [
+        10,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        55
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Undead",
+      "Ranger",
+      "Ranged",
+      "AoE",
+      "Backline-DPS"
+    ],
+    "analysis": {
+      "primaryRole": "Ranger",
+      "secondaryRoles": [
+        "Undead"
+      ],
+      "strengths": [
+        "Long-range attacker"
+      ],
+      "weaknesses": [
+        "Low movement speed"
+      ],
+      "scaling": {
+        "hp": "strong",
+        "damage": "moderate"
+      }
+    },
+    "faction": "Undead",
+    "type": "Ranger",
+    "combatLine": "Backline",
+    "synergyCategories": [
+      "Undead",
+      "Ranger",
+      "Ranged",
+      "AoE",
+      "Backline-DPS"
+    ],
+    "recommendedHeroes": [
+      "Drake",
+      "Bone Dragon",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-paladin",
+    "name": "Paladin",
+    "rarity": "epic",
+    "categories": [
+      "Human",
+      "Support"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Medium",
+      "attackSpeed": 1,
+      "attackRange": "1 m",
+      "aoeRadius": "-"
+    },
+    "ability": {
+      "name": "Divine Guards",
+      "description": "Grant surrounding allies partial damage resistance.",
+      "levelStats": {
+        "AOE Radius": [
+          "2 m",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "3 m"
+        ],
+        "Defense Boost": [
+          "5%",
+          "5%",
+          "5%",
+          "5%",
+          "5%",
+          "5%",
+          "5%",
+          "5%",
+          "5%",
+          "5%"
+        ]
+      }
+    },
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        3,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        9
+      ],
+      "hp": [
+        1200,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        23310
+      ],
+      "damage": [
+        100,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        840
+      ],
+      "defense": [
+        20,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        65
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Human",
+      "Support",
+      "Melee"
+    ],
+    "analysis": {
+      "primaryRole": "Support",
+      "secondaryRoles": [
+        "Human"
+      ],
+      "strengths": [],
+      "weaknesses": [],
+      "scaling": {
+        "hp": "strong",
+        "damage": "moderate"
+      }
+    },
+    "faction": "Human",
+    "type": "Support",
+    "combatLine": "Frontline",
+    "synergyCategories": [
+      "Human",
+      "Support",
+      "Melee"
+    ],
+    "recommendedHeroes": [
+      "Dragon Rider",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-catapult",
+    "name": "Catapult",
+    "rarity": "common",
+    "categories": [
+      "Human"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Low",
+      "attackSpeed": 1,
+      "attackRange": "Max.",
+      "aoeRadius": "4 m"
+    },
+    "ability": null,
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        1,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1
+      ],
+      "hp": [
+        1000,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        9000
+      ],
+      "damage": [
+        130,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1200
+      ],
+      "defense": [
+        15,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        60
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Human",
+      "Ranged",
+      "AoE",
+      "Backline-DPS"
+    ],
+    "analysis": {
+      "primaryRole": "Human",
+      "secondaryRoles": [],
+      "strengths": [
+        "Long-range attacker"
+      ],
+      "weaknesses": [
+        "Low movement speed"
+      ],
+      "scaling": {
+        "hp": "moderate",
+        "damage": "moderate"
+      }
+    },
+    "faction": "Human",
+    "type": "Human",
+    "combatLine": "Backline",
+    "synergyCategories": [
+      "Human",
+      "Ranged",
+      "AoE",
+      "Backline-DPS"
+    ],
+    "recommendedHeroes": [
+      "Dragon Rider",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-iron-guards",
+    "name": "Iron Guards",
+    "rarity": "rare",
+    "categories": [
+      "Human",
+      "Tank"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Medium",
+      "attackSpeed": 1,
+      "attackRange": "2 m",
+      "aoeRadius": "-"
+    },
+    "ability": null,
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        3,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        9
+      ],
+      "hp": [
+        1000,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        16800
+      ],
+      "damage": [
+        90,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        835
+      ],
+      "defense": [
+        35,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        85
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Human",
+      "Tank",
+      "Melee",
+      "Frontline"
+    ],
+    "analysis": {
+      "primaryRole": "Tank",
+      "secondaryRoles": [
+        "Human"
+      ],
+      "strengths": [],
+      "weaknesses": [],
+      "scaling": {
+        "hp": "strong",
+        "damage": "moderate"
+      }
+    },
+    "faction": "Human",
+    "type": "Tank",
+    "combatLine": "Frontline",
+    "synergyCategories": [
+      "Human",
+      "Tank",
+      "Melee",
+      "Frontline"
+    ],
+    "recommendedHeroes": [
+      "Dragon Rider",
+      "Durand",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-infantry",
+    "name": "Infantry",
+    "rarity": "common",
+    "categories": [
+      "Human"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Medium",
+      "attackSpeed": 1,
+      "attackRange": "1.7 m",
+      "aoeRadius": "-"
+    },
+    "ability": null,
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        3,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        9
+      ],
+      "hp": [
+        800,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        15540
+      ],
+      "damage": [
+        110,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        880
+      ],
+      "defense": [
+        30,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        75
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Human",
+      "Melee"
+    ],
+    "analysis": {
+      "primaryRole": "Human",
+      "secondaryRoles": [],
+      "strengths": [],
+      "weaknesses": [],
+      "scaling": {
+        "hp": "strong",
+        "damage": "moderate"
+      }
+    },
+    "faction": "Human",
+    "type": "Human",
+    "combatLine": "Frontline",
+    "synergyCategories": [
+      "Human",
+      "Melee"
+    ],
+    "recommendedHeroes": [
+      "Dragon Rider",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-bombers",
+    "name": "Bombers",
+    "rarity": "rare",
+    "categories": [
+      "Human",
+      "Ranger"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Low",
+      "attackSpeed": 1.4,
+      "attackRange": "Max.",
+      "aoeRadius": "3 m"
+    },
+    "ability": null,
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1
+      ],
+      "hp": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        13020
+      ],
+      "damage": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1425
+      ],
+      "defense": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        55
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Human",
+      "Ranger",
+      "Ranged",
+      "AoE",
+      "Backline-DPS"
+    ],
+    "analysis": {
+      "primaryRole": "Ranger",
+      "secondaryRoles": [
+        "Human"
+      ],
+      "strengths": [
+        "Long-range attacker"
+      ],
+      "weaknesses": [
+        "Low movement speed"
+      ],
+      "scaling": {
+        "hp": null,
+        "damage": null
+      }
+    },
+    "faction": "Human",
+    "type": "Ranger",
+    "combatLine": "Backline",
+    "synergyCategories": [
+      "Human",
+      "Ranger",
+      "Ranged",
+      "AoE",
+      "Backline-DPS"
+    ],
+    "recommendedHeroes": [
+      "Dragon Rider",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-archers",
+    "name": "Archers",
+    "rarity": "common",
+    "categories": [
+      "Human"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Low",
+      "attackSpeed": 1.2,
+      "attackRange": "Max.",
+      "aoeRadius": "-"
+    },
+    "ability": null,
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        3,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        9
+      ],
+      "hp": [
+        600,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        14280
+      ],
+      "damage": [
+        195,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1550
+      ],
+      "defense": [
+        20,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        65
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Human",
+      "Ranged",
+      "Backline-DPS"
+    ],
+    "analysis": {
+      "primaryRole": "Human",
+      "secondaryRoles": [],
+      "strengths": [
+        "Long-range attacker"
+      ],
+      "weaknesses": [
+        "Low movement speed"
+      ],
+      "scaling": {
+        "hp": "strong",
+        "damage": "weak"
+      }
+    },
+    "faction": "Human",
+    "type": "Human",
+    "combatLine": "Backline",
+    "synergyCategories": [
+      "Human",
+      "Ranged",
+      "Backline-DPS"
+    ],
+    "recommendedHeroes": [
+      "Dragon Rider",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-lancer",
+    "name": "Lancer",
+    "rarity": "epic",
+    "categories": [
+      "Human",
+      "Trickster"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Medium",
+      "attackSpeed": 1,
+      "attackRange": "1.75 m",
+      "aoeRadius": "-"
+    },
+    "ability": {
+      "name": "Cavalry Strike",
+      "description": "Lances speeds up and strikes using all the power of momentum.",
+      "levelStats": {
+        "Damage": [
+          550,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          3300
+        ]
+      }
+    },
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        1,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1
+      ],
+      "hp": [
+        3000,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        76250
+      ],
+      "damage": [
+        220,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1320
+      ],
+      "defense": [
+        45,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        90
+      ],
+      "evasion": [
+        "0.5%",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        "5%"
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Human",
+      "Trickster",
+      "Melee"
+    ],
+    "analysis": {
+      "primaryRole": "Trickster",
+      "secondaryRoles": [
+        "Human"
+      ],
+      "strengths": [],
+      "weaknesses": [],
+      "scaling": {
+        "hp": "strong",
+        "damage": "weak"
+      }
+    },
+    "faction": "Human",
+    "type": "Trickster",
+    "combatLine": "Frontline",
+    "synergyCategories": [
+      "Human",
+      "Trickster",
+      "Melee"
+    ],
+    "recommendedHeroes": [
+      "Dragon Rider",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-explosive-spider",
+    "name": "Explosive Spider",
+    "rarity": "rare",
+    "categories": [
+      "Undead"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "High",
+      "attackSpeed": 1,
+      "attackRange": "1.4 m",
+      "aoeRadius": "-"
+    },
+    "ability": {
+      "name": "Powerful Blast",
+      "description": "When approaching an enemy or receiving lethal damage, the spider explodes and deals huge area damage.",
+      "levelStats": {
+        "Damage": [
+          550,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          2050
+        ],
+        "AOE Radius": [
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m"
+        ]
+      }
+    },
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        3,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        9
+      ],
+      "hp": [
+        100,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        100
+      ],
+      "damage": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "defense": [
+        20,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        65
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Undead",
+      "Melee",
+      "AoE"
+    ],
+    "analysis": {
+      "primaryRole": "Undead",
+      "secondaryRoles": [],
+      "strengths": [],
+      "weaknesses": [],
+      "scaling": {
+        "hp": "weak",
+        "damage": null
+      }
+    },
+    "faction": "Undead",
+    "type": "Undead",
+    "combatLine": "Frontline",
+    "synergyCategories": [
+      "Undead",
+      "Melee",
+      "AoE"
+    ],
+    "recommendedHeroes": [
+      "Drake",
+      "Bone Dragon",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-bone-spearthrower",
+    "name": "Bone Spearthrower",
+    "rarity": "common",
+    "categories": [
+      "Undead"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Low",
+      "attackSpeed": 1.2,
+      "attackRange": "Max.",
+      "aoeRadius": "-"
+    },
+    "ability": null,
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        3,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        9
+      ],
+      "hp": [
+        700,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        15280
+      ],
+      "damage": [
+        115,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1350
+      ],
+      "defense": [
+        20,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        65
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Undead",
+      "Ranged",
+      "Backline-DPS"
+    ],
+    "analysis": {
+      "primaryRole": "Undead",
+      "secondaryRoles": [],
+      "strengths": [
+        "Long-range attacker"
+      ],
+      "weaknesses": [
+        "Low movement speed"
+      ],
+      "scaling": {
+        "hp": "strong",
+        "damage": "moderate"
+      }
+    },
+    "faction": "Undead",
+    "type": "Undead",
+    "combatLine": "Backline",
+    "synergyCategories": [
+      "Undead",
+      "Ranged",
+      "Backline-DPS"
+    ],
+    "recommendedHeroes": [
+      "Drake",
+      "Bone Dragon",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-sorcerers-apprentice",
+    "name": "Sorcerer's Apprentice",
+    "rarity": "common",
+    "categories": [
+      "Mages"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Low",
+      "attackSpeed": 1.2,
+      "attackRange": "Max.",
+      "aoeRadius": "-"
+    },
+    "ability": null,
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        3,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        9
+      ],
+      "hp": [
+        500,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        13280
+      ],
+      "damage": [
+        215,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1650
+      ],
+      "defense": [
+        20,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        65
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Mages",
+      "Ranged",
+      "Backline-DPS"
+    ],
+    "analysis": {
+      "primaryRole": "Mages",
+      "secondaryRoles": [],
+      "strengths": [
+        "Long-range attacker"
+      ],
+      "weaknesses": [
+        "Low movement speed"
+      ],
+      "scaling": {
+        "hp": "strong",
+        "damage": "weak"
+      }
+    },
+    "faction": "Mages",
+    "type": "Mages",
+    "combatLine": "Backline",
+    "synergyCategories": [
+      "Mages",
+      "Ranged",
+      "Backline-DPS"
+    ],
+    "recommendedHeroes": [
+      "Anavin",
+      "Edelina",
+      "Keyra",
+      "Zaheer",
+      "Sigurd",
+      "Ophelia",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan"
+    ]
+  },
+  {
+    "id": "tr-battle-golem",
+    "name": "Battle Golem",
+    "rarity": "common",
+    "categories": [
+      "Mages"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Medium",
+      "attackSpeed": 1,
+      "attackRange": "1.4 m",
+      "aoeRadius": "-"
+    },
+    "ability": null,
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        3,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        9
+      ],
+      "hp": [
+        950,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        17540
+      ],
+      "damage": [
+        105,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        800
+      ],
+      "defense": [
+        20,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        65
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Mages",
+      "Melee"
+    ],
+    "analysis": {
+      "primaryRole": "Mages",
+      "secondaryRoles": [],
+      "strengths": [],
+      "weaknesses": [],
+      "scaling": {
+        "hp": "strong",
+        "damage": "weak"
+      }
+    },
+    "faction": "Mages",
+    "type": "Mages",
+    "combatLine": "Frontline",
+    "synergyCategories": [
+      "Mages",
+      "Melee"
+    ],
+    "recommendedHeroes": [
+      "Anavin",
+      "Edelina",
+      "Keyra",
+      "Zaheer",
+      "Sigurd",
+      "Ophelia",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan"
+    ]
+  },
+  {
+    "id": "tr-bone-warrior",
+    "name": "Bone Warrior",
+    "rarity": "common",
+    "categories": [
+      "Undead"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Medium",
+      "attackSpeed": 1,
+      "attackRange": "1.4 m",
+      "aoeRadius": "-"
+    },
+    "ability": null,
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        3,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        9
+      ],
+      "hp": [
+        900,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        16540
+      ],
+      "damage": [
+        100,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        840
+      ],
+      "defense": [
+        30,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        75
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Undead",
+      "Melee"
+    ],
+    "analysis": {
+      "primaryRole": "Undead",
+      "secondaryRoles": [],
+      "strengths": [],
+      "weaknesses": [],
+      "scaling": {
+        "hp": "strong",
+        "damage": "moderate"
+      }
+    },
+    "faction": "Undead",
+    "type": "Undead",
+    "combatLine": "Frontline",
+    "synergyCategories": [
+      "Undead",
+      "Melee"
+    ],
+    "recommendedHeroes": [
+      "Drake",
+      "Bone Dragon",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-huntress",
+    "name": "Huntress",
+    "rarity": "legendary",
+    "categories": [
+      "Human",
+      "Ranger",
+      "Support"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Medium",
+      "attackSpeed": 1,
+      "attackRange": "15 m",
+      "aoeRadius": "-"
+    },
+    "ability": {
+      "name": "Powerful Salvo",
+      "description": "Fires all ammo at once dealing damage and stunting the enemies standing in front of you.",
+      "levelStats": {
+        "Shape": [
+          "Cone",
+          "Cone",
+          "Cone",
+          "Cone",
+          "Cone",
+          "Cone",
+          "Cone",
+          "Cone",
+          "Cone",
+          "Cone"
+        ],
+        "Stun Time": [
+          "1 s",
+          "1 s",
+          "1 s",
+          "1 s",
+          "1 s",
+          "1 s",
+          "1 s",
+          "1 s",
+          "1 s",
+          "1 s"
+        ],
+        "AOE Radius": [
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m",
+          "6 m"
+        ],
+        "Damage": [
+          550,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          1915
+        ]
+      }
+    },
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        1,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1
+      ],
+      "hp": [
+        2000,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        65000
+      ],
+      "damage": [
+        485,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        2370
+      ],
+      "defense": [
+        45,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        248
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Human",
+      "Ranger",
+      "Support",
+      "Ranged",
+      "AoE",
+      "Crowd-Control",
+      "Backline-DPS"
+    ],
+    "analysis": {
+      "primaryRole": "Support",
+      "secondaryRoles": [
+        "Human",
+        "Ranger"
+      ],
+      "strengths": [
+        "Long-range attacker"
+      ],
+      "weaknesses": [],
+      "scaling": {
+        "hp": "strong",
+        "damage": "weak"
+      }
+    },
+    "faction": "Human",
+    "type": "Support",
+    "combatLine": "Backline",
+    "synergyCategories": [
+      "Human",
+      "Ranger",
+      "Support",
+      "Ranged",
+      "AoE",
+      "Crowd-Control",
+      "Backline-DPS"
+    ],
+    "recommendedHeroes": [
+      "Dragon Rider",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-royal-guard",
+    "name": "Royal Guard",
+    "rarity": "epic",
+    "categories": [
+      "Human",
+      "Trickster"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Medium",
+      "attackSpeed": 1.2,
+      "attackRange": "1.2 m",
+      "aoeRadius": "-"
+    },
+    "ability": {
+      "name": "Fierceness",
+      "description": "Guards select a random nearby enemy unit and jump in their direction, dealing AoE damage to all enemies around it.",
+      "levelStats": {
+        "Damage": [
+          100,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          350
+        ],
+        "AOE Radius": [
+          "3 m",
+          "3 m",
+          "3 m",
+          "3 m",
+          "3 m",
+          "3 m",
+          "3 m",
+          "3 m",
+          "3 m",
+          "3 m"
+        ]
+      }
+    },
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        1,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        3
+      ],
+      "hp": [
+        2800,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        57345
+      ],
+      "damage": [
+        270,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        2340
+      ],
+      "defense": [
+        20,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        65
+      ],
+      "evasion": [
+        "0.5%",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        "5%"
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Human",
+      "Trickster",
+      "Melee",
+      "AoE"
+    ],
+    "analysis": {
+      "primaryRole": "Trickster",
+      "secondaryRoles": [
+        "Human"
+      ],
+      "strengths": [],
+      "weaknesses": [],
+      "scaling": {
+        "hp": "strong",
+        "damage": "moderate"
+      }
+    },
+    "faction": "Human",
+    "type": "Trickster",
+    "combatLine": "Frontline",
+    "synergyCategories": [
+      "Human",
+      "Trickster",
+      "Melee",
+      "AoE"
+    ],
+    "recommendedHeroes": [
+      "Dragon Rider",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan",
+      "Anavin"
+    ]
+  },
+  {
+    "id": "tr-air-elemental",
+    "name": "Air Elemental",
+    "rarity": "epic",
+    "categories": [
+      "Mages",
+      "Trickster"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "High",
+      "attackSpeed": 1.2,
+      "attackRange": "1.1 m",
+      "aoeRadius": "-"
+    },
+    "ability": {
+      "name": "Vortex",
+      "description": "The air elemental turns into a vortex and spins up enemy units, dealing damage and stunning after landing.",
+      "levelStats": {
+        "Duration": [
+          "2 s",
+          "2 s",
+          "2 s",
+          "2 s",
+          "2 s",
+          "2 s",
+          "2 s",
+          "2 s",
+          "2 s",
+          "2 s"
+        ],
+        "Damage": [
+          100,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          550
+        ]
+      }
+    },
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        3,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        9
+      ],
+      "hp": [
+        1000,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        21100
+      ],
+      "damage": [
+        110,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        990
+      ],
+      "defense": [
+        20,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        65
+      ],
+      "evasion": [
+        "0.5%",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        "5%"
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Mages",
+      "Trickster",
+      "Melee",
+      "Crowd-Control"
+    ],
+    "analysis": {
+      "primaryRole": "Trickster",
+      "secondaryRoles": [
+        "Mages"
+      ],
+      "strengths": [],
+      "weaknesses": [],
+      "scaling": {
+        "hp": "strong",
+        "damage": "moderate"
+      }
+    },
+    "faction": "Mages",
+    "type": "Trickster",
+    "combatLine": "Frontline",
+    "synergyCategories": [
+      "Mages",
+      "Trickster",
+      "Melee",
+      "Crowd-Control"
+    ],
+    "recommendedHeroes": [
+      "Anavin",
+      "Edelina",
+      "Keyra",
+      "Zaheer",
+      "Sigurd",
+      "Ophelia",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan"
+    ]
+  },
+  {
+    "id": "tr-giant-toad",
+    "name": "Giant Toad",
+    "rarity": "legendary",
+    "categories": [
+      "Mages",
+      "Trickster",
+      "Support"
+    ],
+    "description": null,
+    "baseStats": {
+      "speed": "Medium",
+      "attackSpeed": 1.2,
+      "attackRange": "1.9 m",
+      "aoeRadius": "-"
+    },
+    "ability": {
+      "name": "Concussive Hop",
+      "description": "A powerful jump deals damage and stuns all enemies where it lands. Then it eats the strongest nearby unit.",
+      "levelStats": {
+        "Damage": [
+          400,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          2200
+        ],
+        "Stun Time": [
+          "1.5 s",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "4 s"
+        ],
+        "AOE Radius": [
+          "2 m",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "4 m"
+        ]
+      }
+    },
+    "levels": {
+      "level": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "units": [
+        1,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1
+      ],
+      "hp": [
+        3600,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        69930
+      ],
+      "damage": [
+        340,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        2620
+      ],
+      "defense": [
+        20,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        65
+      ],
+      "evasion": [
+        "0.5%",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        "5%"
+      ]
+    },
+    "levelsKnown": [
+      1,
+      10
+    ],
+    "tags": [
+      "Mages",
+      "Trickster",
+      "Support",
+      "Melee",
+      "AoE",
+      "Crowd-Control"
+    ],
+    "analysis": {
+      "primaryRole": "Support",
+      "secondaryRoles": [
+        "Mages",
+        "Trickster"
+      ],
+      "strengths": [],
+      "weaknesses": [],
+      "scaling": {
+        "hp": "strong",
+        "damage": "weak"
+      }
+    },
+    "faction": "Mages",
+    "type": "Support",
+    "combatLine": "Frontline",
+    "synergyCategories": [
+      "Mages",
+      "Trickster",
+      "Support",
+      "Melee",
+      "AoE",
+      "Crowd-Control"
+    ],
+    "recommendedHeroes": [
+      "Anavin",
+      "Edelina",
+      "Keyra",
+      "Zaheer",
+      "Sigurd",
+      "Ophelia",
+      "Remus",
+      "Calyra",
+      "Atreya",
+      "Lirael",
+      "Tristan"
+    ]
   }
 ];
 
