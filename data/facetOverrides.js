@@ -111,5 +111,59 @@ module.exports = {
       arena: { note: 'Enemy Assassins and Gravediggers hit the back line directly, so it is in danger from them.' },
       placement: { where: 'middle to 2nd-last row', why: 'It is a ranged support healer; the very back is exposed to Assassins and Gravediggers that dive onto the back line.' },
     },
+    'tr-undead-mage': {
+      job: 'Ranged Undead troop whose blast hits an area (3 m radius); decent in the early stage and the blast tears through skeletons.',
+      arena: { note: 'Okay in the early stage because of its area blast damage; it is especially good at breaking enemy skeletons.' },
+      placement: { where: 'middle', why: 'It is a ranged troop, and ranged troops mostly stand in the middle of the formation.' },
+    },
+    'tr-paladin': {
+      job: 'Support-class melee troop whose ability Divine Guards gives nearby allies a small defense boost (5%, radius 2 m at Lv1 and 3 m at Lv10).',
+      neverClaim: ['heal'],
+    },
+    'tr-huntress': {
+      job: 'Ranged Legendary with a 15 m attack range; Powerful Salvo fires a cone that damages and stuns enemies in front for 1 s (6 m long).',
+      neverClaim: ['heal'],
+    },
+    'tr-giant-toad': {
+      job: 'Legendary jumper: Concussive Hop damages and stuns everything where it lands (up to 4 s at Lv10), then eats the strongest nearby unit.',
+      neverClaim: ['heal'],
+    },
+    'tr-steel-revenant': {
+      job: 'Legendary single-unit tank; Spiked Armor reflects part of the damage it takes back to attackers (5% at Lv1, 37% at Lv10).',
+      neverClaim: ['heal'],
+    },
+    'tr-explosive-spider': {
+      job: 'Fast Undead unit with only 100 HP that explodes when it reaches an enemy or takes lethal damage, hitting a 6 m area.',
+    },
+    'tr-butcher': {
+      job: 'Single-unit melee tank (Lv1: 2,000 HP, 2.25 m reach); no special ability. Lv10 stats are not recorded yet.',
+    },
+    'tr-catapult': {
+      job: 'Single ranged siege unit that hits an area (4 m radius); no special ability, low movement speed.',
+    },
+    'tr-iron-guards': {
+      job: 'Plain melee tank squad (Lv10: 9 units, 85 defense); no special ability.',
+    },
+    'tr-infantry': {
+      job: 'Plain melee foot soldiers (Lv10: 9 units); no special ability.',
+    },
+    'tr-bombers': {
+      job: 'Ranged unit whose bombs hit an area (3 m radius), attack speed 1.4; no special ability. Lv1 stats are not recorded yet.',
+    },
+    'tr-archers': {
+      job: 'Plain ranged archers (Lv10: 9 units); no special ability.',
+    },
+    'tr-bone-spearthrower': {
+      job: 'Undead ranged spear thrower (Lv10: 9 units); no special ability.',
+    },
+    'tr-sorcerers-apprentice': {
+      job: 'Mage ranged unit that fires magic arrows (Lv10: 9 units); no special ability.',
+    },
+    'tr-battle-golem': {
+      job: 'Plain melee golem troop of the Mages family (Lv10: 9 units); no special ability.',
+    },
+    'tr-bone-warrior': {
+      job: 'Plain undead melee soldiers (Lv10: 9 units); no special ability.',
+    },
   },
 };
