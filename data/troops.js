@@ -3204,4 +3204,4 @@ const troops = [
   }
 ];
 
-module.exports = troops;
+module.exports = troops;
