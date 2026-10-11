@@ -17,6 +17,9 @@ const { compressGameData, deepCompress, fitSections } = require('../promptBuilde
 const budgetManager = require('../context/contextBudgetManager');
 const { buildInstruction } = require('./promptInstructions');
 const strategyCache = require('../cache/strategyCache');
+// Facet reply guard: verifies "<unit> heals / summons / stuns..." claims against the compiled unit cards.
+let _facetGuard = null;
+try { const _fs = require('../engine/facetStore.js'); _facetGuard = { verify: _fs.verifyReply, scrub: _fs.scrubReply }; } catch (_) { _facetGuard = null; }
 
 // Single owner of the size limit: contextBudgetManager GAME tier (4500 default). The old local
 // GAME_CONTEXT_SOFT_CAP_CHARS (6000) was declared but never enforced.
@@ -34,6 +37,7 @@ const FACET_INSTRUCTION = `You are Melody, a Kingdom Clash clan assistant. Answe
 - Write so an ordinary clan member understands: simple words, say WHY, give the level numbers from the data (e.g. 2%→25%). Use "• **Label** — detail" bullets (5-9, each 1-3 sentences), every bullet finished. No headings, no raw ids/field names, no HP/attack stat dumps (a card already shows them).
 - Heroes mainly SUPPORT troops: buffs (damage, HP, defense, healing) matter most. Boss: troops deal ~99.8% of damage, crowd control is not confirmed on bosses, so only buffs that reach the fielded troops count. Arena/PvP: buffs AND crowd control / ability-disable matter, and hero-vs-hero fights make a hero's own attack and control skills count.
 - Rules: a battle holds 2 heroes in total (a Mythical counts as one of them) and at most 1 Mythical. Harkon and Fire Fury Xana do nothing in boss battles. Pyrotechnician is a low-impact troop for bosses. Bosses resist Melee or Ranged by 30% (rotates per season) — field the opposite type. Boss goal = max damage score, not victory (say this only in boss answers).
+- Never assume a job from a class word (Support does not mean healer, Tank does not mean the hero buffs tanks). Say what a unit does only if the data says it.
 - If bossUse is "disabled" or impact is LOW, say so plainly first. Only say data is missing when it truly is absent from GameData.`;
 const _facetCache = new Map(); // key -> { text, at }
 const FACET_TTL_MS = 12 * 60 * 60 * 1000;
@@ -100,7 +104,7 @@ function _bossViolations(text) {
   return out;
 }
 
-async function _runWithRetries({ prompt, systemInstruction, classification, userMessage, geminiKeys, groqKeys, isBoss = false }) {
+async function _runWithRetries({ prompt, systemInstruction, classification, userMessage, geminiKeys, groqKeys, isBoss = false, facetGuard = null }) {
   let currentPrompt = prompt;
   let cleanResult = '';
 
@@ -129,6 +133,18 @@ async function _runWithRetries({ prompt, systemInstruction, classification, user
         console.warn(`[RETRY] boss answer recommended boss-disabled hero(es): ${bad.join(', ')}. Retrying once.`);
         currentPrompt += `\n\n[SYSTEM WARNING: ${bad.join(', ')} do NOTHING in boss battles (talent/ability disabled). Do not recommend them for bosses. Rewrite the full answer.]`;
         continue;
+      }
+      const fbad = facetGuard ? facetGuard.verify(scrubbed) : [];
+      if (fbad.length) {
+        const list = fbad.map(v => `${v.unit} cannot ${v.claim}`).join('; ');
+        if (attempt < MAX_RETRIES) {
+          console.warn(`[FACET GUARD] wrong claim(s): ${list}. Retrying once.`);
+          currentPrompt += `\n\n[SYSTEM WARNING: Your answer made claims the data contradicts (${list}). Describe each unit ONLY from its "job"/"does" line in <GameData>. Rewrite the full answer.]`;
+          continue;
+        }
+        console.warn(`[FACET GUARD] still wrong after retry (${list}) — offending lines removed.`);
+        cleanResult = facetGuard.scrub(scrubbed);
+        break;
       }
       cleanResult = scrubbed;
       break;
@@ -240,6 +256,7 @@ ${gameDataBlock}
     geminiKeys,
     groqKeys,
     isBoss: Boolean(queryFlags && queryFlags.isBossQuery),
+    facetGuard: (queryFlags && queryFlags.isFacet && _facetGuard) || null,
   });
   if (_fk && _out && _out !== SNAG_MESSAGE) _facetCache.set(_fk, { text: _out, at: Date.now() });
   return _out;
