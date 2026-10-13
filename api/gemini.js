@@ -30,7 +30,7 @@ const groqKeys = [
 const COMPLEX_TASK_REGEX = /explain|detail|history|analyze|code|script|story|essay|poem|stotram|mantra|lyrics/i;
 const CONFLICT_REGEX = /\b(insult|troll|hatt|stfu|dumb|idiot|shut\s*up|loser|pagal|roast|aukat|sorry\s*bol|chup|bakwas|bitch)\b/i;
 const IDENTITY_REGEX = /\b(ai|bot|robot|gpt|npc)\b/i;
-const ROMANCE_REGEX = /\b(love|kiss|hug|cuddle|us|we|you and me|my girlfriend|babe|baby|sweetheart|miss you|romantic|bhalo basi)\b/i;
+const ROMANCE_REGEX = /\b(love|kiss|hug|cuddle|you and me|my girlfriend|babe|baby|sweetheart|miss you|romantic|bhalo basi)\b/i;
 const JEALOUSY_REGEX = /\b(other girl|another girl|baddie|sidekick|timepass|not proud|finding girlfriend|girlfriends|cheat|dhoka|replace|breakup|steal him|mine now|teri sautan|body count)\b/i;
 const SEXUALITY_REGEX = /\b(gay|lesbian|bi|bisexual|trans)\b/i;
 const FLIRT_PHRASE_REGEX = /(set ho jayegi|pat jayegi|love you|kiss me|flirt|marry me|cutie|hottie|handsome|jaan|meri jaan|hot lag rahi)/i;
@@ -77,6 +77,10 @@ function getDynamicState(userId) {
 // 🔒 SHARED ANTI-LEAK & SANDBOX BLOCK
 // ============================================================
 
+const GAME_KNOWLEDGE_LOCK = `
+[GAME KNOWLEDGE LOCK]
+You do NOT know this game's heroes, troops, cards, rules or strategy from memory. Never invent units, skills, card-game steps or formations. If a game detail is asked here, say you don't have that detail yet and suggest asking by the exact hero/troop name.
+`;
 const CRITICAL_OUTPUT_RULES = `
 [CRITICAL OUTPUT RULES — ABSOLUTE]
 Your response IS the final spoken message, delivered directly to the end user in a public chat. STRICTLY FORBIDDEN, with zero exceptions:
@@ -305,7 +309,7 @@ async function generateContent(turn) {
       if (isConflict && !isJealousyProvocation && !(isFlirting && !isCreator) && !isSexualityQuestion && !isTrickAttempt) dynamicIdentity += `\n[CONFLICT MODE]\nDrop all politeness. Be ruthless, sharp, and savage. 💅`;
 
       // 🛡️ Ensure CRITICAL_OUTPUT_RULES are always appended last so they aren't ignored
-      safeSystemInstruction = (dynamicIdentity + '\n\n' + CRITICAL_OUTPUT_RULES).replace(/\n{3,}/g, '\n\n').trim();
+      safeSystemInstruction = (dynamicIdentity + '\n\n' + GAME_KNOWLEDGE_LOCK + '\n\n' + CRITICAL_OUTPUT_RULES).replace(/\n{3,}/g, '\n\n').trim();
     }
 
     let rawText = '';
