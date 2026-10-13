@@ -875,6 +875,17 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
                 )
             );
 
+            // 🛡️ NO-DATA GUARD: a named hero/troop that is not in our data must never reach the persona chat
+            // (it would invent card-game steps). Answer deterministically instead.
+            if (!hasRealGameSignal && !gameResult.resolved && hasStrictGameIntent) {
+                const _GENERIC = new Set(['a','an','the','my','our','your','best','good','bad','strong','weak','new','any','which','what','one','this','that','every','each','early','late','cheap','free','top','better','worst','boss','pvp','arena','damage','tank','mage','ranged','melee','support','undead','human','fast','slow','other','another','first','last','same','all','of','for','to','is','are','kon','konsa','koi','hero','troop','troops','heroes','how','use','using','about','tell','me','stats','is','can','i','we','you','do','does','good','vs','with','on','in','and','or','kaise','kya']);
+                const m = cleanText.toLowerCase().replace(/[^a-z0-9' ]/g, ' ').match(/((?:[a-z0-9']+\s+){1,3})(?:troop|hero)\b/);
+                if (m && m[1].trim().split(/\s+/).some(w => !_GENERIC.has(w))) {
+                    const nm = m[1].trim().replace(/\b(how|to|use|using|about|tell|me|of|stats|for|is|a|an|the)\b/g, '').trim() || 'that one';
+                    return await message.reply({ content: `I don't have that detail yet — "${nm}" isn't in my verified hero/troop data, so I won't guess. Check the spelling or ask about another hero/troop by its exact name.`, allowedMentions: { repliedUser: false } });
+                }
+            }
+
             const roles = message.member ? message.member.roles.cache.map(r => r.name.toLowerCase()) : [];
             let aiReply, modelUsed, debug, pipelineUsed;
             let facetRows = null; // modular follow-up buttons (facet mode)
@@ -1083,17 +1094,21 @@ Raw Instruction from Admin: "${rawMessagePayload}"`;
         }
     }
 
-    if (!gemCooldown.has(message.channel.id) && sharedHistory.length > 0) {
-        const gemTriggers = ['gem', 'need gems', 'low on gems', 'out of gems', 'how to farm gems', 'gem farming'];
+    // 💎 gem prompt: whole-word, HUMAN messages only (the bot's own replies and game answers never count),
+    // skipped when the user is talking to the bot directly; 30-min cooldown, 6 h mute after "No".
+    if (!gemCooldown.has(message.channel.id) && sharedHistory.length > 0 && !message.mentions.has(client.user)) {
+        const gemRe = /\b(gems?|need gems|low on gems|out of gems|gem farming)\b/i;
         let gemMentionCount = 0;
-        
+
         sharedHistory.forEach(m => {
-            if (gemTriggers.some(t => m.message_content.toLowerCase().includes(t))) gemMentionCount++;
+            if (String(m.player_name || '').trim() === 'INF AI') return;
+            if (/^\s*(💎|💅|\[Sent Embedded)/.test(m.message_content || '')) return;
+            if (gemRe.test(m.message_content || '')) gemMentionCount++;
         });
 
         if (gemMentionCount >= 2) {
             gemCooldown.add(message.channel.id);
-            setTimeout(() => gemCooldown.delete(message.channel.id), 300000);
+            setTimeout(() => gemCooldown.delete(message.channel.id), 30 * 60 * 1000);
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('btn_yes_gem').setLabel('Yes, show me!').setStyle(ButtonStyle.Success),
@@ -1177,6 +1192,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
             });
         } else if (interaction.customId === 'btn_no_gem') {
             await interaction.message.edit({ components: [] });
+            gemCooldown.add(interaction.channelId);
+            setTimeout(() => gemCooldown.delete(interaction.channelId), 6 * 60 * 60 * 1000);
             await interaction.reply({ content: `Alright! I'll keep the Gem Matrix ready for whenever you need it. 💎` });
         }
     } catch (error) {
