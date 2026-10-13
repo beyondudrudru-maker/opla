@@ -76,6 +76,19 @@ function _scrubFieldNames(text) {
   for (const [re, plain] of FIELD_NAME_WORDS) t = t.replace(re, plain);
   return t;
 }
+// Internal-wording leaks ("the provided data…", "Impact: listed in boss meta (Epic)") — removed in code, zero tokens.
+const LEAK_PATTERNS = [
+  [/\b(?:based on|according to|as per|from)\s+the\s+(?:provided|given|available)\s+(?:game\s*)?(?:data|context|info(?:rmation)?)[,:]?\s*/gi, ''],
+  [/\bthe\s+(?:provided|given)\s+(?:game\s*)?data\s+(?:only\s+)?(?:includes|shows|says|has|contains)\b/gi, 'I only have'],
+  [/\bImpact:\s*listed in boss meta\s*\([^)]*\)\.?/gi, ''],
+  [/\bhard-?locked to the\s+\w+\s+tag\b/gi, 'only works with that troop family'],
+  [/\blisted in (?:the )?boss meta\b/gi, 'a recognised boss pick'],
+];
+function _scrubLeaks(text) {
+  let t = String(text || '');
+  for (const [re, rep] of LEAK_PATTERNS) t = t.replace(re, rep);
+  return t.replace(/[ \t]{2,}/g, ' ');
+}
 const SNAG_MESSAGE = 'My strategy engine hit a snag pulling that data together — could you ask again in a moment?';
 
 // 🛡️ SECURITY: Escapes XML tags to prevent prompt injection breakouts
@@ -159,7 +172,7 @@ async function _runWithRetries({ prompt, systemInstruction, classification, user
   if (!cleanResult) {
     cleanResult = SNAG_MESSAGE;
   }
-  return _trimIncomplete(_scrubFieldNames(cleanResult));
+  return _trimIncomplete(_scrubLeaks(_scrubFieldNames(cleanResult)));
 }
 
 /**
