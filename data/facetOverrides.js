@@ -71,6 +71,7 @@ module.exports = {
     'tr-storm-mistresses': {
       job: 'Trickster that draws Assassins in (or goes in by itself) and then slips between enemy tanks to hold them for a short time.',
       arena: { note: 'Best used together with Stone Golem, Magic Archer and heavy tanks such as Immortal.' },
+      placement: { where: 'front to middle, next to your tanks', why: 'It slips between enemy tanks to hold them, so it works best beside Stone Golem, Magic Archer and heavy tanks like Immortal.' },
     },
     'tr-night-hunter': {
       job: 'Crowd-control troop: Nightmare — flies to its prey and releases a fear wave, enemies flee for a few seconds (Lv10: 3s, 6m). It does NOT heal or buff allies; "Support" is only its class tag.',
@@ -136,7 +137,7 @@ module.exports = {
       job: 'Fast Undead unit with only 100 HP that explodes when it reaches an enemy or takes lethal damage, hitting a 6 m area.',
     },
     'tr-butcher': {
-      job: 'Single-unit melee tank (Lv1: 2,000 HP, 2.25 m reach); no special ability. Lv10 stats are not recorded yet.',
+      job: 'Single-unit melee tank (Lv1: 2,000 HP, 2.25 m reach); no special ability.',
     },
     'tr-catapult': {
       job: 'Single ranged siege unit that hits an area (4 m radius); no special ability, low movement speed.',
@@ -148,7 +149,7 @@ module.exports = {
       job: 'Plain melee foot soldiers (Lv10: 9 units); no special ability.',
     },
     'tr-bombers': {
-      job: 'Ranged unit whose bombs hit an area (3 m radius), attack speed 1.4; no special ability. Lv1 stats are not recorded yet.',
+      job: 'Ranged unit whose bombs hit an area (3 m radius), attack speed 1.4; no special ability.',
     },
     'tr-archers': {
       job: 'Plain ranged archers (Lv10: 9 units); no special ability.',
