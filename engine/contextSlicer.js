@@ -130,7 +130,6 @@ function slimGear(g) {
   }
   return _clean({
     name: g.name, slot: g.slot, rarity: g.rarity, roleFamily: g.roleFamily,
-    ownershipStatus: g.ownershipStatus, // "locked" must be stated plainly (GEAR rule)
     trigger: p.trigger, effect: p.effect, maxScaling,
   });
 }
@@ -195,3 +194,4 @@ function sliceSynergy(ctx, { level = DEFAULT_LEVEL, includeTarget = false, reaso
 }
 
 module.exports = { buildBuffPartners, buildReasonIndex, sliceHero, sliceTroop, slimPartner, slimGear, sliceBoss, sliceSynergy, DEFAULT_LEVEL };
+    
