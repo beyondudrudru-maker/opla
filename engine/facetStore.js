@@ -505,6 +505,23 @@ function buttonContext(type, key, facet, lang) {
   return { name: e.raw.name, context: _ctx(type, e.raw, lang, [facet], facet) };
 }
 
+
+/** Heroes whose talent/ability buff names a troop family ("Undead", "Mage"…), read from heroes.js targets (zero tokens). */
+function buffersOfFamily(fam) {
+  const norm = x => String(x || '').toLowerCase().trim().replace(/s$/, '');
+  const want = norm(fam);
+  const explicit = [], allAllies = [];
+  HEROES.forEach(h => {
+    [['talent', h.talent], ['ability', h.ability]].forEach(([kind, p]) => {
+      if (!p || !Array.isArray(p.targets) || !p.targets.length) return;
+      const row = { hero: h.name, rarity: h.rarity, from: kind, skill: p.name, buffs: _buffKinds(p), effect: _eff(p.effects), bossUse: (bossStatusOfHero(h) || {}).status };
+      const ts = p.targets.map(norm);
+      if (ts.includes(want)) explicit.push(row);
+      else if (ts.includes('all allie') || ts.includes('all allies') || ts.includes('all ally') || ts.includes('all')) allAllies.push(row);
+    });
+  });
+  return { family: fam, explicit, allAllies };
+}
 module.exports = {
-  FACET_VERSION, bossStatusOfHero, planCompare, verifyReply: t => (COMP ? COMP.verifyReply(t) : []), scrubReply: t => (COMP ? COMP.scrubReply(t) : t), audit: () => (COMP ? COMP.audit() : []), findEntity, getFacet, facetsFor, makeId, parseId, buttonSpecs, planFirstTurn, buttonContext, langOf,
+  buffersOfFamily, FACET_VERSION, bossStatusOfHero, planCompare, verifyReply: t => (COMP ? COMP.verifyReply(t) : []), scrubReply: t => (COMP ? COMP.scrubReply(t) : t), audit: () => (COMP ? COMP.audit() : []), findEntity, getFacet, facetsFor, makeId, parseId, buttonSpecs, planFirstTurn, buttonContext, langOf,
 };
