@@ -122,6 +122,7 @@ function _gearEmbedFor(data, type, rawTroop) {
 }
 const { enrichStrategyContext } = require('./gameDomain/enrichment.js');
 const { buildQueryFlags } = require('./gameDomain/queryFlags.js');
+const { buildGroupEmbed } = require('./gameDomain/groupQuery.js');
 
 const ecoModule = require('../data/economyRatios.js');
 const economyRatios = ecoModule.economyRatios || ecoModule;
@@ -152,15 +153,34 @@ function _getRosterSnapshot() {
 // Main router
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Words a typo-fixer must never rewrite (real English words that sit 1 edit from a name token)
+const _TYPO_SKIP = new Set(['which','there','their','about','other','these','those','would','could','should','after','again','being','first','group','heals','after','where','while','using','early','level','stats','heroes','troops','guard','guide','storm']);
+let _typoLex = { words: null, plural: null, expiresAt: 0 };
+function _lexicon() {
+  const now = Date.now();
+  if (_typoLex.words && now < _typoLex.expiresAt) return _typoLex;
+  const { heroes, troops } = _getRosterSnapshot();
+  const words = new Set();
+  for (const x of [...heroes, ...troops]) for (const w of _nm(x).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(' ')) if (w.length >= 5) words.add(w);
+  const plural = new Map(); // "mistress" -> "mistresses" (only when the singular is not already a name word)
+  for (const w of words) {
+    const stems = [];
+    if (/ses$|xes$|ches$|shes$/.test(w) && w.length >= 8) stems.push(w.slice(0, -2));
+    if (/s$/.test(w) && w.length >= 6) stems.push(w.slice(0, -1));
+    for (const st of stems) if (st.length >= 5 && !words.has(st)) plural.set(st, w);
+  }
+  _typoLex = { words, plural, expiresAt: now + ROSTER_CACHE_TTL_MS };
+  return _typoLex;
+}
 function _correctTypos(text) {
   try {
-    mentionsKnownEntity('x'); // make sure token cache is warm
-    const toks = (_nameRe.toks || []).filter(k => !k.includes(' '));
-    const known = new Set(_nameRe.toks || []);
-    return String(text).replace(/[A-Za-z]{6,}/g, w => {
+    const { words, plural } = _lexicon();
+    const list = [...words];
+    return String(text).replace(/[A-Za-z]{5,}/g, w => {
       const lw = w.toLowerCase();
-      if (known.has(lw)) return w;
-      for (const k of toks) if (k.length >= 5 && Math.abs(k.length - lw.length) <= 1 && _lev1(lw, k)) return k;
+      if (words.has(lw) || _TYPO_SKIP.has(lw)) return w;
+      if (plural.has(lw)) return plural.get(lw);
+      for (const k of list) if (Math.abs(k.length - lw.length) <= 1 && _lev1(lw, k)) return k;
       return w;
     });
   } catch (_) { return text; }
@@ -168,6 +188,8 @@ function _correctTypos(text) {
 
 function route(text, recentContext = '', userCorrections = []) {
   text = _correctTypos(text);
+  // deterministic troop-family lists ("mage troops", "all troops list") — never route these to a hero card
+  try { const _ge = buildGroupEmbed(text); if (_ge) return { resolved: true, embeds: [_ge] }; } catch (_) {}
   let { intent, entities } = classify(text);
   const originalIntent = intent; // saved ONCE: classify() used to run 3x per message
   entities.rawText = text;
@@ -495,7 +517,7 @@ function route(text, recentContext = '', userCorrections = []) {
 function _lev1(a, b) { // true when edit distance <= 1 (but not equal)
   if (a === b) return false;
   let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1);
+  if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1) || (a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2)); // substitution or adjacent swap
   return a.length > b.length ? a.slice(i + 1) === b.slice(i) : b.slice(i + 1) === a.slice(i);
 }
 let _nameRe = { re: null, expiresAt: 0 };
