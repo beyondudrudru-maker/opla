@@ -100,6 +100,9 @@ function buildCompiler({ HEROES = [], TROOPS = [], SYN = {}, STRAT = {}, OV = {}
       line.replace(/\*\*|__|`/g, '').split(/(?<=[.;!?])\s+/).forEach(clause => {
         const hits = [];
         idx.forEach(({ re, card }) => { const m = re.exec(clause); if (m) hits.push({ at: m.index, end: m.index + m[0].length, card }); });
+        // a short name inside a longer name (Catapult in Cursed Catapult) is not its own mention
+        const all = hits.slice();
+        for (let k = hits.length - 1; k >= 0; k--) { const h = hits[k]; if (all.some(o => o !== h && o.at <= h.at && o.end >= h.end && (o.end - o.at) > (h.end - h.at))) hits.splice(k, 1); }
         hits.sort((a, b) => a.at - b.at);
         hits.forEach((h, i) => {
           const seg = clause.slice(h.end, i + 1 < hits.length ? hits[i + 1].at : undefined);
