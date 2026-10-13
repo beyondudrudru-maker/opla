@@ -137,17 +137,7 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon",
-      "Durand",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin",
-      "Malium",
-      "Morgrane",
-      "Morgana"
+      "Bone Dragon"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -326,12 +316,7 @@ const troops = [
       "Zaheer",
       "Sigurd",
       "Ophelia",
-      "Lirael",
-      "Durand",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Tristan"
+      "Lirael"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -484,15 +469,7 @@ const troops = [
       "High-HP"
     ],
     "recommendedHeroes": [
-      "Dragon Rider",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin",
-      "Durand",
-      "Baron Benua"
+      "Dragon Rider"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -675,13 +652,7 @@ const troops = [
       "Zaheer",
       "Sigurd",
       "Ophelia",
-      "Lirael",
-      "Durand",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Tristan",
-      "Bumi"
+      "Lirael"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -841,12 +812,7 @@ const troops = [
       "Zaheer",
       "Sigurd",
       "Ophelia",
-      "Lirael",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Tristan",
-      "Bumi"
+      "Lirael"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -1083,12 +1049,7 @@ const troops = [
       "Zaheer",
       "Sigurd",
       "Ophelia",
-      "Lirael",
-      "Durand",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Tristan"
+      "Lirael"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -1251,15 +1212,7 @@ const troops = [
       "High-HP"
     ],
     "recommendedHeroes": [
-      "Dragon Rider",
-      "Durand",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin",
-      "Baron Benua"
+      "Dragon Rider"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -1404,14 +1357,7 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon",
-      "Durand",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
+      "Bone Dragon"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -1537,11 +1483,7 @@ const troops = [
       "Zaheer",
       "Sigurd",
       "Ophelia",
-      "Lirael",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Tristan"
+      "Lirael"
     ],
   "realGear": {
     "roleFamily": "Ranger",
@@ -1677,14 +1619,7 @@ const troops = [
       "High-HP"
     ],
     "recommendedHeroes": [
-      "Dragon Rider",
-      "Durand",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
+      "Dragon Rider"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -1817,15 +1752,7 @@ const troops = [
       "Melee"
     ],
     "recommendedHeroes": [
-      "Dragon Rider",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin",
-      "Durand",
-      "Baron Benua"
+      "Dragon Rider"
     ],
   "realGear": {
     "roleFamily": "Trickster",
@@ -1979,12 +1906,7 @@ const troops = [
       "Zaheer",
       "Sigurd",
       "Ophelia",
-      "Lirael",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Tristan",
-      "Bumi"
+      "Lirael"
     ],
   "realGear": {
     "roleFamily": "Trickster",
@@ -2200,16 +2122,7 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin",
-      "Malium",
-      "Morgrane",
-      "Morgana"
+      "Bone Dragon"
     ],
   "realGear": {
     "roleFamily": "Ranger",
@@ -2331,16 +2244,7 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin",
-      "Xana",
-      "Harkon",
-      "Brutallus"
+      "Bone Dragon"
     ],
   "realGear": {
     "roleFamily": "Ranger",
@@ -2506,16 +2410,7 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin",
-      "Malium",
-      "Morgrane",
-      "Morgana"
+      "Bone Dragon"
     ],
   "realGear": {
     "roleFamily": "Trickster",
@@ -2638,13 +2533,7 @@ const troops = [
       "Low-HP"
     ],
     "recommendedHeroes": [
-      "Dragon Rider",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
+      "Dragon Rider"
     ],
   "realGear": {
     "roleFamily": "Ranger",
@@ -2779,13 +2668,7 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
+      "Bone Dragon"
     ],
   "realGear": {
     "roleFamily": "Trickster",
@@ -2951,16 +2834,7 @@ const troops = [
       "Backline-DPS"
     ],
     "recommendedHeroes": [
-      "Dragon Rider",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin",
-      "Xana",
-      "Harkon",
-      "Brutallus"
+      "Dragon Rider"
     ],
   "realGear": {
     "roleFamily": "Trickster",
@@ -3105,17 +2979,7 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon",
-      "Durand",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin",
-      "Xana",
-      "Harkon",
-      "Brutallus"
+      "Bone Dragon"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -3328,13 +3192,7 @@ const troops = [
     ],
     "recommendedHeroes": [
       "Drake",
-      "Bone Dragon",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
+      "Bone Dragon"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -3352,7 +3210,7 @@ const troops = [
       "Human",
       "Tank"
     ],
-    "description": null,
+    "description": "He loves meat and chopping.",
     "baseStats": {
       "speed": "Medium",
       "attackSpeed": 1,
@@ -3383,7 +3241,7 @@ const troops = [
         null,
         null,
         null,
-        null
+        1
       ],
       "hp": [
         2000,
@@ -3395,7 +3253,7 @@ const troops = [
         null,
         null,
         null,
-        null
+        63000
       ],
       "damage": [
         200,
@@ -3407,7 +3265,7 @@ const troops = [
         null,
         null,
         null,
-        null
+        820
       ],
       "defense": [
         20,
@@ -3419,7 +3277,7 @@ const troops = [
         null,
         null,
         null,
-        null
+        65
       ]
     },
     "levelsKnown": [
@@ -3437,11 +3295,13 @@ const troops = [
       "secondaryRoles": [
         "Human"
       ],
-      "strengths": [],
+      "strengths": [
+        "Single-unit tank"
+      ],
       "weaknesses": [],
       "scaling": {
-        "hp": null,
-        "damage": null
+        "hp": "strong",
+        "damage": "moderate"
       }
     },
     "faction": "Human",
@@ -3452,16 +3312,6 @@ const troops = [
       "Tank",
       "Melee",
       "Frontline"
-    ],
-    "recommendedHeroes": [
-      "Dragon Rider",
-      "Durand",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
     ]
   },
   {
@@ -3472,7 +3322,7 @@ const troops = [
       "Undead",
       "Ranger"
     ],
-    "description": null,
+    "description": "A good mage is a dead mage!",
     "baseStats": {
       "speed": "Low",
       "attackSpeed": 1,
@@ -3559,7 +3409,7 @@ const troops = [
         "Undead"
       ],
       "strengths": [
-        "Long-range attacker"
+        "Ranged area-blast damage"
       ],
       "weaknesses": [
         "Low movement speed"
@@ -3578,16 +3428,6 @@ const troops = [
       "Ranged",
       "AoE",
       "Backline-DPS"
-    ],
-    "recommendedHeroes": [
-      "Drake",
-      "Bone Dragon",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
     ]
   },
   {
@@ -3598,7 +3438,7 @@ const troops = [
       "Human",
       "Support"
     ],
-    "description": null,
+    "description": "In the name of light!",
     "baseStats": {
       "speed": "Medium",
       "attackSpeed": 1,
@@ -3704,14 +3544,17 @@ const troops = [
     "tags": [
       "Human",
       "Support",
-      "Melee"
+      "Melee",
+      "Defense-Buff"
     ],
     "analysis": {
       "primaryRole": "Support",
       "secondaryRoles": [
         "Human"
       ],
-      "strengths": [],
+      "strengths": [
+        "Gives nearby allies a defense boost"
+      ],
       "weaknesses": [],
       "scaling": {
         "hp": "strong",
@@ -3724,16 +3567,8 @@ const troops = [
     "synergyCategories": [
       "Human",
       "Support",
-      "Melee"
-    ],
-    "recommendedHeroes": [
-      "Dragon Rider",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
+      "Melee",
+      "Defense-Buff"
     ]
   },
   {
@@ -3743,7 +3578,7 @@ const troops = [
     "categories": [
       "Human"
     ],
-    "description": null,
+    "description": "Let's destroy everything here!",
     "baseStats": {
       "speed": "Low",
       "attackSpeed": 1,
@@ -3824,36 +3659,30 @@ const troops = [
       "Backline-DPS"
     ],
     "analysis": {
-      "primaryRole": "Human",
-      "secondaryRoles": [],
+      "primaryRole": "Ranged",
+      "secondaryRoles": [
+        "Human"
+      ],
       "strengths": [
-        "Long-range attacker"
+        "Ranged area damage"
       ],
       "weaknesses": [
+        "Low HP",
         "Low movement speed"
       ],
       "scaling": {
-        "hp": "moderate",
+        "hp": "strong",
         "damage": "moderate"
       }
     },
     "faction": "Human",
-    "type": "Human",
+    "type": "Ranged",
     "combatLine": "Backline",
     "synergyCategories": [
       "Human",
       "Ranged",
       "AoE",
       "Backline-DPS"
-    ],
-    "recommendedHeroes": [
-      "Dragon Rider",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
     ]
   },
   {
@@ -3864,7 +3693,7 @@ const troops = [
       "Human",
       "Tank"
     ],
-    "description": null,
+    "description": "Protect iron from corrosion.",
     "baseStats": {
       "speed": "Medium",
       "attackSpeed": 1,
@@ -3949,7 +3778,9 @@ const troops = [
       "secondaryRoles": [
         "Human"
       ],
-      "strengths": [],
+      "strengths": [
+        "Strong frontline durability"
+      ],
       "weaknesses": [],
       "scaling": {
         "hp": "strong",
@@ -3964,16 +3795,6 @@ const troops = [
       "Tank",
       "Melee",
       "Frontline"
-    ],
-    "recommendedHeroes": [
-      "Dragon Rider",
-      "Durand",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
     ]
   },
   {
@@ -3983,7 +3804,7 @@ const troops = [
     "categories": [
       "Human"
     ],
-    "description": null,
+    "description": "Ready for action!",
     "baseStats": {
       "speed": "Medium",
       "attackSpeed": 1,
@@ -4059,12 +3880,17 @@ const troops = [
     ],
     "tags": [
       "Human",
-      "Melee"
+      "Melee",
+      "Frontline"
     ],
     "analysis": {
-      "primaryRole": "Human",
-      "secondaryRoles": [],
-      "strengths": [],
+      "primaryRole": "Infantry",
+      "secondaryRoles": [
+        "Human"
+      ],
+      "strengths": [
+        "Basic frontline unit"
+      ],
       "weaknesses": [],
       "scaling": {
         "hp": "strong",
@@ -4072,20 +3898,12 @@ const troops = [
       }
     },
     "faction": "Human",
-    "type": "Human",
+    "type": "Infantry",
     "combatLine": "Frontline",
     "synergyCategories": [
       "Human",
-      "Melee"
-    ],
-    "recommendedHeroes": [
-      "Dragon Rider",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
+      "Melee",
+      "Frontline"
     ]
   },
   {
@@ -4096,7 +3914,7 @@ const troops = [
       "Human",
       "Ranger"
     ],
-    "description": null,
+    "description": "Blowing things up is our job!",
     "baseStats": {
       "speed": "Low",
       "attackSpeed": 1.4,
@@ -4118,7 +3936,7 @@ const troops = [
         10
       ],
       "units": [
-        null,
+        1,
         null,
         null,
         null,
@@ -4130,7 +3948,7 @@ const troops = [
         1
       ],
       "hp": [
-        null,
+        500,
         null,
         null,
         null,
@@ -4142,7 +3960,7 @@ const troops = [
         13020
       ],
       "damage": [
-        null,
+        140,
         null,
         null,
         null,
@@ -4154,7 +3972,7 @@ const troops = [
         1425
       ],
       "defense": [
-        null,
+        10,
         null,
         null,
         null,
@@ -4183,14 +4001,14 @@ const troops = [
         "Human"
       ],
       "strengths": [
-        "Long-range attacker"
+        "Ranged area damage"
       ],
       "weaknesses": [
         "Low movement speed"
       ],
       "scaling": {
-        "hp": null,
-        "damage": null
+        "hp": "strong",
+        "damage": "moderate"
       }
     },
     "faction": "Human",
@@ -4202,15 +4020,6 @@ const troops = [
       "Ranged",
       "AoE",
       "Backline-DPS"
-    ],
-    "recommendedHeroes": [
-      "Dragon Rider",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
     ]
   },
   {
@@ -4220,7 +4029,7 @@ const troops = [
     "categories": [
       "Human"
     ],
-    "description": null,
+    "description": "Good helpers for infantry.",
     "baseStats": {
       "speed": "Low",
       "attackSpeed": 1.2,
@@ -4300,35 +4109,28 @@ const troops = [
       "Backline-DPS"
     ],
     "analysis": {
-      "primaryRole": "Human",
-      "secondaryRoles": [],
+      "primaryRole": "Ranged",
+      "secondaryRoles": [
+        "Human"
+      ],
       "strengths": [
-        "Long-range attacker"
+        "Ranged damage"
       ],
       "weaknesses": [
         "Low movement speed"
       ],
       "scaling": {
         "hp": "strong",
-        "damage": "weak"
+        "damage": "moderate"
       }
     },
     "faction": "Human",
-    "type": "Human",
+    "type": "Ranged",
     "combatLine": "Backline",
     "synergyCategories": [
       "Human",
       "Ranged",
       "Backline-DPS"
-    ],
-    "recommendedHeroes": [
-      "Dragon Rider",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
     ]
   },
   {
@@ -4339,7 +4141,7 @@ const troops = [
       "Human",
       "Trickster"
     ],
-    "description": null,
+    "description": "Look at my spear! It's so beautiful, isn't it?",
     "baseStats": {
       "speed": "Medium",
       "attackSpeed": 1,
@@ -4445,18 +4247,21 @@ const troops = [
     "tags": [
       "Human",
       "Trickster",
-      "Melee"
+      "Melee",
+      "Charger"
     ],
     "analysis": {
       "primaryRole": "Trickster",
       "secondaryRoles": [
         "Human"
       ],
-      "strengths": [],
+      "strengths": [
+        "Charging strike with high HP"
+      ],
       "weaknesses": [],
       "scaling": {
         "hp": "strong",
-        "damage": "weak"
+        "damage": "moderate"
       }
     },
     "faction": "Human",
@@ -4465,16 +4270,8 @@ const troops = [
     "synergyCategories": [
       "Human",
       "Trickster",
-      "Melee"
-    ],
-    "recommendedHeroes": [
-      "Dragon Rider",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
+      "Melee",
+      "Charger"
     ]
   },
   {
@@ -4484,12 +4281,12 @@ const troops = [
     "categories": [
       "Undead"
     ],
-    "description": null,
+    "description": "The slightest touch can cause an explosion of colossal power. Be extremely cautious near these creatures.",
     "baseStats": {
       "speed": "High",
       "attackSpeed": 1,
       "attackRange": "1.4 m",
-      "aoeRadius": "-"
+      "aoeRadius": "6 m"
     },
     "ability": {
       "name": "Powerful Blast",
@@ -4509,14 +4306,14 @@ const troops = [
         ],
         "AOE Radius": [
           "6 m",
-          "6 m",
-          "6 m",
-          "6 m",
-          "6 m",
-          "6 m",
-          "6 m",
-          "6 m",
-          "6 m",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
           "6 m"
         ]
       }
@@ -4590,16 +4387,21 @@ const troops = [
     "tags": [
       "Undead",
       "Melee",
-      "AoE"
+      "AoE",
+      "Suicide-Blast"
     ],
     "analysis": {
       "primaryRole": "Undead",
       "secondaryRoles": [],
-      "strengths": [],
-      "weaknesses": [],
+      "strengths": [
+        "Fast, huge area explosion"
+      ],
+      "weaknesses": [
+        "Only 100 HP"
+      ],
       "scaling": {
-        "hp": "weak",
-        "damage": null
+        "hp": "strong",
+        "damage": "moderate"
       }
     },
     "faction": "Undead",
@@ -4608,17 +4410,8 @@ const troops = [
     "synergyCategories": [
       "Undead",
       "Melee",
-      "AoE"
-    ],
-    "recommendedHeroes": [
-      "Drake",
-      "Bone Dragon",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
+      "AoE",
+      "Suicide-Blast"
     ]
   },
   {
@@ -4628,7 +4421,7 @@ const troops = [
     "categories": [
       "Undead"
     ],
-    "description": null,
+    "description": "He throws spears no worse than the living. Each new throw increases the flow of recruits to the undead army.",
     "baseStats": {
       "speed": "Low",
       "attackSpeed": 1.2,
@@ -4708,36 +4501,26 @@ const troops = [
       "Backline-DPS"
     ],
     "analysis": {
-      "primaryRole": "Undead",
-      "secondaryRoles": [],
+      "primaryRole": "Ranged",
+      "secondaryRoles": [
+        "Undead"
+      ],
       "strengths": [
-        "Long-range attacker"
+        "Ranged damage"
       ],
-      "weaknesses": [
-        "Low movement speed"
-      ],
+      "weaknesses": [],
       "scaling": {
         "hp": "strong",
         "damage": "moderate"
       }
     },
     "faction": "Undead",
-    "type": "Undead",
+    "type": "Ranged",
     "combatLine": "Backline",
     "synergyCategories": [
       "Undead",
       "Ranged",
       "Backline-DPS"
-    ],
-    "recommendedHeroes": [
-      "Drake",
-      "Bone Dragon",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
     ]
   },
   {
@@ -4747,7 +4530,7 @@ const troops = [
     "categories": [
       "Mages"
     ],
-    "description": null,
+    "description": "Young magicians still in training by more experienced mentors, but already capable of creating dangerous magic arrows and using them in battle.",
     "baseStats": {
       "speed": "Low",
       "attackSpeed": 1.2,
@@ -4827,39 +4610,26 @@ const troops = [
       "Backline-DPS"
     ],
     "analysis": {
-      "primaryRole": "Mages",
-      "secondaryRoles": [],
+      "primaryRole": "Ranged",
+      "secondaryRoles": [
+        "Mages"
+      ],
       "strengths": [
-        "Long-range attacker"
+        "Ranged magic damage"
       ],
-      "weaknesses": [
-        "Low movement speed"
-      ],
+      "weaknesses": [],
       "scaling": {
         "hp": "strong",
-        "damage": "weak"
+        "damage": "moderate"
       }
     },
     "faction": "Mages",
-    "type": "Mages",
+    "type": "Ranged",
     "combatLine": "Backline",
     "synergyCategories": [
       "Mages",
       "Ranged",
       "Backline-DPS"
-    ],
-    "recommendedHeroes": [
-      "Anavin",
-      "Edelina",
-      "Keyra",
-      "Zaheer",
-      "Sigurd",
-      "Ophelia",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan"
     ]
   },
   {
@@ -4869,7 +4639,7 @@ const troops = [
     "categories": [
       "Mages"
     ],
-    "description": null,
+    "description": "Artificial creatures brought to life by magic. Wizards use these soulless golems as primary melee troops.",
     "baseStats": {
       "speed": "Medium",
       "attackSpeed": 1,
@@ -4945,37 +4715,30 @@ const troops = [
     ],
     "tags": [
       "Mages",
-      "Melee"
+      "Melee",
+      "Frontline"
     ],
     "analysis": {
-      "primaryRole": "Mages",
-      "secondaryRoles": [],
-      "strengths": [],
+      "primaryRole": "Melee",
+      "secondaryRoles": [
+        "Mages"
+      ],
+      "strengths": [
+        "Basic melee troop"
+      ],
       "weaknesses": [],
       "scaling": {
         "hp": "strong",
-        "damage": "weak"
+        "damage": "moderate"
       }
     },
     "faction": "Mages",
-    "type": "Mages",
+    "type": "Melee",
     "combatLine": "Frontline",
     "synergyCategories": [
       "Mages",
-      "Melee"
-    ],
-    "recommendedHeroes": [
-      "Anavin",
-      "Edelina",
-      "Keyra",
-      "Zaheer",
-      "Sigurd",
-      "Ophelia",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan"
+      "Melee",
+      "Frontline"
     ]
   },
   {
@@ -4985,7 +4748,7 @@ const troops = [
     "categories": [
       "Undead"
     ],
-    "description": null,
+    "description": "A soulless skeleton in armor that blindly obeys its Master. What could be better?",
     "baseStats": {
       "speed": "Medium",
       "attackSpeed": 1,
@@ -5061,12 +4824,17 @@ const troops = [
     ],
     "tags": [
       "Undead",
-      "Melee"
+      "Melee",
+      "Frontline"
     ],
     "analysis": {
-      "primaryRole": "Undead",
-      "secondaryRoles": [],
-      "strengths": [],
+      "primaryRole": "Melee",
+      "secondaryRoles": [
+        "Undead"
+      ],
+      "strengths": [
+        "Basic undead melee troop"
+      ],
       "weaknesses": [],
       "scaling": {
         "hp": "strong",
@@ -5074,21 +4842,12 @@ const troops = [
       }
     },
     "faction": "Undead",
-    "type": "Undead",
+    "type": "Melee",
     "combatLine": "Frontline",
     "synergyCategories": [
       "Undead",
-      "Melee"
-    ],
-    "recommendedHeroes": [
-      "Drake",
-      "Bone Dragon",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
+      "Melee",
+      "Frontline"
     ]
   },
   {
@@ -5100,12 +4859,12 @@ const troops = [
       "Ranger",
       "Support"
     ],
-    "description": null,
+    "description": "Carries two weapons: one for monsters and one for men.",
     "baseStats": {
       "speed": "Medium",
       "attackSpeed": 1,
       "attackRange": "15 m",
-      "aoeRadius": "-"
+      "aoeRadius": "6 m"
     },
     "ability": {
       "name": "Powerful Salvo",
@@ -5113,38 +4872,38 @@ const troops = [
       "levelStats": {
         "Shape": [
           "Cone",
-          "Cone",
-          "Cone",
-          "Cone",
-          "Cone",
-          "Cone",
-          "Cone",
-          "Cone",
-          "Cone",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
           "Cone"
         ],
         "Stun Time": [
           "1 s",
-          "1 s",
-          "1 s",
-          "1 s",
-          "1 s",
-          "1 s",
-          "1 s",
-          "1 s",
-          "1 s",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
           "1 s"
         ],
         "AOE Radius": [
           "6 m",
-          "6 m",
-          "6 m",
-          "6 m",
-          "6 m",
-          "6 m",
-          "6 m",
-          "6 m",
-          "6 m",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
           "6 m"
         ],
         "Damage": [
@@ -5232,45 +4991,35 @@ const troops = [
       "Ranger",
       "Support",
       "Ranged",
-      "AoE",
-      "Crowd-Control",
-      "Backline-DPS"
+      "Cone-AoE",
+      "Stun"
     ],
     "analysis": {
-      "primaryRole": "Support",
+      "primaryRole": "Ranger",
       "secondaryRoles": [
         "Human",
-        "Ranger"
+        "Support"
       ],
       "strengths": [
-        "Long-range attacker"
+        "Very long range (15 m)",
+        "Stuns enemies in a cone"
       ],
       "weaknesses": [],
       "scaling": {
         "hp": "strong",
-        "damage": "weak"
+        "damage": "moderate"
       }
     },
     "faction": "Human",
-    "type": "Support",
+    "type": "Ranger",
     "combatLine": "Backline",
     "synergyCategories": [
       "Human",
       "Ranger",
       "Support",
       "Ranged",
-      "AoE",
-      "Crowd-Control",
-      "Backline-DPS"
-    ],
-    "recommendedHeroes": [
-      "Dragon Rider",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
+      "Cone-AoE",
+      "Stun"
     ]
   },
   {
@@ -5281,7 +5030,7 @@ const troops = [
       "Human",
       "Trickster"
     ],
-    "description": null,
+    "description": "The king's personal bodyguards during military campaigns.",
     "baseStats": {
       "speed": "Medium",
       "attackSpeed": 1.2,
@@ -5306,14 +5055,14 @@ const troops = [
         ],
         "AOE Radius": [
           "3 m",
-          "3 m",
-          "3 m",
-          "3 m",
-          "3 m",
-          "3 m",
-          "3 m",
-          "3 m",
-          "3 m",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
           "3 m"
         ]
       }
@@ -5400,14 +5149,17 @@ const troops = [
       "Human",
       "Trickster",
       "Melee",
-      "AoE"
+      "AoE",
+      "Jumper"
     ],
     "analysis": {
       "primaryRole": "Trickster",
       "secondaryRoles": [
         "Human"
       ],
-      "strengths": [],
+      "strengths": [
+        "Jumps in and hits an area"
+      ],
       "weaknesses": [],
       "scaling": {
         "hp": "strong",
@@ -5421,16 +5173,8 @@ const troops = [
       "Human",
       "Trickster",
       "Melee",
-      "AoE"
-    ],
-    "recommendedHeroes": [
-      "Dragon Rider",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan",
-      "Anavin"
+      "AoE",
+      "Jumper"
     ]
   },
   {
@@ -5441,7 +5185,7 @@ const troops = [
       "Mages",
       "Trickster"
     ],
-    "description": null,
+    "description": "The very embodiment of air, capable of making any head spin.",
     "baseStats": {
       "speed": "High",
       "attackSpeed": 1.2,
@@ -5454,14 +5198,14 @@ const troops = [
       "levelStats": {
         "Duration": [
           "2 s",
-          "2 s",
-          "2 s",
-          "2 s",
-          "2 s",
-          "2 s",
-          "2 s",
-          "2 s",
-          "2 s",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
           "2 s"
         ],
         "Damage": [
@@ -5560,14 +5304,17 @@ const troops = [
       "Mages",
       "Trickster",
       "Melee",
-      "Crowd-Control"
+      "Stun",
+      "Fast"
     ],
     "analysis": {
       "primaryRole": "Trickster",
       "secondaryRoles": [
         "Mages"
       ],
-      "strengths": [],
+      "strengths": [
+        "Fast; lifts and stuns enemies"
+      ],
       "weaknesses": [],
       "scaling": {
         "hp": "strong",
@@ -5581,20 +5328,8 @@ const troops = [
       "Mages",
       "Trickster",
       "Melee",
-      "Crowd-Control"
-    ],
-    "recommendedHeroes": [
-      "Anavin",
-      "Edelina",
-      "Keyra",
-      "Zaheer",
-      "Sigurd",
-      "Ophelia",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan"
+      "Stun",
+      "Fast"
     ]
   },
   {
@@ -5606,7 +5341,7 @@ const troops = [
       "Trickster",
       "Support"
     ],
-    "description": null,
+    "description": "This little cutie may mistake you for a fly and eat you.",
     "baseStats": {
       "speed": "Medium",
       "attackSpeed": 1.2,
@@ -5739,23 +5474,25 @@ const troops = [
       "Support",
       "Melee",
       "AoE",
-      "Crowd-Control"
+      "Stun"
     ],
     "analysis": {
-      "primaryRole": "Support",
+      "primaryRole": "Trickster",
       "secondaryRoles": [
         "Mages",
-        "Trickster"
+        "Support"
       ],
-      "strengths": [],
+      "strengths": [
+        "Jump stun up to 4 s at Lv10"
+      ],
       "weaknesses": [],
       "scaling": {
         "hp": "strong",
-        "damage": "weak"
+        "damage": "moderate"
       }
     },
     "faction": "Mages",
-    "type": "Support",
+    "type": "Trickster",
     "combatLine": "Frontline",
     "synergyCategories": [
       "Mages",
@@ -5763,20 +5500,7 @@ const troops = [
       "Support",
       "Melee",
       "AoE",
-      "Crowd-Control"
-    ],
-    "recommendedHeroes": [
-      "Anavin",
-      "Edelina",
-      "Keyra",
-      "Zaheer",
-      "Sigurd",
-      "Ophelia",
-      "Remus",
-      "Calyra",
-      "Atreya",
-      "Lirael",
-      "Tristan"
+      "Stun"
     ]
   }
 ];
