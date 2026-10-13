@@ -112,7 +112,7 @@ function stripReasoning(text) {
     cleanText = cleanText.replace(/<\/(?:think|reasoning|reflection|plan|scratchpad)>/gi, '');
 
     // 🤖 Self-Prefix Hallucination Fix: Removes "Melody:", "**INF AI**:", "[Melody]:"
-    cleanText = cleanText.replace(/^(?:\*\*?(?:Melody|INF AI|Bot)\*\*?\s*:|\[?(?:Melody\vert{}INF AI\vert{}Bot)\]?\s*:)\s*/i, '');
+    cleanText = cleanText.replace(/^(?:\*\*?(?:Melody|INF AI|Bot)\*\*?\s*:|\[?(?:Melody|INF AI|Bot)\]?\s*:)\s*/i, '');
 
     // If the model leaked its "Draft:" section, grab ONLY what comes after "Draft:"
     const draftMatch = cleanText.match(/\bDraft:\s*([\s\S]*)$/i);
@@ -130,6 +130,19 @@ function stripReasoning(text) {
 }
 
 /**
+ * Format consistency: keycap-emoji numbers (1️⃣) -> "1.", glyph bullets (▪ ● ➤ …) and "* " -> "- ".
+ * The same question used to come back as bullets one time and emoji-numbers the next.
+ */
+function normalizeLists(text) {
+  const KEYCAP = /^[ \t]*(\d)\uFE0F?\u20E3[ \t]*/gmu;
+  return String(text)
+    .replace(/^[ \t]*\u{1F51F}[ \t]*/gmu, '10. ')
+    .replace(KEYCAP, '$1. ')
+    .replace(/^[ \t]*[\u25AA\u25AB\u25E6\u25CF\u25CB\u25C6\u25C7\u27A4\u279C\u25BA\u2023\u2043\u2022][ \t]+/gm, '- ')
+    .replace(/^[ \t]*\*[ \t]+(?=\S)/gm, '- ');
+}
+
+/**
  * Structural Cleanup (Quotes, Giant Gaps, Reasoning)
  */
 function structuralCleanup(text) {
@@ -143,6 +156,8 @@ function structuralCleanup(text) {
         cleanText = cleanText.substring(1, cleanText.length - 1).trim();
     }
     
+    cleanText = normalizeLists(cleanText);
+
     // Limit excessive empty lines to a maximum of 2 (preserves paragraphs, kills giant gaps)
     cleanText = cleanText.replace(/\n{3,}/g, '\n\n');
     
