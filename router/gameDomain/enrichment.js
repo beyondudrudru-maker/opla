@@ -30,6 +30,7 @@ const { HEURISTIC_FALLBACKS, GAME_TAGS, INTENT_PATTERNS } = require('./constants
 const { toHeroSummary, toTroopSummary } = require('./summaries.js');
 const { buildEntityEmbed } = require('./embedBuilders.js');
 const slicer = require('../../engine/contextSlicer.js');
+let _facetStore = null; try { _facetStore = require('../../engine/facetStore.js'); } catch (_) {}
 // Collection-bonus numbers are only injected when the user asks (was: on every hero mention).
 const COLLECTION_ASK = /\bcollection\b|\bcollect\s*bonus\b/i;
 let _reasonIdx = null, _heroIndex = null, _heroesById = null;
@@ -175,6 +176,25 @@ function enrichStrategyContext({
     const taxonomy = queryEngine.getGameTaxonomy();
     strategyData.context.gameTaxonomy = taxonomy;
     enrichmentAdded = true;
+  }
+
+  // ── SCENARIO A4: "WHICH HEROES BUFF <FAMILY>" ────────────────────────────
+  // Heroes that BUFF a troop family are read from the hero targets, never from heroes that merely ARE that family.
+  {
+    const fam = /\b(undead|mages?|humans?|rangers?|tanks?|supports?|tricksters?)\b/i.exec(text);
+    if (fam && /\b(heroes|hero)\b/i.test(text) && /\b(buff|buffs|buffing|boost|boosts|increase|help|helps|benefit|benefits|strengthen|empower)\b/i.test(text)
+        && !(entities.heroNames.length || entities.troopNames.length) && _facetStore && _facetStore.buffersOfFamily) {
+      const FAMILY = { undead: 'Undead', mage: 'Mage', human: 'Human', ranger: 'Ranger', tank: 'Tank', support: 'Support', trickster: 'Trickster' };
+      const famName = FAMILY[fam[1].toLowerCase().replace(/s$/, '')];
+      const r = _facetStore.buffersOfFamily(famName);
+      strategyData.context.familyBuffers = {
+        family: famName,
+        heroesThatBuffThisFamily: r.explicit,
+        heroesThatBuffAllAllies: r.allAllies,
+        answerGuide: 'List the heroes in heroesThatBuffThisFamily with what each buffs (use effect values if given) and from which skill (talent/ability); then one line for heroesThatBuffAllAllies. Never list heroes just because they ARE of that family. If bossUse is low or disabled for a hero, say so briefly. If a list is empty, say no hero in the data buffs that family.'
+      };
+      enrichmentAdded = true;
+    }
   }
 
   // ── SCENARIO B: BIDIRECTIONAL SMART SYNERGY ENRICHMENT ───────────────────
