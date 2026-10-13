@@ -21,6 +21,7 @@ function _table(headers, rows) {
   const line = r => r.map((c, i) => String(c).padStart(w[i])).join(' ');
   return '```\n' + [line(headers), ...rows.map(line)].join('\n') + '\n```';
 }
+const _heroStat = s => (s && s.min != null ? formatStat(s) : 'N/A');
 const _n = v => (typeof v === 'number' ? v.toLocaleString('en-US') : String(v ?? '-'));
 const _clip = (s, n = FIELD_MAX) => (String(s).length <= n ? String(s) : String(s).slice(0, n - 1) + '…');
 
@@ -50,9 +51,9 @@ function buildHeroCard(hero) {
     embed.addFields({ name: '📈 Levels 1–10', value: _clip(table) });
   } else {
     embed.addFields(
-      { name: '❤️ HP',       value: formatStat(hero.stats?.hp),      inline: true },
-      { name: '🛡️ Defense', value: formatStat(hero.stats?.defense), inline: true },
-      { name: '⚔️ Attack',  value: formatStat(hero.stats?.attack),  inline: true }
+      { name: '❤️ HP',       value: _heroStat(hero.stats?.hp),      inline: true },
+      { name: '🛡️ Defense', value: _heroStat(hero.stats?.defense), inline: true },
+      { name: '⚔️ Attack',  value: _heroStat(hero.stats?.attack),  inline: true }
     );
   }
   if (hero.talent) {
@@ -119,9 +120,9 @@ function buildComparisonCards(h1, h2) {
     .setTitle(`🦸‍♂️ ${h1.name}`)
     .addFields(
       { name: 'Faction / Rarity', value: `${h1.faction || 'N/A'} (${h1.rarity || 'N/A'})`, inline: false },
-      { name: '❤️ HP',            value: formatStat(h1.stats?.hp),      inline: true },
-      { name: '🛡️ Defense',      value: formatStat(h1.stats?.defense), inline: true },
-      { name: '⚔️ Attack',       value: formatStat(h1.stats?.attack),  inline: true }
+      { name: '❤️ HP',            value: _heroStat(h1.stats?.hp),      inline: true },
+      { name: '🛡️ Defense',      value: _heroStat(h1.stats?.defense), inline: true },
+      { name: '⚔️ Attack',       value: _heroStat(h1.stats?.attack),  inline: true }
     );
   if (h1.talent)  embed1.addFields({ name: `🌟 Talent: ${h1.talent.name}`,  value: _clip(h1.talent.description) });
   if (h1.ability) embed1.addFields({ name: `✨ Ability: ${h1.ability.name}`, value: _clip(h1.ability.description) });
@@ -131,9 +132,9 @@ function buildComparisonCards(h1, h2) {
     .setTitle(`🦸‍♂️ ${h2.name}`)
     .addFields(
       { name: 'Faction / Rarity', value: `${h2.faction || 'N/A'} (${h2.rarity || 'N/A'})`, inline: false },
-      { name: '❤️ HP',            value: formatStat(h2.stats?.hp),      inline: true },
-      { name: '🛡️ Defense',      value: formatStat(h2.stats?.defense), inline: true },
-      { name: '⚔️ Attack',       value: formatStat(h2.stats?.attack),  inline: true }
+      { name: '❤️ HP',            value: _heroStat(h2.stats?.hp),      inline: true },
+      { name: '🛡️ Defense',      value: _heroStat(h2.stats?.defense), inline: true },
+      { name: '⚔️ Attack',       value: _heroStat(h2.stats?.attack),  inline: true }
     );
   if (h2.talent)  embed2.addFields({ name: `🌟 Talent: ${h2.talent.name}`,  value: _clip(h2.talent.description) });
   if (h2.ability) embed2.addFields({ name: `✨ Ability: ${h2.ability.name}`, value: _clip(h2.ability.description) });
@@ -216,8 +217,14 @@ function buildGearEmbed(name, rec, note) {
     const p = (g && g.passive && typeof g.passive === 'object') ? g.passive : {};
     const eff = p.effect || p.trigger || g.description || '';
     let mx = '';
-    for (const [k, v] of Object.entries(p.scaling || {})) { if (k !== 'level' && Array.isArray(v) && v.length) { mx = ` (max ${v[v.length - 1]}%)`; break; } }
-    const lock = g.ownershipStatus === 'locked' ? ' 🔒 *locked*' : '';
+    for (const [k, v] of Object.entries(p.scaling || {})) {
+      if (k !== 'level' && Array.isArray(v) && v.length) {
+        const lv = (p.scaling.level || []);
+        mx = lv.length === v.length ? ` (Lv${lv[0]}: ${v[0]}% → Lv${lv[lv.length - 1]}: ${v[v.length - 1]}%)` : ` (max ${v[v.length - 1]}%)`;
+        break;
+      }
+    }
+    const lock = '';
     return `• **${g.name}**${lock}${eff ? ' — ' + _clip(eff, 110) : ''}${mx}`;
   };
   const e = new EmbedBuilder().setColor(0x95a5a6).setTitle(`🛡️ Suggested gear — ${name}`);
