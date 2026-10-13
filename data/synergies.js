@@ -1179,6 +1179,7 @@ const _ALL_ALLIES_HEROES = [
   { heroId: "ATREYA_01",  why: "Talent targets All Allies (chance of double damage, increased damage dealt)" },
   { heroId: "DURAND_01",  why: "Talent targets All Allies (damage reduction, shorter debuff duration)" },
   { heroId: "BUMI_01",    why: "Talent targets All Allies (evasion-type buff, see his talent text)" },
+  { heroId: "BJORN_01",   why: "Ability (Spirit Form) raises damage, HP and attack speed of allied units within his 9 m radius" },
   { heroId: "HARKON_01",  why: "Talent targets All Allies (delayed damage); PvP/Arena only — disabled in Boss fights" },
 ];
 const _troopLabel = (id) => String(id).replace(/^tr-/, "").split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");

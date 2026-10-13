@@ -110,39 +110,7 @@ const heroes = [
       "Shaman",
       "Stone Golem",
       "Magic Archer",
-      "Storm Mistresses",
-      "Immortal",
-      "Alchemist",
-      "Bonebreaker",
-      "Headless",
-      "Monk",
-      "Assassins",
-      "Cursed Catapult",
-      "Imp",
-      "Night Hunter",
-      "Pyrotechnician",
-      "Gravedigger",
-      "Axe Throwers",
-      "Steel Revenant",
-      "Necromancer",
-      "Butcher",
-      "Undead Mage",
-      "Paladin",
-      "Catapult",
-      "Iron Guards",
-      "Infantry",
-      "Bombers",
-      "Archers",
-      "Lancer",
-      "Explosive Spider",
-      "Bone Spearthrower",
-      "Sorcerer's Apprentice",
-      "Battle Golem",
-      "Bone Warrior",
-      "Huntress",
-      "Royal Guard",
-      "Air Elemental",
-      "Giant Toad"
+      "Storm Mistresses"
     ],
   "realGear": {
     "roleFamily": "Mage",
@@ -218,11 +186,7 @@ const heroes = [
       "Shaman",
       "Stone Golem",
       "Magic Archer",
-      "Storm Mistresses",
-      "Sorcerer's Apprentice",
-      "Battle Golem",
-      "Air Elemental",
-      "Giant Toad"
+      "Storm Mistresses"
     ],
   "realGear": {
     "roleFamily": "Mage",
@@ -519,42 +483,7 @@ const heroes = [
     "recommendedTroops": [
       "Steel Revenant",
       "Axe Throwers",
-      "Imp",
-      "Immortal",
-      "Phoenix",
-      "Alchemist",
-      "Lava Golem",
-      "Shaman",
-      "Stone Golem",
-      "Bonebreaker",
-      "Headless",
-      "Magic Archer",
-      "Monk",
-      "Assassins",
-      "Storm Mistresses",
-      "Cursed Catapult",
-      "Night Hunter",
-      "Pyrotechnician",
-      "Gravedigger",
-      "Necromancer",
-      "Butcher",
-      "Undead Mage",
-      "Paladin",
-      "Catapult",
-      "Iron Guards",
-      "Infantry",
-      "Bombers",
-      "Archers",
-      "Lancer",
-      "Explosive Spider",
-      "Bone Spearthrower",
-      "Sorcerer's Apprentice",
-      "Battle Golem",
-      "Bone Warrior",
-      "Huntress",
-      "Royal Guard",
-      "Air Elemental",
-      "Giant Toad"
+      "Imp"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -627,42 +556,7 @@ const heroes = [
     "recommendedTroops": [
       "Steel Revenant",
       "Axe Throwers",
-      "Imp",
-      "Immortal",
-      "Phoenix",
-      "Alchemist",
-      "Lava Golem",
-      "Shaman",
-      "Stone Golem",
-      "Bonebreaker",
-      "Headless",
-      "Magic Archer",
-      "Monk",
-      "Assassins",
-      "Storm Mistresses",
-      "Cursed Catapult",
-      "Night Hunter",
-      "Pyrotechnician",
-      "Gravedigger",
-      "Necromancer",
-      "Butcher",
-      "Undead Mage",
-      "Paladin",
-      "Catapult",
-      "Iron Guards",
-      "Infantry",
-      "Bombers",
-      "Archers",
-      "Lancer",
-      "Explosive Spider",
-      "Bone Spearthrower",
-      "Sorcerer's Apprentice",
-      "Battle Golem",
-      "Bone Warrior",
-      "Huntress",
-      "Royal Guard",
-      "Air Elemental",
-      "Giant Toad"
+      "Imp"
     ],
   "realGear": {
     "roleFamily": "Ranger",
@@ -741,42 +635,7 @@ const heroes = [
     "recommendedTroops": [
       "Steel Revenant",
       "Axe Throwers",
-      "Imp",
-      "Immortal",
-      "Phoenix",
-      "Alchemist",
-      "Lava Golem",
-      "Shaman",
-      "Stone Golem",
-      "Bonebreaker",
-      "Headless",
-      "Magic Archer",
-      "Monk",
-      "Assassins",
-      "Storm Mistresses",
-      "Cursed Catapult",
-      "Night Hunter",
-      "Pyrotechnician",
-      "Gravedigger",
-      "Necromancer",
-      "Butcher",
-      "Undead Mage",
-      "Paladin",
-      "Catapult",
-      "Iron Guards",
-      "Infantry",
-      "Bombers",
-      "Archers",
-      "Lancer",
-      "Explosive Spider",
-      "Bone Spearthrower",
-      "Sorcerer's Apprentice",
-      "Battle Golem",
-      "Bone Warrior",
-      "Huntress",
-      "Royal Guard",
-      "Air Elemental",
-      "Giant Toad"
+      "Imp"
     ],
   "realGear": {
     "roleFamily": "Tank",
@@ -910,42 +769,7 @@ const heroes = [
     "recommendedTroops": [
       "Bonebreaker",
       "Alchemist",
-      "Assassins",
-      "Immortal",
-      "Phoenix",
-      "Lava Golem",
-      "Shaman",
-      "Stone Golem",
-      "Headless",
-      "Magic Archer",
-      "Monk",
-      "Storm Mistresses",
-      "Cursed Catapult",
-      "Imp",
-      "Night Hunter",
-      "Pyrotechnician",
-      "Gravedigger",
-      "Axe Throwers",
-      "Steel Revenant",
-      "Necromancer",
-      "Butcher",
-      "Undead Mage",
-      "Paladin",
-      "Catapult",
-      "Iron Guards",
-      "Infantry",
-      "Bombers",
-      "Archers",
-      "Lancer",
-      "Explosive Spider",
-      "Bone Spearthrower",
-      "Sorcerer's Apprentice",
-      "Battle Golem",
-      "Bone Warrior",
-      "Huntress",
-      "Royal Guard",
-      "Air Elemental",
-      "Giant Toad"
+      "Assassins"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -1100,16 +924,7 @@ const heroes = [
     "recommendedTroops": [
       "Bonebreaker",
       "Alchemist",
-      "Assassins",
-      "Immortal",
-      "Phoenix",
-      "Lava Golem",
-      "Stone Golem",
-      "Headless",
-      "Monk",
-      "Steel Revenant",
-      "Butcher",
-      "Iron Guards"
+      "Assassins"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -1263,11 +1078,7 @@ const heroes = [
       "Night Hunter",
       "Gravedigger",
       "Steel Revenant",
-      "Necromancer",
-      "Undead Mage",
-      "Explosive Spider",
-      "Bone Spearthrower",
-      "Bone Warrior"
+      "Necromancer"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -1345,11 +1156,7 @@ const heroes = [
       "Shaman",
       "Stone Golem",
       "Magic Archer",
-      "Storm Mistresses",
-      "Sorcerer's Apprentice",
-      "Battle Golem",
-      "Air Elemental",
-      "Giant Toad"
+      "Storm Mistresses"
     ],
   "realGear": {
     "roleFamily": "Mage",
@@ -1429,11 +1236,7 @@ const heroes = [
       "Shaman",
       "Stone Golem",
       "Magic Archer",
-      "Storm Mistresses",
-      "Sorcerer's Apprentice",
-      "Battle Golem",
-      "Air Elemental",
-      "Giant Toad"
+      "Storm Mistresses"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -1511,11 +1314,7 @@ const heroes = [
       "Shaman",
       "Stone Golem",
       "Magic Archer",
-      "Storm Mistresses",
-      "Sorcerer's Apprentice",
-      "Battle Golem",
-      "Air Elemental",
-      "Giant Toad"
+      "Storm Mistresses"
     ],
   "realGear": {
     "roleFamily": "Mage",
@@ -1591,11 +1390,7 @@ const heroes = [
       "Night Hunter",
       "Gravedigger",
       "Steel Revenant",
-      "Necromancer",
-      "Undead Mage",
-      "Explosive Spider",
-      "Bone Spearthrower",
-      "Bone Warrior"
+      "Necromancer"
     ],
   "realGear": {
     "roleFamily": "Support",
@@ -1747,11 +1542,7 @@ const heroes = [
       "Shaman",
       "Stone Golem",
       "Magic Archer",
-      "Storm Mistresses",
-      "Sorcerer's Apprentice",
-      "Battle Golem",
-      "Air Elemental",
-      "Giant Toad"
+      "Storm Mistresses"
     ],
   "realGear": {
     "roleFamily": "Mage",
@@ -1826,17 +1617,7 @@ const heroes = [
       "Monk",
       "Assassins",
       "Pyrotechnician",
-      "Axe Throwers",
-      "Butcher",
-      "Paladin",
-      "Catapult",
-      "Iron Guards",
-      "Infantry",
-      "Bombers",
-      "Archers",
-      "Lancer",
-      "Huntress",
-      "Royal Guard"
+      "Axe Throwers"
     ],
   "realGear": {
     "roleFamily": "Ranger",
@@ -2073,39 +1854,7 @@ const heroes = [
       "Shaman",
       "Stone Golem",
       "Magic Archer",
-      "Storm Mistresses",
-      "Immortal",
-      "Alchemist",
-      "Bonebreaker",
-      "Headless",
-      "Monk",
-      "Assassins",
-      "Cursed Catapult",
-      "Imp",
-      "Night Hunter",
-      "Pyrotechnician",
-      "Gravedigger",
-      "Axe Throwers",
-      "Steel Revenant",
-      "Necromancer",
-      "Butcher",
-      "Undead Mage",
-      "Paladin",
-      "Catapult",
-      "Iron Guards",
-      "Infantry",
-      "Bombers",
-      "Archers",
-      "Lancer",
-      "Explosive Spider",
-      "Bone Spearthrower",
-      "Sorcerer's Apprentice",
-      "Battle Golem",
-      "Bone Warrior",
-      "Huntress",
-      "Royal Guard",
-      "Air Elemental",
-      "Giant Toad"
+      "Storm Mistresses"
     ],
   "realGear": {
     "roleFamily": "Mage",
@@ -2114,6 +1863,1747 @@ const heroes = [
     "armor": null,
     "note": "No confirmed real gear data yet for the Mage role family."
   }
+  },
+  {
+    "id": "VLASTON_01",
+    "name": "CHIEFTAIN VLASTON",
+    "faction": "Human",
+    "rarity": "epic",
+    "description": "Human epic hero. Furious Attack is a devastating hammer blow that starts a small earthquake, dealing damage and stunning enemies.",
+    "stats": {
+      "hp": {
+        "min": null,
+        "max": null
+      },
+      "defense": {
+        "min": null,
+        "max": null
+      },
+      "attack": {
+        "min": null,
+        "max": null
+      },
+      "collectionBonus": {
+        "min": null,
+        "max": null
+      }
+    },
+    "talent": null,
+    "ability": {
+      "name": "Furious Attack",
+      "description": "Vlaston puts all his power into a devastating hammer blow that starts a small earthquake. This ability deals damage and stuns enemies.",
+      "type": "Active",
+      "effects": {
+        "Stun s": "2 / 2 / 2 / 2 / 2 / 2 / 2 / 2 / 2 / 2",
+        "Damage": "410 / 440 / 465 / 490 / 520 / 540 / 565 / 595 / 620 / 645",
+        "Cooldown s": "16 / 16 / 16 / 16 / 15 / 15 / 15 / 14 / 14 / 14"
+      },
+      "levelStats": {
+        "Stun s": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "Damage": [
+          410,
+          440,
+          465,
+          490,
+          520,
+          540,
+          565,
+          595,
+          620,
+          645
+        ],
+        "Cooldown s": [
+          16,
+          16,
+          16,
+          16,
+          15,
+          15,
+          15,
+          14,
+          14,
+          14
+        ]
+      },
+      "targets": []
+    },
+    "statLevels": {
+      "hp": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        48250,
+        null,
+        null,
+        null
+      ],
+      "defense": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        400,
+        null,
+        null,
+        null
+      ],
+      "attack": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        850,
+        null,
+        null,
+        null
+      ]
+    },
+    "statLevelsKnown": [
+      7
+    ],
+    "tags": [
+      "Human",
+      "Stun",
+      "Damage",
+      "Active-Ability"
+    ],
+    "type": "Damage Dealer",
+    "analysis": {
+      "primaryRole": "Damage Dealer",
+      "secondaryRoles": [
+        "Human",
+        "Crowd-Control"
+      ],
+      "strengths": [
+        "Stuns enemies for 2 s",
+        "Short cooldown (14 s at Lv10)"
+      ],
+      "weaknesses": [
+      ]
+    },
+    "supportFocus": "Self (damage + stun on enemies)",
+    "recommendedTroops": [],
+    "realGear": {
+      "roleFamily": "Damage Dealer",
+      "hasRealGearData": false,
+      "weapon": null,
+      "armor": null,
+      "note": "No confirmed real gear data yet for the Damage Dealer role family."
+    },
+    "dataNote": "Epic/Rare heroes have no talent (talent exists only on Legendary and Mythical). Lv1/Lv10 main stats not added yet; ability table verified against the in-game screens."
+  },
+  {
+    "id": "MERIDA_01",
+    "name": "MERIDA",
+    "faction": "Human",
+    "rarity": "epic",
+    "description": "Human epic hero. Power Shot bounces back and fires an empowered arrow that hits every enemy in its path.",
+    "stats": {
+      "hp": {
+        "min": null,
+        "max": null
+      },
+      "defense": {
+        "min": null,
+        "max": null
+      },
+      "attack": {
+        "min": null,
+        "max": null
+      },
+      "collectionBonus": {
+        "min": null,
+        "max": null
+      }
+    },
+    "talent": null,
+    "ability": {
+      "name": "Power Shot",
+      "description": "Bounces back and fires an empowered arrow that deals massive damage to all enemies in its path.",
+      "type": "Active",
+      "effects": {
+        "Jump Range m": "9 / 9 / 9 / 9 / 9 / 9 / 9 / 9 / 9 / 9",
+        "Damage": "150 / 180 / 210 / 240 / 270 / 300 / 330 / 360 / 390 / 420",
+        "Cooldown s": "11 / 11 / 11 / 10 / 10 / 10 / 10 / 9 / 9 / 9"
+      },
+      "levelStats": {
+        "Jump Range m": [
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9
+        ],
+        "Damage": [
+          150,
+          180,
+          210,
+          240,
+          270,
+          300,
+          330,
+          360,
+          390,
+          420
+        ],
+        "Cooldown s": [
+          11,
+          11,
+          11,
+          10,
+          10,
+          10,
+          10,
+          9,
+          9,
+          9
+        ]
+      },
+      "targets": []
+    },
+    "statLevels": {
+      "hp": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        26750,
+        null,
+        null
+      ],
+      "defense": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        340,
+        null,
+        null
+      ],
+      "attack": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        430,
+        null,
+        null
+      ]
+    },
+    "statLevelsKnown": [
+      8
+    ],
+    "tags": [
+      "Human",
+      "Piercing-Shot",
+      "Damage",
+      "Active-Ability"
+    ],
+    "type": "Damage Dealer",
+    "analysis": {
+      "primaryRole": "Damage Dealer",
+      "secondaryRoles": [
+        "Human"
+      ],
+      "strengths": [
+        "Arrow hits ALL enemies in its path",
+        "Very short cooldown (9 s at Lv10)"
+      ],
+      "weaknesses": [
+      ]
+    },
+    "supportFocus": "Self (piercing arrow damage)",
+    "recommendedTroops": [],
+    "realGear": {
+      "roleFamily": "Damage Dealer",
+      "hasRealGearData": false,
+      "weapon": null,
+      "armor": null,
+      "note": "No confirmed real gear data yet for the Damage Dealer role family."
+    },
+    "dataNote": "Epic/Rare heroes have no talent (talent exists only on Legendary and Mythical). Lv1/Lv10 main stats not added yet; ability table verified against the in-game screens."
+  },
+  {
+    "id": "GENERAL_01",
+    "name": "GENERAL",
+    "faction": "Human",
+    "rarity": "rare",
+    "description": "Human rare hero. Area Strike turns him into a whirlwind of steel that damages enemies around him every second.",
+    "stats": {
+      "hp": {
+        "min": null,
+        "max": null
+      },
+      "defense": {
+        "min": null,
+        "max": null
+      },
+      "attack": {
+        "min": null,
+        "max": null
+      },
+      "collectionBonus": {
+        "min": null,
+        "max": null
+      }
+    },
+    "talent": null,
+    "ability": {
+      "name": "Area Strike",
+      "description": "The general turns into a real whirlwind of steel. Better not get in his way!",
+      "type": "Active",
+      "effects": {
+        "AOE Radius m": "6 / 6 / 6 / 6 / 6 / 6 / 6 / 6 / 6 / 6",
+        "Damage per Sec": "130 / 160 / 200 / 230 / 260 / 290 / 330 / 360 / 390 / 420",
+        "Cooldown s": "15 / 15 / 15 / 14 / 14 / 14 / 14 / 13 / 13 / 13"
+      },
+      "levelStats": {
+        "AOE Radius m": [
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6
+        ],
+        "Damage per Sec": [
+          130,
+          160,
+          200,
+          230,
+          260,
+          290,
+          330,
+          360,
+          390,
+          420
+        ],
+        "Cooldown s": [
+          15,
+          15,
+          15,
+          14,
+          14,
+          14,
+          14,
+          13,
+          13,
+          13
+        ]
+      },
+      "targets": []
+    },
+    "statLevels": {
+      "hp": [
+        null,
+        null,
+        null,
+        null,
+        25000,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "defense": [
+        null,
+        null,
+        null,
+        null,
+        300,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "attack": [
+        null,
+        null,
+        null,
+        null,
+        420,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    "statLevelsKnown": [
+      5
+    ],
+    "tags": [
+      "Human",
+      "AoE",
+      "Active-Ability"
+    ],
+    "type": "Damage Dealer",
+    "analysis": {
+      "primaryRole": "Damage Dealer",
+      "secondaryRoles": [
+        "Human",
+        "AoE-Damage"
+      ],
+      "strengths": [
+        "Area damage every second (AOE radius 6 m)"
+      ],
+      "weaknesses": [
+      ]
+    },
+    "supportFocus": "Self (AoE damage)",
+    "recommendedTroops": [],
+    "realGear": {
+      "roleFamily": "Damage Dealer",
+      "hasRealGearData": false,
+      "weapon": null,
+      "armor": null,
+      "note": "No confirmed real gear data yet for the Damage Dealer role family."
+    },
+    "dataNote": "Epic/Rare heroes have no talent (talent exists only on Legendary and Mythical). Lv1/Lv10 main stats not added yet; ability table verified against the in-game screens."
+  },
+  {
+    "id": "SWORDMASTER_01",
+    "name": "SWORDMASTER",
+    "faction": "Human",
+    "rarity": "rare",
+    "description": "Human rare hero. Earth's Breakup splits the earth with a sword swing and sends a fiery stream through a wide area.",
+    "stats": {
+      "hp": {
+        "min": null,
+        "max": null
+      },
+      "defense": {
+        "min": null,
+        "max": null
+      },
+      "attack": {
+        "min": null,
+        "max": null
+      },
+      "collectionBonus": {
+        "min": null,
+        "max": null
+      }
+    },
+    "talent": null,
+    "ability": {
+      "name": "Earth's Breakup",
+      "description": "With a powerful swing of his sword, Swordmaster splits the earth and causes a fiery stream dealing huge damage.",
+      "type": "Active",
+      "effects": {
+        "AOE Radius m": "11 / 11 / 11 / 11 / 11 / 11 / 11 / 11 / 11 / 11",
+        "Damage": "490 / 520 / 545 / 570 / 600 / 620 / 645 / 675 / 700 / 725",
+        "Cooldown s": "16 / 16 / 16 / 16 / 15 / 15 / 15 / 14 / 14 / 14"
+      },
+      "levelStats": {
+        "AOE Radius m": [
+          11,
+          11,
+          11,
+          11,
+          11,
+          11,
+          11,
+          11,
+          11,
+          11
+        ],
+        "Damage": [
+          490,
+          520,
+          545,
+          570,
+          600,
+          620,
+          645,
+          675,
+          700,
+          725
+        ],
+        "Cooldown s": [
+          16,
+          16,
+          16,
+          16,
+          15,
+          15,
+          15,
+          14,
+          14,
+          14
+        ]
+      },
+      "targets": []
+    },
+    "statLevels": {
+      "hp": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        28750,
+        null,
+        null,
+        null,
+        null
+      ],
+      "defense": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        300,
+        null,
+        null,
+        null,
+        null
+      ],
+      "attack": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        825,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    "statLevelsKnown": [
+      6
+    ],
+    "tags": [
+      "Human",
+      "AoE",
+      "Active-Ability"
+    ],
+    "type": "Damage Dealer",
+    "analysis": {
+      "primaryRole": "Damage Dealer",
+      "secondaryRoles": [
+        "Human",
+        "AoE-Damage"
+      ],
+      "strengths": [
+        "Large AOE radius (11 m)",
+        "Damage up to 725 per cast at Lv10"
+      ],
+      "weaknesses": [
+      ]
+    },
+    "supportFocus": "Self (AoE damage)",
+    "recommendedTroops": [],
+    "realGear": {
+      "roleFamily": "Damage Dealer",
+      "hasRealGearData": false,
+      "weapon": null,
+      "armor": null,
+      "note": "No confirmed real gear data yet for the Damage Dealer role family."
+    },
+    "dataNote": "Epic/Rare heroes have no talent (talent exists only on Legendary and Mythical). Lv1/Lv10 main stats not added yet; ability table verified against the in-game screens."
+  },
+  {
+    "id": "MORTIMER_01",
+    "name": "MORTIMER THE DAMNED",
+    "faction": "Undead",
+    "rarity": "epic",
+    "description": "Undead epic hero. Death Grip pulls enemy units toward him and deals a powerful blow; pulled units are stunned.",
+    "stats": {
+      "hp": {
+        "min": null,
+        "max": null
+      },
+      "defense": {
+        "min": null,
+        "max": null
+      },
+      "attack": {
+        "min": null,
+        "max": null
+      },
+      "collectionBonus": {
+        "min": null,
+        "max": null
+      }
+    },
+    "talent": null,
+    "ability": {
+      "name": "Death Grip",
+      "description": "Mortimer pulls enemy units towards him and deals a powerful blow. Units are stunned and unable to attack or use abilities while being pulled.",
+      "type": "Active",
+      "effects": {
+        "AOE Radius m": "3 / 3 / 3 / 4 / 4 / 4 / 5 / 5 / 5 / 6",
+        "Enemies Amount": "25 / 30 / 30 / 35 / 35 / 35 / 40 / 40 / 45 / 50",
+        "Damage": "875 / 900 / 925 / 950 / 975 / 1000 / 1025 / 1050 / 1075 / 1100",
+        "Cooldown s": "16 / 16 / 16 / 16 / 15 / 15 / 15 / 14 / 14 / 14"
+      },
+      "levelStats": {
+        "AOE Radius m": [
+          3,
+          3,
+          3,
+          4,
+          4,
+          4,
+          5,
+          5,
+          5,
+          6
+        ],
+        "Enemies Amount": [
+          25,
+          30,
+          30,
+          35,
+          35,
+          35,
+          40,
+          40,
+          45,
+          50
+        ],
+        "Damage": [
+          875,
+          900,
+          925,
+          950,
+          975,
+          1000,
+          1025,
+          1050,
+          1075,
+          1100
+        ],
+        "Cooldown s": [
+          16,
+          16,
+          16,
+          16,
+          15,
+          15,
+          15,
+          14,
+          14,
+          14
+        ]
+      },
+      "targets": []
+    },
+    "statLevels": {
+      "hp": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        52500,
+        null,
+        null
+      ],
+      "defense": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        400,
+        null,
+        null
+      ],
+      "attack": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        675,
+        null,
+        null
+      ]
+    },
+    "statLevelsKnown": [
+      8
+    ],
+    "tags": [
+      "Undead",
+      "Pull",
+      "Stun",
+      "AoE",
+      "Active-Ability"
+    ],
+    "type": "Damage Dealer",
+    "analysis": {
+      "primaryRole": "Damage Dealer",
+      "secondaryRoles": [
+        "Undead",
+        "Crowd-Control",
+        "AoE-Damage"
+      ],
+      "strengths": [
+        "Pulls up to 25 (Lv1) to 50 (Lv10) enemies",
+        "Pulled units are stunned and cannot attack or use abilities while being pulled"
+      ],
+      "weaknesses": [
+      ]
+    },
+    "supportFocus": "Self (pull + damage on enemies)",
+    "recommendedTroops": [],
+    "realGear": {
+      "roleFamily": "Damage Dealer",
+      "hasRealGearData": false,
+      "weapon": null,
+      "armor": null,
+      "note": "No confirmed real gear data yet for the Damage Dealer role family."
+    },
+    "dataNote": "Epic/Rare heroes have no talent (talent exists only on Legendary and Mythical). Lv1/Lv10 main stats not added yet; ability table verified against the in-game screens."
+  },
+  {
+    "id": "ISABELLA_01",
+    "name": "ISABELLA THE WARRIOR",
+    "faction": "Human",
+    "rarity": "epic",
+    "description": "Human epic hero. Vengeance deals area damage and reduces the damage of all enemies within range.",
+    "stats": {
+      "hp": {
+        "min": null,
+        "max": null
+      },
+      "defense": {
+        "min": null,
+        "max": null
+      },
+      "attack": {
+        "min": null,
+        "max": null
+      },
+      "collectionBonus": {
+        "min": null,
+        "max": null
+      }
+    },
+    "talent": null,
+    "ability": {
+      "name": "Vengeance",
+      "description": "Isabella concentrates all her power to deal area damage, also reducing the damage of all enemies within range.",
+      "type": "Active",
+      "effects": {
+        "AOE Radius m": "6 / 6 / 6 / 6 / 6 / 6 / 6 / 6 / 6 / 6",
+        "Damage": "380 / 405 / 430 / 455 / 475 / 505 / 530 / 555 / 580 / 605",
+        "Cooldown s": "16 / 16 / 16 / 16 / 15 / 15 / 15 / 14 / 14 / 14",
+        "Damage Reduction %": "5 / 5 / 6 / 6 / 7 / 7 / 8 / 8 / 9 / 10",
+        "Duration s": "4 / 4 / 4 / 5 / 5 / 5 / 6 / 6 / 6 / 7"
+      },
+      "levelStats": {
+        "AOE Radius m": [
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6
+        ],
+        "Damage": [
+          380,
+          405,
+          430,
+          455,
+          475,
+          505,
+          530,
+          555,
+          580,
+          605
+        ],
+        "Cooldown s": [
+          16,
+          16,
+          16,
+          16,
+          15,
+          15,
+          15,
+          14,
+          14,
+          14
+        ],
+        "Damage Reduction %": [
+          5,
+          5,
+          6,
+          6,
+          7,
+          7,
+          8,
+          8,
+          9,
+          10
+        ],
+        "Duration s": [
+          4,
+          4,
+          4,
+          5,
+          5,
+          5,
+          6,
+          6,
+          6,
+          7
+        ]
+      },
+      "targets": []
+    },
+    "statLevels": {
+      "hp": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        35000,
+        null,
+        null,
+        null
+      ],
+      "defense": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        400,
+        null,
+        null,
+        null
+      ],
+      "attack": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1225,
+        null,
+        null,
+        null
+      ]
+    },
+    "statLevelsKnown": [
+      7
+    ],
+    "tags": [
+      "Human",
+      "AoE",
+      "Damage-Debuff",
+      "Active-Ability"
+    ],
+    "type": "Damage Dealer",
+    "analysis": {
+      "primaryRole": "Damage Dealer",
+      "secondaryRoles": [
+        "Human",
+        "AoE-Damage",
+        "Debuffer"
+      ],
+      "strengths": [
+        "Reduces the damage of ALL enemies in range by 5% (Lv1) to 10% (Lv10) for 4-7 s"
+      ],
+      "weaknesses": [
+      ]
+    },
+    "supportFocus": "Enemies (damage reduction debuff)",
+    "recommendedTroops": [],
+    "realGear": {
+      "roleFamily": "Damage Dealer",
+      "hasRealGearData": false,
+      "weapon": null,
+      "armor": null,
+      "note": "No confirmed real gear data yet for the Damage Dealer role family."
+    },
+    "dataNote": "Epic/Rare heroes have no talent (talent exists only on Legendary and Mythical). Lv1/Lv10 main stats not added yet; ability table verified against the in-game screens."
+  },
+  {
+    "id": "PADDY_01",
+    "name": "PADDY ROWDYALE",
+    "faction": "Human",
+    "rarity": "epic",
+    "description": "Human epic hero. Flow of Ale is a stunning wave that temporarily reduces the attack of enemies in front of him.",
+    "stats": {
+      "hp": {
+        "min": null,
+        "max": null
+      },
+      "defense": {
+        "min": null,
+        "max": null
+      },
+      "attack": {
+        "min": null,
+        "max": null
+      },
+      "collectionBonus": {
+        "min": null,
+        "max": null
+      }
+    },
+    "talent": null,
+    "ability": {
+      "name": "Flow of Ale",
+      "description": "Paddy creates a stunning wave that temporarily reduces the attack of all enemies in a radius in front of him.",
+      "type": "Active",
+      "effects": {
+        "AOE Radius m": "12 / 12 / 12 / 12 / 12 / 12 / 12 / 12 / 12 / 12",
+        "Damage": "300 / 345 / 390 / 435 / 480 / 525 / 570 / 615 / 660 / 705",
+        "Cooldown s": "16 / 16 / 16 / 16 / 15 / 15 / 15 / 14 / 14 / 14",
+        "Damage Reduction %": "9 / 10 / 11 / 13 / 14 / 15 / 16 / 17 / 18 / 21",
+        "Duration s": "3 / 3 / 3 / 4 / 4 / 4 / 5 / 5 / 5 / 6"
+      },
+      "levelStats": {
+        "AOE Radius m": [
+          12,
+          12,
+          12,
+          12,
+          12,
+          12,
+          12,
+          12,
+          12,
+          12
+        ],
+        "Damage": [
+          300,
+          345,
+          390,
+          435,
+          480,
+          525,
+          570,
+          615,
+          660,
+          705
+        ],
+        "Cooldown s": [
+          16,
+          16,
+          16,
+          16,
+          15,
+          15,
+          15,
+          14,
+          14,
+          14
+        ],
+        "Damage Reduction %": [
+          9,
+          10,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          21
+        ],
+        "Duration s": [
+          3,
+          3,
+          3,
+          4,
+          4,
+          4,
+          5,
+          5,
+          5,
+          6
+        ]
+      },
+      "targets": []
+    },
+    "statLevels": {
+      "hp": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        55500,
+        null,
+        null
+      ],
+      "defense": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        400,
+        null,
+        null
+      ],
+      "attack": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        510,
+        null,
+        null
+      ]
+    },
+    "statLevelsKnown": [
+      8
+    ],
+    "tags": [
+      "Human",
+      "AoE",
+      "Attack-Debuff",
+      "Active-Ability"
+    ],
+    "type": "Debuffer",
+    "analysis": {
+      "primaryRole": "Debuffer",
+      "secondaryRoles": [
+        "Human",
+        "AoE-Damage"
+      ],
+      "strengths": [
+        "Biggest AOE radius here (12 m), hits enemies in front of him",
+        "Lowers enemy attack for 3-6 s (Damage Reduction row 9% to 21%)"
+      ],
+      "weaknesses": [
+      ]
+    },
+    "supportFocus": "Enemies (attack debuff, in front of him)",
+    "recommendedTroops": [],
+    "realGear": {
+      "roleFamily": "Support",
+      "hasRealGearData": false,
+      "weapon": null,
+      "armor": null,
+      "note": "No confirmed real gear data yet for the Support role family."
+    },
+    "dataNote": "Epic/Rare heroes have no talent (talent exists only on Legendary and Mythical). Lv1/Lv10 main stats not added yet; ability table verified against the in-game screens."
+  },
+  {
+    "id": "DARK_KNIGHT_01",
+    "name": "DARK KNIGHT",
+    "faction": "Undead",
+    "rarity": "epic",
+    "description": "Undead epic hero. Dark Power summons supernatural forces that cause great damage to enemy units and stun them for 1 s.",
+    "stats": {
+      "hp": {
+        "min": null,
+        "max": null
+      },
+      "defense": {
+        "min": null,
+        "max": null
+      },
+      "attack": {
+        "min": null,
+        "max": null
+      },
+      "collectionBonus": {
+        "min": null,
+        "max": null
+      }
+    },
+    "talent": null,
+    "ability": {
+      "name": "Dark Power",
+      "description": "Summons supernatural forces that cause great damage to enemy units.",
+      "type": "Active",
+      "effects": {
+        "Stun s": "1 / 1 / 1 / 1 / 1 / 1 / 1 / 1 / 1 / 1",
+        "Damage": "380 / 405 / 430 / 455 / 475 / 505 / 530 / 555 / 580 / 605",
+        "Cooldown s": "16 / 16 / 16 / 16 / 15 / 15 / 15 / 14 / 14 / 14"
+      },
+      "levelStats": {
+        "Stun s": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "Damage": [
+          380,
+          405,
+          430,
+          455,
+          475,
+          505,
+          530,
+          555,
+          580,
+          605
+        ],
+        "Cooldown s": [
+          16,
+          16,
+          16,
+          16,
+          15,
+          15,
+          15,
+          14,
+          14,
+          14
+        ]
+      },
+      "targets": []
+    },
+    "statLevels": {
+      "hp": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        39250,
+        null,
+        null,
+        null
+      ],
+      "defense": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        340,
+        null,
+        null,
+        null
+      ],
+      "attack": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        590,
+        null,
+        null,
+        null
+      ]
+    },
+    "statLevelsKnown": [
+      7
+    ],
+    "tags": [
+      "Undead",
+      "Stun",
+      "Single-Target",
+      "Active-Ability"
+    ],
+    "type": "Damage Dealer",
+    "analysis": {
+      "primaryRole": "Damage Dealer",
+      "secondaryRoles": [
+        "Undead",
+        "Crowd-Control"
+      ],
+      "strengths": [
+        "1 s stun on a 14 s cooldown (Lv10)"
+      ],
+      "weaknesses": [
+      ]
+    },
+    "supportFocus": "Self (damage + stun on enemies)",
+    "recommendedTroops": [],
+    "realGear": {
+      "roleFamily": "Damage Dealer",
+      "hasRealGearData": false,
+      "weapon": null,
+      "armor": null,
+      "note": "No confirmed real gear data yet for the Damage Dealer role family."
+    },
+    "dataNote": "Epic/Rare heroes have no talent (talent exists only on Legendary and Mythical). Lv1/Lv10 main stats not added yet; ability table verified against the in-game screens."
+  },
+  {
+    "id": "VENGAR_01",
+    "name": "VENGAR, GRIM ARBALISTER",
+    "faction": "Undead",
+    "rarity": "rare",
+    "description": "Undead rare hero. Shadow Attack hides him in the shadows, raising his own attack speed and damage; he cannot be selected as a target meanwhile.",
+    "stats": {
+      "hp": {
+        "min": null,
+        "max": null
+      },
+      "defense": {
+        "min": null,
+        "max": null
+      },
+      "attack": {
+        "min": null,
+        "max": null
+      },
+      "collectionBonus": {
+        "min": null,
+        "max": null
+      }
+    },
+    "talent": null,
+    "ability": {
+      "name": "Shadow Attack",
+      "description": "Vengar goes into the shadows, increasing his attack speed and damage. When using this ability, Vengar can't be selected as a target to attack.",
+      "type": "Active",
+      "effects": {
+        "Damage Multiplier": "0.1 / 0.2 / 0.3 / 0.4 / 0.5 / 0.6 / 0.7 / 0.8 / 0.9 / 1",
+        "Attack Speed Multiplier": "1.8 / 2 / 2.2 / 2.5 / 2.9 / 3.3 / 4 / 5 / 6.7 / 10",
+        "Duration s": "5 / 6 / 6 / 6 / 6 / 6 / 7 / 7 / 7 / 8",
+        "Cooldown s": "17 / 17 / 17 / 17 / 16 / 16 / 16 / 15 / 15 / 15"
+      },
+      "levelStats": {
+        "Damage Multiplier": [
+          0.1,
+          0.2,
+          0.3,
+          0.4,
+          0.5,
+          0.6,
+          0.7,
+          0.8,
+          0.9,
+          1
+        ],
+        "Attack Speed Multiplier": [
+          1.8,
+          2,
+          2.2,
+          2.5,
+          2.9,
+          3.3,
+          4,
+          5,
+          6.7,
+          10
+        ],
+        "Duration s": [
+          5,
+          6,
+          6,
+          6,
+          6,
+          6,
+          7,
+          7,
+          7,
+          8
+        ],
+        "Cooldown s": [
+          17,
+          17,
+          17,
+          17,
+          16,
+          16,
+          16,
+          15,
+          15,
+          15
+        ]
+      },
+      "targets": []
+    },
+    "statLevels": {
+      "hp": [
+        null,
+        null,
+        null,
+        null,
+        23000,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "defense": [
+        null,
+        null,
+        null,
+        null,
+        300,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "attack": [
+        null,
+        null,
+        null,
+        null,
+        635,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    "statLevelsKnown": [
+      5
+    ],
+    "tags": [
+      "Undead",
+      "Attack-Speed",
+      "Self-Buff",
+      "Untargetable",
+      "Active-Ability"
+    ],
+    "type": "Damage Dealer",
+    "analysis": {
+      "primaryRole": "Damage Dealer",
+      "secondaryRoles": [
+        "Undead"
+      ],
+      "strengths": [
+        "Attack speed x10 at Lv10",
+        "Cannot be selected as a target while the ability is active"
+      ],
+      "weaknesses": [
+        "Rare hero, lower stats than epics"
+      ]
+    },
+    "supportFocus": "Self (attack speed + damage)",
+    "recommendedTroops": [],
+    "realGear": {
+      "roleFamily": "Damage Dealer",
+      "hasRealGearData": false,
+      "weapon": null,
+      "armor": null,
+      "note": "No confirmed real gear data yet for the Damage Dealer role family."
+    },
+    "dataNote": "Epic/Rare heroes have no talent (talent exists only on Legendary and Mythical). Lv1/Lv10 main stats not added yet; ability table verified against the in-game screens."
+  },
+  {
+    "id": "CHARON_01",
+    "name": "CHARON THE BLAZING",
+    "faction": "Undead",
+    "rarity": "rare",
+    "description": "Undead rare hero. Cursed Army summons cursed skeletons whose blows set enemies on fire; they fight until defeated.",
+    "stats": {
+      "hp": {
+        "min": null,
+        "max": null
+      },
+      "defense": {
+        "min": null,
+        "max": null
+      },
+      "attack": {
+        "min": null,
+        "max": null
+      },
+      "collectionBonus": {
+        "min": null,
+        "max": null
+      }
+    },
+    "talent": null,
+    "ability": {
+      "name": "Cursed Army",
+      "description": "Charon summons cursed skeletons, each blow of which sets enemy units on fire. The skeletons fight until they're defeated.",
+      "type": "Active",
+      "effects": {
+        "Summoned Units": "2 / 2 / 2 / 3 / 3 / 3 / 4 / 4 / 4 / 4",
+        "Summoned Unit HP": "800 / 900 / 1200 / 1800 / 3200 / 4600 / 6000 / 7400 / 12950 / 15540",
+        "Summoned Damage": "130 / 150 / 190 / 250 / 290 / 330 / 370 / 410 / 680 / 820",
+        "Cooldown s": "15 / 15 / 15 / 14 / 14 / 14 / 14 / 13 / 13 / 13"
+      },
+      "levelStats": {
+        "Summoned Units": [
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          4,
+          4,
+          4,
+          4
+        ],
+        "Summoned Unit HP": [
+          800,
+          900,
+          1200,
+          1800,
+          3200,
+          4600,
+          6000,
+          7400,
+          12950,
+          15540
+        ],
+        "Summoned Damage": [
+          130,
+          150,
+          190,
+          250,
+          290,
+          330,
+          370,
+          410,
+          680,
+          820
+        ],
+        "Cooldown s": [
+          15,
+          15,
+          15,
+          14,
+          14,
+          14,
+          14,
+          13,
+          13,
+          13
+        ]
+      },
+      "targets": []
+    },
+    "statLevels": {
+      "hp": [
+        null,
+        null,
+        null,
+        null,
+        28500,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "defense": [
+        null,
+        null,
+        null,
+        null,
+        300,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "attack": [
+        null,
+        null,
+        null,
+        null,
+        775,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    "statLevelsKnown": [
+      5
+    ],
+    "tags": [
+      "Undead",
+      "Summoner",
+      "Burn",
+      "Active-Ability"
+    ],
+    "type": "Summoner",
+    "analysis": {
+      "primaryRole": "Summoner",
+      "secondaryRoles": [
+        "Undead",
+        "Summoner"
+      ],
+      "strengths": [
+        "Skeleton blows set enemy units on fire",
+        "Summoned HP and damage jump at Lv9 and Lv10"
+      ],
+      "weaknesses": [
+        "Rare hero, lower stats than epics"
+      ]
+    },
+    "supportFocus": "Self (summoned skeletons)",
+    "recommendedTroops": [],
+    "realGear": {
+      "roleFamily": "Summoner",
+      "hasRealGearData": false,
+      "weapon": null,
+      "armor": null,
+      "note": "No confirmed real gear data yet for the Summoner role family."
+    },
+    "dataNote": "Epic/Rare heroes have no talent (talent exists only on Legendary and Mythical). Lv1/Lv10 main stats not added yet; ability table verified against the in-game screens."
+  },
+  {
+    "id": "BJORN_01",
+    "name": "BJORN THE DRUID",
+    "faction": "Mages",
+    "rarity": "epic",
+    "description": "Mage epic hero. Spirit Form turns him into a mighty bear whose war cry raises the combat stats of himself and allied units around him.",
+    "stats": {
+      "hp": {
+        "min": null,
+        "max": null
+      },
+      "defense": {
+        "min": null,
+        "max": null
+      },
+      "attack": {
+        "min": null,
+        "max": null
+      },
+      "collectionBonus": {
+        "min": null,
+        "max": null
+      }
+    },
+    "talent": null,
+    "ability": {
+      "name": "Spirit Form",
+      "description": "Bjorn transforms into a mighty bear and lets out a war cry that increases his combat stats and those of allied units around him.",
+      "type": "Active",
+      "effects": {
+        "AOE Radius m": "9 / 9 / 9 / 9 / 9 / 9 / 9 / 9 / 9 / 9",
+        "Cooldown s": "16 / 16 / 15 / 15 / 14 / 14 / 14 / 13 / 13 / 13",
+        "Duration s": "5 / 5 / 6 / 6 / 6 / 7 / 7 / 7 / 8 / 8",
+        "Damage Bonus": "80 / 110 / 140 / 170 / 200 / 230 / 260 / 290 / 320 / 350",
+        "Bonus HP": "600 / 750 / 900 / 1050 / 1200 / 1350 / 1500 / 1650 / 1800 / 2100",
+        "Bonus Attack Speed %": "5 / 5 / 6 / 6 / 7 / 7 / 8 / 8 / 9 / 10"
+      },
+      "levelStats": {
+        "AOE Radius m": [
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9
+        ],
+        "Cooldown s": [
+          16,
+          16,
+          15,
+          15,
+          14,
+          14,
+          14,
+          13,
+          13,
+          13
+        ],
+        "Duration s": [
+          5,
+          5,
+          6,
+          6,
+          6,
+          7,
+          7,
+          7,
+          8,
+          8
+        ],
+        "Damage Bonus": [
+          80,
+          110,
+          140,
+          170,
+          200,
+          230,
+          260,
+          290,
+          320,
+          350
+        ],
+        "Bonus HP": [
+          600,
+          750,
+          900,
+          1050,
+          1200,
+          1350,
+          1500,
+          1650,
+          1800,
+          2100
+        ],
+        "Bonus Attack Speed %": [
+          5,
+          5,
+          6,
+          6,
+          7,
+          7,
+          8,
+          8,
+          9,
+          10
+        ]
+      },
+      "targets": [
+        "All Allies"
+      ]
+    },
+    "statLevels": {
+      "hp": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        35000,
+        null,
+        null,
+        null
+      ],
+      "defense": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        400,
+        null,
+        null,
+        null
+      ],
+      "attack": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        800,
+        null,
+        null,
+        null
+      ]
+    },
+    "statLevelsKnown": [
+      7
+    ],
+    "tags": [
+      "Mages",
+      "Mage",
+      "All Allies",
+      "Damage-Buff",
+      "HP-Buff",
+      "Attack-Speed-Buff",
+      "Active-Ability"
+    ],
+    "type": "Mage",
+    "analysis": {
+      "primaryRole": "Mage",
+      "secondaryRoles": [
+        "Support",
+        "Buffer"
+      ],
+      "strengths": [
+        "Gives Damage Bonus, Bonus HP and Bonus Attack Speed at once",
+        "Duration up to 8 s, cooldown 13 s at Lv10"
+      ],
+      "weaknesses": [
+        "Bonus reaches only allied units within his 9 m radius"
+      ]
+    },
+    "supportFocus": "All allies within 9 m (damage, HP, attack speed)",
+    "recommendedTroops": [],
+    "realGear": {
+      "roleFamily": "Mage",
+      "hasRealGearData": false,
+      "weapon": null,
+      "armor": null,
+      "note": "No confirmed real gear data yet for the Mage role family."
+    },
+    "dataNote": "Epic/Rare heroes have no talent (talent exists only on Legendary and Mythical). Lv1/Lv10 main stats not added yet; ability table verified against the in-game screens."
   }
 ];
 
