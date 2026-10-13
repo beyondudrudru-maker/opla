@@ -10,6 +10,11 @@
 const { BOSS_KEYWORDS } = require('./constants.js');
 const { fuzzyNameHit } = require('./fuzzyMatch.js');
 
+// Role/family words ("mage", "tank", "troops"…) are descriptions, not names: they must never fuzzy-match an entity
+// (this is what made "mage troops" return Keyra the Water Mage).
+const GENERIC_WORDS = new Set(['mage','mages','tank','tanks','troop','troops','hero','heroes','support','supports','ranger','rangers','undead','human','humans','trickster','tricksters','ranged','melee','unit','units','list','all']);
+const _nonGeneric = words => words.filter(w => !GENERIC_WORDS.has(w));
+
 function scrapeBossKeywords(normalizedText, textNoSpace) {
   const bossTextWords = normalizedText.split(/\s+/).filter(Boolean);
   return BOSS_KEYWORDS.filter(k => {
@@ -39,8 +44,9 @@ function _nameResolvesAgainstRoster(name, roster, normalizedText, textNoSpace, t
     
     // 🚀 FIX: Require at least one word in the original text to be somewhat long before trying fuzzy match 
     // to avoid fuzzy-matching "night" against "Night Hunter".
-    const hasLongWords = textWordsForFuzzy.some(w => w.length >= Math.min(5, rName.length - 2));
-    const fuzzyMatch = !exactMatch && !typoMatch && hasLongWords && fuzzyNameHit(rName, textWordsForFuzzy);
+    const fuzzyWords = _nonGeneric(textWordsForFuzzy);
+    const hasLongWords = fuzzyWords.some(w => w.length >= Math.min(5, rName.length - 2));
+    const fuzzyMatch = !exactMatch && !typoMatch && hasLongWords && fuzzyNameHit(rName, fuzzyWords);
     
     return exactMatch || typoMatch || fuzzyMatch;
   });
@@ -56,8 +62,9 @@ function scrapeEntities(text, normalizedText, textNoSpace, entities, allKnownHer
 
     const exactMatch = new RegExp(`\\b${safeName}\\b`, 'i').test(normalizedText);
     const typoMatch  = hNameNoSpace.length > 5 && textNoSpace.includes(hNameNoSpace);
-    const hasLongWords = textWordsForFuzzy.some(w => w.length >= Math.min(5, hName.length - 2));
-    const fuzzyMatch = !exactMatch && !typoMatch && hasLongWords && fuzzyNameHit(hName, textWordsForFuzzy);
+    const fuzzyWords = _nonGeneric(textWordsForFuzzy);
+    const hasLongWords = fuzzyWords.some(w => w.length >= Math.min(5, hName.length - 2));
+    const fuzzyMatch = !exactMatch && !typoMatch && hasLongWords && fuzzyNameHit(hName, fuzzyWords);
 
     if ((exactMatch || typoMatch || fuzzyMatch) && !entities.heroNames.some(e => e.toLowerCase() === hName)) {
       entities.heroNames.push(h.name);
@@ -71,8 +78,9 @@ function scrapeEntities(text, normalizedText, textNoSpace, entities, allKnownHer
 
     const exactMatch = new RegExp(`\\b${safeName}\\b`, 'i').test(normalizedText);
     const typoMatch  = tNameNoSpace.length > 5 && textNoSpace.includes(tNameNoSpace);
-    const hasLongWords = textWordsForFuzzy.some(w => w.length >= Math.min(5, tName.length - 2));
-    const fuzzyMatch = !exactMatch && !typoMatch && hasLongWords && fuzzyNameHit(tName, textWordsForFuzzy);
+    const fuzzyWords = _nonGeneric(textWordsForFuzzy);
+    const hasLongWords = fuzzyWords.some(w => w.length >= Math.min(5, tName.length - 2));
+    const fuzzyMatch = !exactMatch && !typoMatch && hasLongWords && fuzzyNameHit(tName, fuzzyWords);
 
     if ((exactMatch || typoMatch || fuzzyMatch) && !entities.troopNames.some(e => e.toLowerCase() === tName)) {
       entities.troopNames.push(t.name);
