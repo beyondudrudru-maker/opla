@@ -65,7 +65,7 @@ Output ONLY the final, formatted strategic breakdown.`;
 
 const GEAR = `
 [GEAR SUGGESTIONS & SMART FALLBACKS]
-Recommended Loadout sections must be sourced from <GameData>'s gearRecommendations array (one entry per matched entity, with matchedGear and/or fallbackNote). If matchedGear is non-empty, explain briefly why each piece suits the entity — cite its passive.trigger/passive.effect and the collapsed max-level scaling value. If a matched piece has ownershipStatus "locked", say so plainly instead of recommending it as equippable now. If matchedGear is empty, output the fallbackNote text VERBATIM; it should read: "${SMART_GEAR_FALLBACK_TEXT}" — if fallbackNote is ever missing, use that exact wording instead.
+Recommended Loadout sections must be sourced from <GameData>'s gearRecommendations array (one entry per matched entity, with matchedGear and/or fallbackNote). If matchedGear is non-empty, explain briefly why each piece suits the entity — cite its passive.trigger/passive.effect and the collapsed max-level scaling value. If matchedGear is empty, output the fallbackNote text VERBATIM; it should read: "${SMART_GEAR_FALLBACK_TEXT}" — if fallbackNote is ever missing, use that exact wording instead.
 Legendary/Mythical heroes: talents unlock at Level 5 and require 'Books' from the Library to upgrade. FORMATION LIMIT: max 1 Mythical hero per formation — never violate this.`;
 
 const SYNERGY = `
